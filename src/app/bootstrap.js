@@ -1,5 +1,6 @@
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
+import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
 import { createSessionSpec } from "../domain/sessions/schema.js";
 import { SESSION_STATES } from "../domain/sessions/state-machine.js";
 import { IndexedDbStore } from "../infrastructure/storage/indexed-db-store.js";
@@ -25,6 +26,7 @@ const uiState = {
   countdownSeconds: 3,
   category: "basic",
   group: "A",
+  drillId: BUILTIN_DRILLS[0].id,
 };
 
 const store = await IndexedDbStore.open().catch(() => {
@@ -78,10 +80,11 @@ function sessionConsole(session) {
   if (session.state === SESSION_STATES.PAUSED) metric = `Paused · ${metric}`;
   if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s · ${metric}`;
   const progress = Math.round(session.progress * 100);
+  const drill = getBuiltinDrill(session.spec?.drillId);
   const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
   return `
     <section class="app-card session-console" aria-label="Active session">
-      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2></div><span class="simulation-pill">Simulation</span></div>
+      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${escapeHtml(drill?.name ?? "Local session")}</p></div><span class="simulation-pill">Simulation</span></div>
       <strong class="session-metric">${metric}</strong>
       <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
       <div class="console-actions">
@@ -96,6 +99,7 @@ function sessionConsole(session) {
 function setupCard(session) {
   const locked = session.state !== SESSION_STATES.IDLE;
   const amountLabel = uiState.mode === "time" ? "Duration (s)" : "Count";
+  const selectedDrill = getBuiltinDrill(uiState.drillId);
   return `
     <section class="app-card setup-card" aria-labelledby="setup-title">
       <div class="section-heading"><div><span class="eyebrow">QUICK TRAINING</span><h2 id="setup-title">Session setup</h2></div><span class="simulation-pill">Dry run</span></div>
@@ -120,20 +124,29 @@ function setupCard(session) {
         <label><span>Countdown</span><select name="countdown" ${locked ? "disabled" : ""}><option value="3" ${uiState.countdownSeconds === 3 ? "selected" : ""}>3 seconds</option><option value="5" ${uiState.countdownSeconds === 5 ? "selected" : ""}>5 seconds</option><option value="0" ${uiState.countdownSeconds === 0 ? "selected" : ""}>None</option></select></label>
         <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>
       </form>
-      <p class="helper-text">Uses the canonical lifecycle and stores local history. It sends no robot commands and records zero dispatched balls.</p>
+      <p class="helper-text">Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. Uses the canonical lifecycle, sends no robot commands, and records zero dispatched balls.</p>
     </section>`;
 }
 
-function drillLibrary() {
-  const categories = [["basic", "Basic", 1], ["combined", "Combined", 0], ["complex", "Complex", 0]];
-  const content = uiState.category === "basic"
-    ? `<button class="drill-tile selected" type="button" aria-pressed="true"><span><strong>Foundation dry run</strong><small>Simulation pattern</small></span><span class="ball-detail"><i></i>0 physical balls</span></button>`
-    : `<div class="empty-library"><strong>No ${escapeHtml(uiState.category)} drills integrated yet</strong><span>The verified Nova Trainer library will be migrated without inventing robot parameters.</span></div>`;
+function drillCard(drill, locked) {
+  const steps = drill.programs[uiState.level].steps.filter((step) => step.enabled);
+  const dots = steps.slice(0, 8).map((step) => {
+    const ball = step.variants[0];
+    const kind = ball.height < 0 ? "serve" : ball.type === "back" ? "back" : "top";
+    return `<i class="ball-dot ${kind}"></i>`;
+  }).join("");
+  const selected = uiState.drillId === drill.id;
+  return `<button class="drill-tile ${selected ? "selected" : ""}" type="button" data-drill-id="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}><span><strong>${escapeHtml(drill.name)}</strong>${drill.random ? '<small class="random-tag">Random</small>' : ""}</span><span class="ball-detail"><span class="ball-dots">${dots}</span>${steps.length} ball${steps.length === 1 ? "" : "s"}</span></button>`;
+}
+
+function drillLibrary(session) {
+  const locked = session.state !== SESSION_STATES.IDLE;
+  const drills = getBuiltinDrills(uiState.category);
   return `
     <section class="app-card library-card" aria-labelledby="library-title">
-      <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>1 simulation pattern · level ${uiState.level}</p></div><button class="small-button" type="button" disabled>Arrange later</button></div>
-      <div class="pill-row" role="group" aria-label="Drill category">${categories.map(([key, label, count]) => `<button type="button" data-category="${key}" class="pill ${uiState.category === key ? "selected" : ""}" aria-pressed="${uiState.category === key}">${label} <small>${count}</small></button>`).join("")}</div>
-      <div class="drill-grid">${content}</div>
+      <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>${BUILTIN_DRILLS.length} drills · level ${uiState.level}</p></div><button class="small-button" type="button" disabled>Fixed order</button></div>
+      <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${label} <small>${count}</small></button>`).join("")}</div>
+      <div class="drill-grid">${drills.map((drill) => drillCard(drill, locked)).join("")}</div>
     </section>`;
 }
 
@@ -148,13 +161,13 @@ function customDrills() {
 
 function trainView() {
   const session = controller.snapshot();
-  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary()}${customDrills()}</div>`;
+  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills()}</div>`;
 }
 
 async function dataView() {
   const records = (await store.getAll("sessionRecords")).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
   const rows = records.length
-    ? records.map((record) => `<li><div><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)}</span></div><span>${record.completedCycles} cycles · ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
+    ? records.map((record) => `<li><div><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)}</span></div><span>${escapeHtml(getBuiltinDrill(record.drillId)?.name ?? "Local drill")} · ${record.completedCycles} cycles · ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
     : `<li class="empty-row">No local sessions recorded yet.</li>`;
   return `
     <div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">LOCAL-FIRST</span><h1>Data and recovery</h1></div>
@@ -166,7 +179,7 @@ async function dataView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Ultimate</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local sessions</strong><p>Reps, Time, history, backup, and recovery are operational in simulation.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Training foundation</strong><p>Verified drills, custom drill management, visual editing, and calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Ultimate</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Custom drill editor</strong><p>Groups A/B/C, visual editing, import/export, and calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -193,7 +206,8 @@ function bindRouteActions(route) {
   if (route === "train") {
     document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
     document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.mode = button.dataset.uiMode; uiState.amount = uiState.mode === "time" ? 60 : 10; void render("train"); }));
-    document.querySelectorAll("[data-category]").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; void render("train"); }));
+    document.querySelectorAll("[data-category]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; uiState.drillId = getBuiltinDrills(uiState.category)[0].id; void render("train"); }));
+    document.querySelectorAll("[data-drill-id]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.drillId; void render("train"); }));
     document.querySelectorAll("[data-group]").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; void render("train"); }));
     document.querySelector("#session-form")?.addEventListener("input", (event) => {
       const form = new FormData(event.currentTarget);
@@ -207,7 +221,7 @@ function bindRouteActions(route) {
       uiState.amount = Number(form.get("amount"));
       uiState.pauseSeconds = Number(form.get("pause"));
       uiState.countdownSeconds = Number(form.get("countdown"));
-      const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: "foundation-dry-run", repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
+      const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
       controller.start(spec, { countdownSeconds: uiState.countdownSeconds });
       void render("train");
     });
@@ -276,7 +290,7 @@ menuScrim.addEventListener("click", closeMenu);
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });
 
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.1.0-app-shell.0";
+document.querySelector("#build-version").textContent = "v0.1.0-drill-library.0";
 await refreshFooter();
 
 setInterval(() => {
