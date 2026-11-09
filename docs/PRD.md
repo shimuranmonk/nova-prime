@@ -47,6 +47,8 @@ Nova Ultimate is the unified community application for the PONGBOT Nova S Pro. N
 - Support sequential/random operation, variants, scatter, and bulk adjustments.
 - Provide visual table editing, predictions, rulers, grid, reordering, and safe testing.
 
+Implementation status: the 34 built-ins, Groups A/B/C library management, immutable custom identities, ordering, import/export, selection, and safe simulation are complete. Ball parameter and visual table editing remain pending.
+
 ### Calibration and feedback — NU-FR-025 to NU-FR-032
 
 - Support Standard and Complete guided calibration.
@@ -127,4 +129,3 @@ The stable foundation provides the modular shell, canonical schemas, validators,
 The app-shell increment makes Training the default experience and adopts the approved Nova Trainer-first card hierarchy with Nova Plus level, mode, amount, and pause controls. It does not mark the drill library, editor, calibration, Music, MSYNC, or robot connection complete merely because their future locations are visible.
 
 The drill-library increment integrates the complete 34-entry Nova Trainer catalogue with three canonical programs per drill, source provenance, stable IDs, category selection, level selection, and local session/history linkage. Custom editing and physical robot execution remain outside this increment.
-
