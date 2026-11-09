@@ -13,6 +13,7 @@ export class LocalSessionController {
   #countdownRemaining = 0;
   #elapsedSeconds = 0;
   #completedCycles = 0;
+  #cyclePauseRemaining = 0;
   #startedAt = null;
   #now;
   #onRecord;
@@ -31,6 +32,7 @@ export class LocalSessionController {
       countdownRemaining: this.#countdownRemaining,
       elapsedSeconds: this.#elapsedSeconds,
       completedCycles: this.#completedCycles,
+      cyclePauseRemaining: this.#cyclePauseRemaining,
       progress: this.#progress(),
       simulation: true,
     });
@@ -53,6 +55,7 @@ export class LocalSessionController {
     this.#countdownRemaining = Math.max(0, Math.floor(countdownSeconds));
     this.#elapsedSeconds = 0;
     this.#completedCycles = 0;
+    this.#cyclePauseRemaining = 0;
     this.#startedAt = this.#now();
     this.#machine.dispatch(SESSION_EVENTS.PREPARE);
     this.#machine.dispatch(SESSION_EVENTS.ARM);
@@ -69,8 +72,19 @@ export class LocalSessionController {
       if (this.#countdownRemaining === 0) this.#machine.dispatch(SESSION_EVENTS.START);
     } else if (this.state === SESSION_STATES.RUNNING) {
       this.#elapsedSeconds += amount;
-      if (this.#spec.mode === "reps") this.#completedCycles = Math.min(this.#spec.repetitions, this.#completedCycles + 1);
-      else this.#completedCycles += 1;
+      if (this.#spec.mode === "reps") {
+        if (this.#cyclePauseRemaining > 0) {
+          this.#cyclePauseRemaining = Math.max(0, this.#cyclePauseRemaining - amount);
+        } else {
+          this.#completedCycles = Math.min(this.#spec.repetitions, this.#completedCycles + 1);
+          if (this.#completedCycles < this.#spec.repetitions) this.#cyclePauseRemaining = this.#spec.pauseSeconds;
+        }
+      } else if (this.#cyclePauseRemaining > 0) {
+        this.#cyclePauseRemaining = Math.max(0, this.#cyclePauseRemaining - amount);
+      } else {
+        this.#completedCycles += 1;
+        this.#cyclePauseRemaining = this.#spec.pauseSeconds;
+      }
 
       const complete = this.#spec.mode === "reps"
         ? this.#completedCycles >= this.#spec.repetitions
@@ -141,6 +155,7 @@ export class LocalSessionController {
     this.#countdownRemaining = 0;
     this.#elapsedSeconds = 0;
     this.#completedCycles = 0;
+    this.#cyclePauseRemaining = 0;
     this.#startedAt = null;
   }
 

@@ -1,4 +1,4 @@
-const DEFAULT_ROUTE = "overview";
+const DEFAULT_ROUTE = "train";
 
 export function routeFromHash(hash = "") {
   const candidate = hash.replace(/^#/, "").trim().toLowerCase();

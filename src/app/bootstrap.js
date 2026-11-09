@@ -10,9 +10,22 @@ import { createRouter } from "./router.js";
 
 const capabilities = detectCapabilities();
 const view = document.querySelector("#route-view");
-const tabs = [...document.querySelectorAll("[data-route]")];
-let activeRoute = "overview";
+const menu = document.querySelector("#app-menu");
+const menuScrim = document.querySelector("#menu-scrim");
+const menuToggle = document.querySelector("#menu-toggle");
+let activeRoute = "train";
 let storageNotice = "";
+let dataMessage = "";
+
+const uiState = {
+  mode: "reps",
+  level: 1,
+  amount: 10,
+  pauseSeconds: 0,
+  countdownSeconds: 3,
+  category: "basic",
+  group: "A",
+};
 
 const store = await IndexedDbStore.open().catch(() => {
   storageNotice = "Persistent browser storage is unavailable. This visit uses temporary memory only.";
@@ -22,11 +35,11 @@ const store = await IndexedDbStore.open().catch(() => {
 const controller = new LocalSessionController({
   onRecord: async (record) => {
     await store.put("sessionRecords", record);
+    await refreshFooter();
     if (activeRoute === "data") await render("data");
   },
 });
 
-const yesNo = (value) => (value ? "Available" : "Unavailable");
 const escapeHtml = (value) => String(value)
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
@@ -34,119 +47,168 @@ const escapeHtml = (value) => String(value)
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#039;");
 
-function overview() {
+function connectionCard() {
   return `
-    <div class="card-grid">
-      <article class="card"><h3>Local sessions</h3><span class="value">Reps + Time</span><p>Deterministic dry runs exercise countdown, pause, resume, Stop, completion, and session records.</p></article>
-      <article class="card"><h3>Recovery</h3><span class="value">JSON backup</span><p>Export and validated restore protect origin-scoped local data.</p></article>
-      <article class="card"><h3>Live robot</h3><span class="value">Disabled</span><p>Zero Bluetooth commands exist in this build. Physical execution remains a later safety milestone.</p></article>
-    </div>`;
+    <section class="app-card status-card" aria-labelledby="connection-title">
+      <div class="status-copy"><span class="connection-dot"></span><div><h2 id="connection-title">Not connected</h2><p>Live robot control unlocks after safety verification.</p></div></div>
+      <button class="outline-button" type="button" disabled title="Bluetooth is disabled in this milestone">Connect later</button>
+    </section>`;
 }
 
-function capabilityView() {
-  return `<div class="card-grid">${Object.entries(capabilities)
-    .map(([name, available]) => `<article class="card"><h3>${escapeHtml(name)}</h3><span class="status-pill">${yesNo(available)}</span></article>`)
-    .join("")}</div>`;
+function calibrationCard() {
+  return `
+    <section class="app-card calibration-card" aria-labelledby="calibration-title">
+      <div><h2 id="calibration-title">Calibration</h2><p>Not calibrated · canonical profile ready</p><details><summary>More</summary><p>Guided calibration, Quick Check, and physical placement arrive with the robot safety layer.</p></details></div>
+      <button class="outline-button" type="button" disabled>Coming next</button>
+    </section>`;
 }
 
-function roadmap() {
-  const releases = [
-    ["0.1", "Foundation", "Local persistence, recovery, Reps and Time dry runs"],
-    ["0.2", "Music", "Stored tracks, playlists, Quick Music"],
-    ["0.3", "MSYNC", "Validation, simulation, safe live scheduling"],
-    ["0.4", "Connected", "Sharing and stable voice commands"],
-  ];
-  return `<div class="card-grid">${releases
-    .map(([version, name, description]) => `<article class="card"><span class="value">${version}</span><h3>${name}</h3><p>${description}</p></article>`)
-    .join("")}</div>`;
+function modeButton(mode, label, available = true, locked = false) {
+  const selected = uiState.mode === mode;
+  return `<button type="button" class="segment ${selected ? "selected" : ""}" data-ui-mode="${mode}" ${available && !locked ? "" : "disabled"} aria-pressed="${selected}">${label}${available ? "" : "<small>Soon</small>"}</button>`;
+}
+
+function sessionConsole(session) {
+  if (session.state === SESSION_STATES.IDLE) return "";
+  const target = session.spec?.mode === "time" ? session.spec.durationSeconds : session.spec?.repetitions;
+  let metric = session.spec?.mode === "time"
+    ? `${Math.round(session.elapsedSeconds)} / ${target} seconds`
+    : `${session.completedCycles} / ${target} repetitions`;
+  if (session.state === SESSION_STATES.COUNTDOWN) metric = `Starting in ${Math.ceil(session.countdownRemaining)}`;
+  if (session.state === SESSION_STATES.PAUSED) metric = `Paused · ${metric}`;
+  if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s · ${metric}`;
+  const progress = Math.round(session.progress * 100);
+  const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
+  return `
+    <section class="app-card session-console" aria-label="Active session">
+      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2></div><span class="simulation-pill">Simulation</span></div>
+      <strong class="session-metric">${metric}</strong>
+      <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
+      <div class="console-actions">
+        <button type="button" data-command="pause" ${session.state === SESSION_STATES.RUNNING ? "" : "disabled"}>Pause</button>
+        <button type="button" data-command="resume" ${session.state === SESSION_STATES.PAUSED ? "" : "disabled"}>Resume</button>
+        <button type="button" class="stop-button" data-command="stop" ${stoppable ? "" : "disabled"}>Stop</button>
+        <button type="button" data-command="reset" ${[SESSION_STATES.COMPLETED, SESSION_STATES.ERROR].includes(session.state) ? "" : "disabled"}>New session</button>
+      </div>
+    </section>`;
+}
+
+function setupCard(session) {
+  const locked = session.state !== SESSION_STATES.IDLE;
+  const amountLabel = uiState.mode === "time" ? "Duration (s)" : "Count";
+  return `
+    <section class="app-card setup-card" aria-labelledby="setup-title">
+      <div class="section-heading"><div><span class="eyebrow">QUICK TRAINING</span><h2 id="setup-title">Session setup</h2></div><span class="simulation-pill">Dry run</span></div>
+
+      <div class="control-group">
+        <span class="control-label">Difficulty level</span>
+        <div class="level-selector" role="group" aria-label="Difficulty level">
+          ${[1, 2, 3].map((level) => `<button type="button" data-level="${level}" class="level-button ${uiState.level === level ? "selected" : ""}" aria-pressed="${uiState.level === level}" ${locked ? "disabled" : ""}>${level}</button>`).join("")}
+        </div>
+      </div>
+
+      <div class="mode-selector" role="group" aria-label="Training mode">
+        ${modeButton("reps", "Reps", true, locked)}
+        ${modeButton("time", "Time", true, locked)}
+        ${modeButton("music", "Music", false, locked)}
+        ${modeButton("msync", "MSYNC", false, locked)}
+      </div>
+
+      <form id="session-form" class="session-form">
+        <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
+        <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
+        <label><span>Countdown</span><select name="countdown" ${locked ? "disabled" : ""}><option value="3" ${uiState.countdownSeconds === 3 ? "selected" : ""}>3 seconds</option><option value="5" ${uiState.countdownSeconds === 5 ? "selected" : ""}>5 seconds</option><option value="0" ${uiState.countdownSeconds === 0 ? "selected" : ""}>None</option></select></label>
+        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>
+      </form>
+      <p class="helper-text">Uses the canonical lifecycle and stores local history. It sends no robot commands and records zero dispatched balls.</p>
+    </section>`;
+}
+
+function drillLibrary() {
+  const categories = [["basic", "Basic", 1], ["combined", "Combined", 0], ["complex", "Complex", 0]];
+  const content = uiState.category === "basic"
+    ? `<button class="drill-tile selected" type="button" aria-pressed="true"><span><strong>Foundation dry run</strong><small>Simulation pattern</small></span><span class="ball-detail"><i></i>0 physical balls</span></button>`
+    : `<div class="empty-library"><strong>No ${escapeHtml(uiState.category)} drills integrated yet</strong><span>The verified Nova Trainer library will be migrated without inventing robot parameters.</span></div>`;
+  return `
+    <section class="app-card library-card" aria-labelledby="library-title">
+      <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>1 simulation pattern · level ${uiState.level}</p></div><button class="small-button" type="button" disabled>Arrange later</button></div>
+      <div class="pill-row" role="group" aria-label="Drill category">${categories.map(([key, label, count]) => `<button type="button" data-category="${key}" class="pill ${uiState.category === key ? "selected" : ""}" aria-pressed="${uiState.category === key}">${label} <small>${count}</small></button>`).join("")}</div>
+      <div class="drill-grid">${content}</div>
+    </section>`;
+}
+
+function customDrills() {
+  return `
+    <section class="app-card library-card" aria-labelledby="custom-title">
+      <div class="section-heading"><div><h2 id="custom-title">My drills</h2><p>0 drills</p></div></div>
+      <div class="pill-row" role="group" aria-label="Custom drill group">${["A", "B", "C"].map((group) => `<button type="button" data-group="${group}" class="pill ${uiState.group === group ? "selected" : ""}" aria-pressed="${uiState.group === group}">Group ${group} <small>0</small></button>`).join("")}</div>
+      <button class="new-drill" type="button" disabled title="Custom drill editor is the next implementation increment"><span>＋</span><strong>New drill</strong><small>Editor coming next</small></button>
+    </section>`;
 }
 
 function trainView() {
   const session = controller.snapshot();
-  const configurationLocked = session.state !== SESSION_STATES.IDLE;
-  const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
-  const amount = session.spec?.mode === "time" ? session.spec.durationSeconds : session.spec?.repetitions;
-  const progress = Math.round(session.progress * 100);
-  const metric = session.spec?.mode === "time"
-    ? `${Math.round(session.elapsedSeconds)} / ${amount ?? 0} seconds`
-    : `${session.completedCycles} / ${amount ?? 0} repetitions`;
-
-  return `
-    <div class="train-layout">
-      <form id="session-form" class="card session-form">
-        <p class="eyebrow">LOCAL DRY RUN</p>
-        <h3>Configure session</h3>
-        <label>Mode
-          <select name="mode" ${configurationLocked ? "disabled" : ""}>
-            <option value="reps" ${session.spec?.mode !== "time" ? "selected" : ""}>Reps</option>
-            <option value="time" ${session.spec?.mode === "time" ? "selected" : ""}>Time</option>
-          </select>
-        </label>
-        <label>Amount
-          <input name="amount" type="number" min="1" max="3600" value="${amount ?? 10}" ${configurationLocked ? "disabled" : ""} required>
-        </label>
-        <label>Countdown
-          <select name="countdown" ${configurationLocked ? "disabled" : ""}>
-            <option value="3">3 seconds</option>
-            <option value="5">5 seconds</option>
-            <option value="0">None</option>
-          </select>
-        </label>
-        <button class="primary-button" type="submit" ${configurationLocked ? "disabled" : ""}>Start dry run</button>
-        <p class="form-note">The dry-run drill controls no hardware and records zero dispatched balls.</p>
-      </form>
-
-      <section class="card session-console" aria-label="Session console">
-        <div class="session-heading"><div><p class="eyebrow">SESSION STATE</p><h3>${session.state}</h3></div><span class="simulation-badge">Simulation</span></div>
-        <div class="session-metric">${session.state === SESSION_STATES.COUNTDOWN ? `Starting in ${Math.ceil(session.countdownRemaining)}` : metric}</div>
-        <div class="progress-track" aria-label="Session progress" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100" role="progressbar"><span style="width:${progress}%"></span></div>
-        <div class="session-actions">
-          <button type="button" data-command="pause" ${session.state !== SESSION_STATES.RUNNING ? "disabled" : ""}>Pause</button>
-          <button type="button" data-command="resume" ${session.state !== SESSION_STATES.PAUSED ? "disabled" : ""}>Resume</button>
-          <button type="button" class="stop-button" data-command="stop" ${stoppable ? "" : "disabled"}>Stop</button>
-          <button type="button" data-command="reset" ${![SESSION_STATES.COMPLETED, SESSION_STATES.ERROR].includes(session.state) ? "disabled" : ""}>New session</button>
-        </div>
-      </section>
-    </div>`;
+  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary()}${customDrills()}</div>`;
 }
 
 async function dataView() {
   const records = (await store.getAll("sessionRecords")).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
   const rows = records.length
-    ? records.map((record) => `<li><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)} · ${record.completedCycles} cycles · ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
-    : "<li class=\"empty-state\">No local sessions recorded yet.</li>";
+    ? records.map((record) => `<li><div><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)}</span></div><span>${record.completedCycles} cycles · ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
+    : `<li class="empty-row">No local sessions recorded yet.</li>`;
   return `
+    <div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">LOCAL-FIRST</span><h1>Data and recovery</h1></div>
     ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
     <div class="data-layout">
-      <section class="card"><p class="eyebrow">LOCAL HISTORY</p><h3>${records.length} saved session${records.length === 1 ? "" : "s"}</h3><ul class="history-list">${rows}</ul></section>
-      <section class="card"><p class="eyebrow">RECOVERY</p><h3>Backup and restore</h3><p>Backups contain local Nova Ultimate data. Restore validates the complete file before replacing stored collections.</p><div class="backup-actions"><button id="export-backup" class="primary-button">Export backup</button><label class="file-button">Restore backup<input id="import-backup" type="file" accept="application/json,.json"></label></div><p id="backup-result" class="form-note" aria-live="polite"></p></section>
+      <section class="app-card"><div class="section-heading"><div><h2>Session history</h2><p>${records.length} saved</p></div></div><ul class="history-list">${rows}</ul></section>
+      <section class="app-card recovery-card"><h2>Backup and restore</h2><p>Restore validates the complete file before atomically replacing local collections.</p><div class="backup-actions"><button id="export-backup" class="primary-button" type="button">Export backup</button><label class="file-button">Restore backup<input id="import-backup" type="file" accept="application/json,.json"></label></div><p id="backup-result" class="helper-text" aria-live="polite">${escapeHtml(dataMessage)}</p></section>
     </div>`;
+}
+
+function overview() {
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Ultimate</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local sessions</strong><p>Reps, Time, history, backup, and recovery are operational in simulation.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Training foundation</strong><p>Verified drills, custom drill management, visual editing, and calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+}
+
+function capabilityView() {
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">DIAGNOSTICS</span><h1>Browser capabilities</h1></div><div class="info-grid">${Object.entries(capabilities).map(([name, available]) => `<article class="app-card capability-row"><span>${escapeHtml(name)}</span><strong class="${available ? "available" : "unavailable"}">${available ? "Available" : "Unavailable"}</strong></article>`).join("")}</div>`;
+}
+
+function roadmap() {
+  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Connected", "Sharing and stable voice commands"]];
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
 const renderers = { train: trainView, data: dataView, overview, capabilities: capabilityView, roadmap };
 
 async function render(route) {
   activeRoute = route;
-  tabs.forEach((tab) => tab.dataset.route === route ? tab.setAttribute("aria-current", "page") : tab.removeAttribute("aria-current"));
+  document.querySelectorAll("[data-menu-route]").forEach((link) => link.toggleAttribute("aria-current", link.dataset.menuRoute === route));
   view.innerHTML = await renderers[route]();
   document.title = `Nova Ultimate · ${route[0].toUpperCase()}${route.slice(1)}`;
   bindRouteActions(route);
+  closeMenu();
 }
 
 function bindRouteActions(route) {
   if (route === "train") {
+    document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
+    document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.mode = button.dataset.uiMode; uiState.amount = uiState.mode === "time" ? 60 : 10; void render("train"); }));
+    document.querySelectorAll("[data-category]").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; void render("train"); }));
+    document.querySelectorAll("[data-group]").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; void render("train"); }));
+    document.querySelector("#session-form")?.addEventListener("input", (event) => {
+      const form = new FormData(event.currentTarget);
+      uiState.amount = Number(form.get("amount"));
+      uiState.pauseSeconds = Number(form.get("pause"));
+      uiState.countdownSeconds = Number(form.get("countdown"));
+    });
     document.querySelector("#session-form")?.addEventListener("submit", (event) => {
       event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      const mode = data.get("mode");
-      const amount = Number(data.get("amount"));
-      const spec = createSessionSpec({
-        mode,
-        drillId: "foundation-dry-run",
-        repetitions: mode === "reps" ? amount : 10,
-        durationSeconds: mode === "time" ? amount : 60,
-      });
-      controller.start(spec, { countdownSeconds: Number(data.get("countdown")) });
+      const form = new FormData(event.currentTarget);
+      uiState.amount = Number(form.get("amount"));
+      uiState.pauseSeconds = Number(form.get("pause"));
+      uiState.countdownSeconds = Number(form.get("countdown"));
+      const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: "foundation-dry-run", repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
+      controller.start(spec, { countdownSeconds: uiState.countdownSeconds });
       void render("train");
     });
     document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", () => {
@@ -168,25 +230,54 @@ function bindRouteActions(route) {
       link.download = `nova-ultimate-backup-${backup.createdAt.slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
-      document.querySelector("#backup-result").textContent = "Backup exported.";
+      dataMessage = "Backup exported.";
+      await render("data");
     });
     document.querySelector("#import-backup")?.addEventListener("change", async (event) => {
-      const result = document.querySelector("#backup-result");
       try {
         const file = event.target.files?.[0];
         if (!file) return;
         const restored = await restoreBackup(store, JSON.parse(await file.text()));
-        result.textContent = `Restore complete: ${restored.restored} records.`;
-        await render("data");
+        dataMessage = `Restore complete: ${restored.restored} records.`;
+        await refreshFooter();
       } catch (error) {
-        result.textContent = `Restore blocked: ${error.message}`;
+        dataMessage = `Restore blocked: ${error.message}`;
       }
+      await render("data");
     });
   }
 }
 
+function openMenu() {
+  menu.classList.add("open");
+  menu.setAttribute("aria-hidden", "false");
+  menu.removeAttribute("inert");
+  menuToggle.setAttribute("aria-expanded", "true");
+  menuScrim.hidden = false;
+}
+
+function closeMenu() {
+  menu.classList.remove("open");
+  menu.setAttribute("aria-hidden", "true");
+  menu.setAttribute("inert", "");
+  menuToggle.setAttribute("aria-expanded", "false");
+  menuScrim.hidden = true;
+}
+
+async function refreshFooter() {
+  const records = await store.getAll("sessionRecords");
+  const cycles = records.reduce((total, record) => total + (Number(record.completedCycles) || 0), 0);
+  document.querySelector("#training-total").textContent = `${records.length} session${records.length === 1 ? "" : "s"} · ${cycles} cycles`;
+}
+
+menuToggle.addEventListener("click", openMenu);
+document.querySelector("#menu-close").addEventListener("click", closeMenu);
+menuScrim.addEventListener("click", closeMenu);
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });
+
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.1.0-local-sessions.0";
+document.querySelector("#build-version").textContent = "v0.1.0-app-shell.0";
+await refreshFooter();
 
 setInterval(() => {
   if ([SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING].includes(controller.state)) {

@@ -34,10 +34,10 @@ test("mobile loopback HTTP hosting is identified", () => {
   assert.equal(hosted.unsafeLanHttp, false);
 });
 
-test("unknown routes return to overview", () => {
+test("unknown routes return to training", () => {
   assert.equal(routeFromHash("#train"), "train");
   assert.equal(routeFromHash("#data"), "data");
   assert.equal(routeFromHash("#roadmap"), "roadmap");
-  assert.equal(routeFromHash("#unknown"), "overview");
+  assert.equal(routeFromHash("#unknown"), "train");
 });
 

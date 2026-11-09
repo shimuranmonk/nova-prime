@@ -15,6 +15,10 @@
 - Simulation records always report zero physically dispatched balls
 - Memory-store isolation and persistent-store browser smoke test
 - Versioned backup round trip and rejection of invalid, missing, or unknown collections
+- Trainer-first dashboard loads as the default route
+- Drawer exposes secondary screens and becomes inert when closed
+- Mode, level, amount, countdown, and pause controls remain locked during active sessions
+- Configured Reps and Time rests advance deterministically
 
 ## Future integration checks
 

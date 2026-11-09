@@ -1,6 +1,6 @@
 {
   "name": "nova-ultimate",
-  "version": "0.1.0-local-sessions.0",
+  "version": "0.1.0-app-shell.0",
   "private": true,
   "type": "module",
   "scripts": {

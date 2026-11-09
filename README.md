@@ -13,6 +13,9 @@ This branch advances the JewelFlow 0.1 Foundation with local sessions and recove
 - Canonical session state machine
 - IndexedDB persistence with a clearly reported in-memory fallback
 - Reps and Time dry-run sessions with countdown, Pause, Resume, Stop, and completion
+- Trainer-first application dashboard with selected Nova Plus training controls
+- Compact connection, calibration, session, built-in drill, and custom drill cards
+- Application drawer for Data, About, Diagnostics, and Roadmap
 - Persistent simulation history that never claims physical ball dispatch
 - Versioned JSON backup with complete pre-restore validation
 - Static build and verification tooling
@@ -39,6 +42,8 @@ npm run preview
 Reps and Time are simulation-only in this increment. They exercise the same canonical lifecycle intended for future robot sessions, but record zero dispatched balls and cannot access Bluetooth. Live robot control remains blocked until the executor, queue cancellation, priority Stop path, and physical-device verification are complete.
 
 Browser data is scoped to the complete origin. Keep the same protocol, hostname, port, and path, and export a backup before changing a hosted or device-local address.
+
+The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
 
 Nova Ultimate supports two complete runtime modes:
 
