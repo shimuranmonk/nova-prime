@@ -11,7 +11,8 @@ Nova Ultimate uses Nova Trainer as its primary interaction model: a compact appl
 - Reps and Time controls operate the existing local dry-run controller.
 - Music and MSYNC are visible as disabled future modes rather than represented as complete.
 - The built-in drill area contains the verified 34-drill Nova Trainer catalogue with its 6 Basic, 12 Combined, and 16 Complex entries.
-- Custom groups A, B, and C are visible, while New Drill remains disabled until the editor is implemented.
+- Custom groups A, B, and C support persistent creation, naming, duplication, group moves, ordering, deletion, import/export, selection, and dry-run sessions.
+- New custom drills begin with one canonical ball. The visual ball/table editor is still clearly identified as a later increment.
 - Data, About, Diagnostics, and Roadmap are moved into an application drawer.
 - Active-session progress and Stop remain prominent and accessible.
 - The layout is responsive for phone, tablet, and web use from the same static bundle.
@@ -22,5 +23,4 @@ The base presentation is light, compact, and card-led, with Nova teal for select
 
 ## Safety representation
 
-The interface never presents disabled robot, calibration, editor, Music, or MSYNC functionality as operational. Simulation sessions remain explicitly labelled and continue to record zero physically dispatched balls.
-
+The interface never presents disabled robot, calibration, visual ball editor, Music, or MSYNC functionality as operational. Custom drill library management is operational, while simulation sessions remain explicitly labelled and continue to record zero physically dispatched balls.
