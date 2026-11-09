@@ -1,58 +1,46 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#08111f">
-    <meta name="description" content="Nova Ultimate local-first training foundation for the PONGBOT Nova S Pro.">
+    <meta name="theme-color" content="#f2f6f8">
+    <meta name="description" content="Nova Ultimate local-first training application for the PONGBOT Nova S Pro.">
     <title>Nova Ultimate</title>
     <link rel="stylesheet" href="./src/styles/app.css">
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">PONGBOT NOVA S PRO · COMMUNITY PROJECT</p>
-          <h1>Nova Ultimate</h1>
-        </div>
-        <span class="release-badge">0.1 Local Sessions</span>
+      <header class="app-header">
+        <a class="brand" href="#train" aria-label="Nova Ultimate training home">
+          <span class="brand-mark" aria-hidden="true"><span></span></span>
+          <span class="brand-copy"><strong>Nova Ultimate</strong><small>BETA</small></span>
+        </a>
+        <button id="menu-toggle" class="icon-button" type="button" aria-label="Open application menu" aria-expanded="false" aria-controls="app-menu">☰</button>
       </header>
 
       <main id="app" tabindex="-1">
-        <section class="hero">
-          <div>
-            <p class="eyebrow">JEWELFLOW GENERATED SOLUTION</p>
-            <h2>Train locally. Recover confidently.</h2>
-            <p>
-              Reps and Time dry runs now use the canonical session lifecycle and save their history locally.
-              Live robot commands remain intentionally disabled until the safety executor is verified.
-            </p>
-          </div>
-          <div class="safety-card" role="status">
-            <span class="status-dot"></span>
-            <div>
-              <strong>Simulation-only mode</strong>
-              <span>Sessions never send Bluetooth or robot commands in this milestone.</span>
-            </div>
-          </div>
-        </section>
-
-        <nav class="section-tabs" aria-label="Application sections">
-          <a href="#train" data-route="train">Train</a>
-          <a href="#data" data-route="data">Data</a>
-          <a href="#overview" data-route="overview">Overview</a>
-          <a href="#capabilities" data-route="capabilities">Capabilities</a>
-          <a href="#roadmap" data-route="roadmap">Roadmap</a>
-        </nav>
-
         <section id="route-view" class="route-view" aria-live="polite"></section>
       </main>
 
-      <footer>
-        <span>Nova Ultimate · local-first · safety-led</span>
+      <footer class="app-footer">
+        <span id="training-total">0 sessions · 0 cycles</span>
         <span id="build-version"></span>
       </footer>
     </div>
+
+    <button id="menu-scrim" class="menu-scrim" type="button" aria-label="Close application menu" hidden></button>
+    <aside id="app-menu" class="app-menu" aria-label="Application menu" aria-hidden="true" inert>
+      <div class="menu-heading"><div><span class="eyebrow">NOVA ULTIMATE</span><h2>Menu</h2></div><button id="menu-close" class="icon-button" type="button" aria-label="Close application menu">×</button></div>
+      <nav>
+        <a href="#train" data-menu-route="train"><span>Training</span><small>Reps and Time</small></a>
+        <a href="#data" data-menu-route="data"><span>Data</span><small>History, backup and restore</small></a>
+        <a href="#overview" data-menu-route="overview"><span>About</span><small>Current integration status</small></a>
+        <a href="#capabilities" data-menu-route="capabilities"><span>Diagnostics</span><small>Browser capabilities</small></a>
+        <a href="#roadmap" data-menu-route="roadmap"><span>Roadmap</span><small>JewelFlow releases</small></a>
+      </nav>
+      <div class="menu-safety"><strong>Simulation-only build</strong><span>No Bluetooth or robot commands are available.</span></div>
+    </aside>
+
     <script type="module" src="./src/app/bootstrap.js"></script>
   </body>
 </html>

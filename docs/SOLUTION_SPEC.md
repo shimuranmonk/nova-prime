@@ -18,6 +18,10 @@ Bluetooth transport and persistent storage
 
 Features outside the robot executor may not write Bluetooth commands directly.
 
+## Application interface
+
+The default route is the operational Training dashboard, not a product or development landing page. Its information hierarchy follows Nova Trainer: header, connection, calibration, training setup, built-in drills, custom drills, and totals. Nova Plus contributes difficulty selection, Reps/Time/Music/MSYNC modes, count or duration, and pause controls. Secondary Data, About, Diagnostics, and Roadmap screens live in a drawer. Controls whose backing capability is not implemented remain disabled and explicitly labelled.
+
 ## Canonical session lifecycle
 
 ```text
@@ -75,7 +79,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 ## Deployment and rollback
 
 - `main` contains stable releases.
-- `jewelflow/0.1-local-sessions` contains the current persistence and dry-run increment.
+- `jewelflow/app-shell-redesign` contains the current hybrid application-shell increment.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

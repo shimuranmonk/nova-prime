@@ -124,3 +124,5 @@ Nova Ultimate is the unified community application for the PONGBOT Nova S Pro. N
 
 The stable foundation provides the modular shell, canonical schemas, validators, state machine, tests, CI, and documentation. The 0.1 local-sessions increment adds IndexedDB persistence, validated backup/restore, persistent simulation records, and usable Reps/Time dry runs. It intentionally contains no live transport or robot executor and records zero physically dispatched balls.
 
+The app-shell increment makes Training the default experience and adopts the approved Nova Trainer-first card hierarchy with Nova Plus level, mode, amount, and pause controls. It does not mark the drill library, editor, calibration, Music, MSYNC, or robot connection complete merely because their future locations are visible.
+

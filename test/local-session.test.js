@@ -7,7 +7,7 @@ import { COMMAND_RESULTS, SESSION_STATES } from "../src/domain/sessions/state-ma
 test("reps dry run counts down, completes, and records no physical balls", () => {
   const records = [];
   const controller = new LocalSessionController({ now: () => "2026-11-09T00:00:00.000Z", onRecord: (record) => records.push(record) });
-  const result = controller.start(createSessionSpec({ drillId: "dry-run", repetitions: 3 }), { countdownSeconds: 1 });
+  const result = controller.start(createSessionSpec({ drillId: "dry-run", repetitions: 3, pauseSeconds: 0 }), { countdownSeconds: 1 });
   assert.equal(result.status, COMMAND_RESULTS.EXECUTED);
   assert.equal(controller.state, SESSION_STATES.COUNTDOWN);
 
@@ -47,5 +47,33 @@ test("priority Stop returns a local session to idle and records a stopped outcom
   assert.equal(records[0].outcome, "stopped");
   assert.equal(records[0].ballsDispatched, 0);
   assert.equal(controller.stop().status, COMMAND_RESULTS.IGNORED);
+});
+
+test("reps dry run honors configured rest between cycles", () => {
+  const controller = new LocalSessionController();
+  controller.start(createSessionSpec({ drillId: "dry-run", repetitions: 2, pauseSeconds: 2 }), { countdownSeconds: 0 });
+  controller.tick();
+  assert.equal(controller.snapshot().completedCycles, 1);
+  assert.equal(controller.snapshot().cyclePauseRemaining, 2);
+  controller.tick();
+  assert.equal(controller.snapshot().completedCycles, 1);
+  assert.equal(controller.snapshot().cyclePauseRemaining, 1);
+  controller.tick();
+  assert.equal(controller.snapshot().completedCycles, 1);
+  controller.tick();
+  assert.equal(controller.state, SESSION_STATES.COMPLETED);
+});
+
+test("time dry run honors rest while total duration continues", () => {
+  const controller = new LocalSessionController();
+  controller.start(createSessionSpec({ mode: "time", drillId: "dry-run", durationSeconds: 4, pauseSeconds: 2 }), { countdownSeconds: 0 });
+  controller.tick();
+  assert.equal(controller.snapshot().completedCycles, 1);
+  assert.equal(controller.snapshot().cyclePauseRemaining, 2);
+  controller.tick();
+  controller.tick();
+  assert.equal(controller.snapshot().completedCycles, 1);
+  controller.tick();
+  assert.equal(controller.state, SESSION_STATES.COMPLETED);
 });
 
