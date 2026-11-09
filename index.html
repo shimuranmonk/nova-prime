@@ -41,7 +41,26 @@
       <div class="menu-safety"><strong>Simulation-only build</strong><span>No Bluetooth or robot commands are available.</span></div>
     </aside>
 
+    <dialog id="drill-dialog" class="drill-dialog" aria-labelledby="drill-dialog-title">
+      <form id="drill-form">
+        <input id="drill-id" name="id" type="hidden">
+        <div class="dialog-heading"><div><span class="eyebrow">MY DRILLS</span><h2 id="drill-dialog-title">New drill</h2></div><button id="drill-dialog-close" class="icon-button" type="button" aria-label="Close drill dialog">×</button></div>
+        <label><span>Name</span><input id="drill-name" name="name" maxlength="40" required></label>
+        <div class="dialog-grid">
+          <label><span>Group</span><select id="drill-group" name="group"><option>A</option><option>B</option><option>C</option></select></label>
+          <label><span>Robot position</span><select id="drill-position" name="robotPosition"><option value="middle">Middle</option><option value="left">Left</option><option value="right">Right</option></select></label>
+        </div>
+        <p class="helper-text">New drills begin with one canonical ball. Ball and table editing arrive in the visual-editor increment.</p>
+        <p id="drill-dialog-result" class="dialog-result" role="alert"></p>
+        <div id="drill-edit-actions" class="dialog-secondary-actions" hidden>
+          <button id="drill-duplicate" type="button">Duplicate</button>
+          <button id="drill-export-one" type="button">Export</button>
+          <button id="drill-delete" class="danger-button" type="button">Delete</button>
+        </div>
+        <div class="dialog-actions"><button id="drill-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Save drill</button></div>
+      </form>
+    </dialog>
+
     <script type="module" src="./src/app/bootstrap.js"></script>
   </body>
 </html>
-

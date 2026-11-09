@@ -45,7 +45,7 @@ Every command returns `EXECUTED`, `IGNORED`, `BLOCKED`, or `FAILED`. Repeated St
 - MSYNC attachments retain authoritative source text and a validation receipt.
 - Session records distinguish planned and dispatched balls, outcomes, mode, and duration.
 
-The built-in catalogue is bundled as immutable canonical data with deterministic drill and step IDs. Its source repository, branch, file paths, and Git blob identities are embedded in the module. Built-ins are not duplicated into mutable browser storage; user-created drills will occupy the `drills` store.
+The built-in catalogue is bundled as immutable canonical data with deterministic drill and step IDs. Its source repository, branch, file paths, and Git blob identities are embedded in the module. Built-ins are not duplicated into mutable browser storage. User-created and imported drills occupy the `drills` store and use a dedicated application service for identity, naming, group capacity, ordering, duplication, deletion, and atomic import/export.
 
 ## Persistence
 
@@ -53,7 +53,7 @@ The target IndexedDB database is `nova_ultimate`, with stores for metadata, sett
 
 Browser persistence is origin-scoped. Mobile installations must therefore use a stable protocol, hostname, port, and application path. A change from `localhost` to `127.0.0.1`, or from one port to another, may expose a different storage origin and requires export/import recovery.
 
-The 0.1 local-sessions increment creates all target stores at database version 1. Session simulation records are persisted in `sessionRecords`. If IndexedDB cannot be opened, the UI explicitly warns that the current visit is using volatile memory. Backup restore validates the complete document before replacing its included collections in one read-write transaction.
+The 0.1 local-sessions increment creates all target stores at database version 1. Session simulation records are persisted in `sessionRecords`, and custom drills are persisted in `drills`. Custom-drill import validates the complete file before atomically replacing that collection. If IndexedDB cannot be opened, the UI explicitly warns that the current visit is using volatile memory. Backup restore validates the complete document before replacing its included collections in one read-write transaction.
 
 ## Dual deployment and mobile packaging
 
@@ -81,9 +81,8 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 ## Deployment and rollback
 
 - `main` contains stable releases.
-- `jewelflow/0.1-drill-library` contains the current verified built-in catalogue increment.
+- `jewelflow/0.1-custom-drills` contains the persistent custom-library increment.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.
 - Data changes remain additive until migrations and recovery are verified.
-

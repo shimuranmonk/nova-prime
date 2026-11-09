@@ -1,4 +1,5 @@
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
+import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
 import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
 import { createSessionSpec } from "../domain/sessions/schema.js";
@@ -14,9 +15,14 @@ const view = document.querySelector("#route-view");
 const menu = document.querySelector("#app-menu");
 const menuScrim = document.querySelector("#menu-scrim");
 const menuToggle = document.querySelector("#menu-toggle");
+const drillDialog = document.querySelector("#drill-dialog");
+const drillForm = document.querySelector("#drill-form");
+const drillDialogResult = document.querySelector("#drill-dialog-result");
 let activeRoute = "train";
 let storageNotice = "";
 let dataMessage = "";
+let customMessage = "";
+let customCache = [];
 
 const uiState = {
   mode: "reps",
@@ -26,6 +32,7 @@ const uiState = {
   countdownSeconds: 3,
   category: "basic",
   group: "A",
+  customArrange: false,
   drillId: BUILTIN_DRILLS[0].id,
 };
 
@@ -33,6 +40,19 @@ const store = await IndexedDbStore.open().catch(() => {
   storageNotice = "Persistent browser storage is unavailable. This visit uses temporary memory only.";
   return new MemoryStore();
 });
+const customDrillService = new CustomDrillService(store);
+
+async function refreshCustomCache() {
+  customCache = await customDrillService.list();
+}
+
+function resolveDrill(id) {
+  return getBuiltinDrill(id) ?? customCache.find((drill) => drill.id === id) ?? null;
+}
+
+function programForDrill(drill) {
+  return drill?.programs?.[uiState.level] ?? drill?.programs?.[1] ?? null;
+}
 
 const controller = new LocalSessionController({
   onRecord: async (record) => {
@@ -80,7 +100,7 @@ function sessionConsole(session) {
   if (session.state === SESSION_STATES.PAUSED) metric = `Paused · ${metric}`;
   if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s · ${metric}`;
   const progress = Math.round(session.progress * 100);
-  const drill = getBuiltinDrill(session.spec?.drillId);
+  const drill = resolveDrill(session.spec?.drillId);
   const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
   return `
     <section class="app-card session-console" aria-label="Active session">
@@ -99,7 +119,7 @@ function sessionConsole(session) {
 function setupCard(session) {
   const locked = session.state !== SESSION_STATES.IDLE;
   const amountLabel = uiState.mode === "time" ? "Duration (s)" : "Count";
-  const selectedDrill = getBuiltinDrill(uiState.drillId);
+  const selectedDrill = resolveDrill(uiState.drillId);
   return `
     <section class="app-card setup-card" aria-labelledby="setup-title">
       <div class="section-heading"><div><span class="eyebrow">QUICK TRAINING</span><h2 id="setup-title">Session setup</h2></div><span class="simulation-pill">Dry run</span></div>
@@ -150,24 +170,54 @@ function drillLibrary(session) {
     </section>`;
 }
 
-function customDrills() {
+function customDrillCard(drill, locked, index, groupLength) {
+  const program = programForDrill(drill);
+  const steps = program?.steps?.filter((step) => step.enabled) ?? [];
+  const selected = uiState.drillId === drill.id;
+  return `
+    <article class="custom-drill-card ${selected ? "selected" : ""}">
+      <button class="custom-drill-select" type="button" data-custom-select="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}>
+        <strong>${escapeHtml(drill.name)}</strong>
+        <span>${steps.length} ball${steps.length === 1 ? "" : "s"} · ${escapeHtml(drill.robotPosition)}</span>
+      </button>
+      <div class="custom-drill-actions">
+        ${uiState.customArrange ? `<button type="button" data-custom-move="${escapeHtml(drill.id)}" data-direction="-1" aria-label="Move ${escapeHtml(drill.name)} up" ${locked || index === 0 ? "disabled" : ""}>↑</button><button type="button" data-custom-move="${escapeHtml(drill.id)}" data-direction="1" aria-label="Move ${escapeHtml(drill.name)} down" ${locked || index === groupLength - 1 ? "disabled" : ""}>↓</button>` : ""}
+        <button class="manage-button" type="button" data-custom-edit="${escapeHtml(drill.id)}" aria-label="Manage ${escapeHtml(drill.name)}" ${locked ? "disabled" : ""}>✎</button>
+      </div>
+    </article>`;
+}
+
+function customDrills(session) {
+  const locked = session.state !== SESSION_STATES.IDLE;
+  const groupDrills = customCache.filter((drill) => drill.group === uiState.group);
+  const counts = Object.fromEntries(CUSTOM_GROUPS.map((group) => [group, customCache.filter((drill) => drill.group === group).length]));
   return `
     <section class="app-card library-card" aria-labelledby="custom-title">
-      <div class="section-heading"><div><h2 id="custom-title">My drills</h2><p>0 drills</p></div></div>
-      <div class="pill-row" role="group" aria-label="Custom drill group">${["A", "B", "C"].map((group) => `<button type="button" data-group="${group}" class="pill ${uiState.group === group ? "selected" : ""}" aria-pressed="${uiState.group === group}">Group ${group} <small>0</small></button>`).join("")}</div>
-      <button class="new-drill" type="button" disabled title="Custom drill editor is the next implementation increment"><span>＋</span><strong>New drill</strong><small>Editor coming next</small></button>
+      <div class="section-heading"><div><h2 id="custom-title">My drills</h2><p>${customCache.length} drill${customCache.length === 1 ? "" : "s"}</p></div></div>
+      <div class="custom-toolbar">
+        <button type="button" data-custom-arrange class="small-button ${uiState.customArrange ? "active" : ""}" ${locked || groupDrills.length < 2 ? "disabled" : ""}>${uiState.customArrange ? "Done" : "Arrange"}</button>
+        <button id="custom-export-all" type="button" class="small-button" ${locked || customCache.length === 0 ? "disabled" : ""}>Export all</button>
+        <label class="small-button import-button ${locked ? "disabled" : ""}">Import<input id="custom-import" type="file" accept="application/json,.json" ${locked ? "disabled" : ""}></label>
+      </div>
+      <div class="pill-row" role="group" aria-label="Custom drill group">${CUSTOM_GROUPS.map((group) => `<button type="button" data-group="${group}" class="pill ${uiState.group === group ? "selected" : ""}" aria-pressed="${uiState.group === group}" ${locked ? "disabled" : ""}>Group ${group} <small>${counts[group]}</small></button>`).join("")}</div>
+      ${customMessage ? `<p class="custom-message" role="status">${escapeHtml(customMessage)}</p>` : ""}
+      <div class="custom-drill-grid">${groupDrills.map((drill, index) => customDrillCard(drill, locked, index, groupDrills.length)).join("")}</div>
+      ${groupDrills.length === 0 ? `<div class="empty-library"><strong>Group ${uiState.group} is empty</strong><span>Create a drill here or import a Nova Ultimate drill file.</span></div>` : ""}
+      <button class="new-drill" type="button" data-custom-new ${locked ? "disabled" : ""}><span>＋</span><strong>New drill</strong><small>Group ${uiState.group}</small></button>
     </section>`;
 }
 
-function trainView() {
+async function trainView() {
+  await refreshCustomCache();
   const session = controller.snapshot();
-  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills()}</div>`;
+  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
 }
 
 async function dataView() {
+  await refreshCustomCache();
   const records = (await store.getAll("sessionRecords")).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
   const rows = records.length
-    ? records.map((record) => `<li><div><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)}</span></div><span>${escapeHtml(getBuiltinDrill(record.drillId)?.name ?? "Local drill")} · ${record.completedCycles} cycles · ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
+    ? records.map((record) => `<li><div><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)}</span></div><span>${escapeHtml(resolveDrill(record.drillId)?.name ?? "Local drill")} · ${record.completedCycles} cycles · ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
     : `<li class="empty-row">No local sessions recorded yet.</li>`;
   return `
     <div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">LOCAL-FIRST</span><h1>Data and recovery</h1></div>
@@ -179,7 +229,7 @@ async function dataView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Ultimate</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Custom drill editor</strong><p>Groups A/B/C, visual editing, import/export, and calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Ultimate</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill library</strong><p>Groups A/B/C, naming, duplication, ordering, import/export, selection, and simulated sessions are available.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Visual ball editor</strong><p>Edit ball placement and parameters, then add guided calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -202,13 +252,64 @@ async function render(route) {
   closeMenu();
 }
 
+function downloadJson(payload, filename) {
+  const url = URL.createObjectURL(new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function openDrillDialog(drill = null) {
+  drillForm.reset();
+  drillForm.elements.id.value = drill?.id ?? "";
+  drillForm.elements.name.value = drill?.name ?? "";
+  drillForm.elements.group.value = drill?.group ?? uiState.group;
+  drillForm.elements.robotPosition.value = drill?.robotPosition ?? "middle";
+  document.querySelector("#drill-dialog-title").textContent = drill ? "Manage drill" : "New drill";
+  document.querySelector("#drill-edit-actions").hidden = !drill;
+  drillDialogResult.textContent = "";
+  drillDialog.showModal();
+  drillForm.elements.name.focus();
+}
+
 function bindRouteActions(route) {
   if (route === "train") {
     document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
     document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.mode = button.dataset.uiMode; uiState.amount = uiState.mode === "time" ? 60 : 10; void render("train"); }));
     document.querySelectorAll("[data-category]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; uiState.drillId = getBuiltinDrills(uiState.category)[0].id; void render("train"); }));
     document.querySelectorAll("[data-drill-id]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.drillId; void render("train"); }));
-    document.querySelectorAll("[data-group]").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; void render("train"); }));
+    document.querySelectorAll("[data-group]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; uiState.customArrange = false; void render("train"); }));
+    document.querySelectorAll("[data-custom-select]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.customSelect; void render("train"); }));
+    document.querySelectorAll("[data-custom-edit]:not(:disabled)").forEach((button) => button.addEventListener("click", () => openDrillDialog(resolveDrill(button.dataset.customEdit))));
+    document.querySelector("[data-custom-new]:not(:disabled)")?.addEventListener("click", () => openDrillDialog());
+    document.querySelector("[data-custom-arrange]:not(:disabled)")?.addEventListener("click", () => { uiState.customArrange = !uiState.customArrange; void render("train"); });
+    document.querySelectorAll("[data-custom-move]:not(:disabled)").forEach((button) => button.addEventListener("click", async () => {
+      await customDrillService.move(button.dataset.customMove, Number(button.dataset.direction));
+      customMessage = "Drill order saved.";
+      await render("train");
+    }));
+    document.querySelector("#custom-export-all:not(:disabled)")?.addEventListener("click", async () => {
+      downloadJson(await customDrillService.export(), `nova-ultimate-drills-${new Date().toISOString().slice(0, 10)}.json`);
+      customMessage = "All custom drills exported.";
+      await render("train");
+    });
+    document.querySelector("#custom-import:not(:disabled)")?.addEventListener("change", async (event) => {
+      try {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        const result = await customDrillService.import(JSON.parse(await file.text()));
+        if (result.drills[0]) {
+          uiState.group = result.drills[0].group;
+          uiState.drillId = result.drills[0].id;
+        }
+        customMessage = `Imported ${result.added} drill${result.added === 1 ? "" : "s"}.`;
+      } catch (error) {
+        customMessage = `Import blocked: ${error.message}`;
+      }
+      await render("train");
+    });
     document.querySelector("#session-form")?.addEventListener("input", (event) => {
       const form = new FormData(event.currentTarget);
       uiState.amount = Number(form.get("amount"));
@@ -288,9 +389,60 @@ menuToggle.addEventListener("click", openMenu);
 document.querySelector("#menu-close").addEventListener("click", closeMenu);
 menuScrim.addEventListener("click", closeMenu);
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });
+document.querySelector("#drill-dialog-close").addEventListener("click", () => drillDialog.close());
+document.querySelector("#drill-cancel").addEventListener("click", () => drillDialog.close());
+drillForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  drillDialogResult.textContent = "";
+  try {
+    const values = new FormData(drillForm);
+    const input = { name: values.get("name"), group: values.get("group"), robotPosition: values.get("robotPosition") };
+    const saved = values.get("id") ? await customDrillService.update(values.get("id"), input) : await customDrillService.create(input);
+    uiState.group = saved.group;
+    uiState.drillId = saved.id;
+    uiState.customArrange = false;
+    customMessage = values.get("id") ? "Drill changes saved." : "Custom drill created and selected.";
+    drillDialog.close();
+    await render("train");
+  } catch (error) {
+    drillDialogResult.textContent = error.message;
+  }
+});
+document.querySelector("#drill-duplicate").addEventListener("click", async () => {
+  try {
+    const copy = await customDrillService.duplicate(drillForm.elements.id.value);
+    uiState.group = copy.group;
+    uiState.drillId = copy.id;
+    customMessage = "Drill duplicated and selected.";
+    drillDialog.close();
+    await render("train");
+  } catch (error) {
+    drillDialogResult.textContent = error.message;
+  }
+});
+document.querySelector("#drill-export-one").addEventListener("click", async () => {
+  try {
+    const payload = await customDrillService.export([drillForm.elements.id.value]);
+    const name = payload.drills[0]?.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "custom-drill";
+    downloadJson(payload, `nova-ultimate-${name}.json`);
+    drillDialogResult.textContent = "Drill exported.";
+  } catch (error) {
+    drillDialogResult.textContent = error.message;
+  }
+});
+document.querySelector("#drill-delete").addEventListener("click", async () => {
+  const id = drillForm.elements.id.value;
+  const drill = resolveDrill(id);
+  if (!drill || !globalThis.confirm(`Delete “${drill.name}”? This cannot be undone.`)) return;
+  await customDrillService.delete(id);
+  if (uiState.drillId === id) uiState.drillId = BUILTIN_DRILLS[0].id;
+  customMessage = "Custom drill deleted.";
+  drillDialog.close();
+  await render("train");
+});
 
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.1.0-drill-library.0";
+document.querySelector("#build-version").textContent = "v0.1.0-custom-drills.0";
 await refreshFooter();
 
 setInterval(() => {
@@ -301,4 +453,3 @@ setInterval(() => {
 }, 1000);
 
 globalThis.NOVA_ULTIMATE_FOUNDATION = Object.freeze({ capabilities, featureFlags: FEATURE_FLAGS, storage: store.kind });
-
