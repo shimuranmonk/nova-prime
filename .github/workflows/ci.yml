@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+      - "jewelflow/**"
+      - "feature/**"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm install --ignore-scripts
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify
+        run: npm run verify
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-ultimate-dist
+          path: dist
+          if-no-files-found: error

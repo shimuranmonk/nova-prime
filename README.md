@@ -42,4 +42,3 @@ Nova Ultimate is an unofficial community project and is not affiliated with or e
 ## License
 
 A public software license has not yet been selected. Until one is added, no license is granted beyond rights separately provided by the relevant copyright holders.
-
