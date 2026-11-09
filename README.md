@@ -1,6 +1,6 @@
-# Nova Ultimate
+# Nova Prime
 
-Nova Ultimate is the unified community platform for controlling and training with the PONGBOT Nova S Pro.
+Nova Prime is the unified community platform for controlling and training with the PONGBOT Nova S Pro.
 
 The project combines Nova Trainer's robot control, calibration, physics, visual drill editing, and adaptive feedback with Nova Plus's Music, playlists, MSYNC, statistics, sharing, and future voice control.
 
@@ -48,7 +48,7 @@ Browser data is scoped to the complete origin. Keep the same protocol, hostname,
 
 The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). The visual ball/table editor remains a separate future increment. Unimplemented controls remain visibly disabled and are not counted as integrated features.
 
-Nova Ultimate supports two complete runtime modes:
+Nova Prime supports two complete runtime modes:
 
 - **Hosted web:** open the HTTPS deployment normally whenever internet access is available.
 - **Device-local server:** run the same static bundle from an HTTP-server application installed on the phone or tablet when internet or Wi-Fi is unavailable.
@@ -62,7 +62,7 @@ For device-local operation:
 
 The server must return JavaScript modules with a JavaScript MIME type. All application assets use relative paths and require no server-side routes.
 
-Web Bluetooth requires a secure context. Hosted mode uses HTTPS. Chromium treats loopback hosts as trustworthy for powerful web features, but a plain LAN address such as `http://192.168.x.x` may not qualify. Ultimate will detect and explain an incompatible hosting context before live robot controls are enabled.
+Web Bluetooth requires a secure context. Hosted mode uses HTTPS. Chromium treats loopback hosts as trustworthy for powerful web features, but a plain LAN address such as `http://192.168.x.x` may not qualify. Prime will detect and explain an incompatible hosting context before live robot controls are enabled.
 
 The locally served application does not require an upstream internet or Wi-Fi connection; the browser and server operate on the same device through loopback.
 
@@ -74,7 +74,7 @@ The locally served application does not require an upstream internet or Wi-Fi co
 
 ## Disclaimer
 
-Nova Ultimate is an unofficial community project and is not affiliated with or endorsed by PONGBOT. Keep the area in front of the robot clear and retain access to physical power controls during operation.
+Nova Prime is an unofficial community project and is not affiliated with or endorsed by PONGBOT. Keep the area in front of the robot clear and retain access to physical power controls during operation.
 
 ## License
 
