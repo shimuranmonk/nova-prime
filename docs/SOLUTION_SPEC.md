@@ -47,6 +47,8 @@ The target IndexedDB database is `nova_ultimate`, with stores for metadata, sett
 
 Browser persistence is origin-scoped. Mobile installations must therefore use a stable protocol, hostname, port, and application path. A change from `localhost` to `127.0.0.1`, or from one port to another, may expose a different storage origin and requires export/import recovery.
 
+The 0.1 local-sessions increment creates all target stores at database version 1. Session simulation records are persisted in `sessionRecords`. If IndexedDB cannot be opened, the UI explicitly warns that the current visit is using volatile memory. Backup restore validates the complete document before replacing its included collections in one read-write transaction.
+
 ## Dual deployment and mobile packaging
 
 - `npm run build` produces the complete static `dist/` directory.
@@ -64,6 +66,8 @@ Browser persistence is origin-scoped. Mobile installations must therefore use a 
 
 Live robot support is not part of this initial generated solution. A later robot executor must own command epochs, queue cancellation, safe replacement, priority Stop, and single-ball tests before the robot feature flag can be enabled.
 
+Reps and Time dry runs use the canonical lifecycle and priority Stop behavior, but never receive a transport reference and always record zero dispatched balls. They verify local orchestration and recovery without representing hardware execution.
+
 ## MSYNC boundary
 
 MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler → Session adapter`. Simulation uses the same resolved timeline but receives no reference to a live transport.
@@ -71,8 +75,9 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 ## Deployment and rollback
 
 - `main` contains stable releases.
-- `jewelflow/ultimate-foundation` contains this initial implementation.
+- `jewelflow/0.1-local-sessions` contains the current persistence and dry-run increment.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.
 - Data changes remain additive until migrations and recovery are verified.
+

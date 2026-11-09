@@ -30,3 +30,10 @@ When browser origins differ, migration uses explicit export/import. This include
 - Partial imports are not considered successful.
 - Existing Ultimate records are not silently replaced.
 - The user receives a result report containing imported, merged, skipped, and failed counts.
+
+## Implemented recovery boundary
+
+The 0.1 local-sessions increment implements versioned Nova Ultimate JSON backup and restore. Export includes every current non-backup store. Restore rejects unsupported versions, unknown or missing collections, duplicate IDs, malformed records, and invalid canonical domain records before opening the replacement transaction. Valid collections are then replaced in one storage transaction.
+
+Legacy Nova Trainer and Nova Plus detection and transformation remain planned work. The current restore path accepts Nova Ultimate backups only and does not claim to migrate legacy browser origins.
+
