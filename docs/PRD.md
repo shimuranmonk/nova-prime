@@ -94,13 +94,15 @@ Nova Ultimate is the unified community application for the PONGBOT Nova S Pro. N
 - Communicate state with text and accessible controls.
 - Keep advanced functionality out of the simple training path.
 
-### Mobile local-server deployment — NU-FR-094 to NU-FR-098
+### Web and offline deployment — NU-FR-094 to NU-FR-099
 
+- Support normal hosted-web operation over HTTPS.
 - Distribute a complete static bundle that can be copied to an HTTP server installed on a phone or tablet.
 - Support loopback URLs such as `http://localhost:<port>/` and `http://127.0.0.1:<port>/` without server-side routes.
 - Use relative asset paths and hash-based navigation so subdirectories and simple static servers work.
 - Detect insecure non-loopback HTTP hosting before exposing live robot controls.
 - Warn that changing hostname, port, or path may make origin-scoped browser data unavailable and provide backup/restore guidance.
+- Require no upstream internet or Wi-Fi connection when browser and HTTP server operate locally on the same device.
 
 ### Sharing and voice — NU-FR-086 to NU-FR-093
 

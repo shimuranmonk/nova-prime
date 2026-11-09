@@ -21,11 +21,17 @@ test("mobile loopback HTTP hosting is identified", () => {
 
   const local = detectCapabilities({ navigator: {}, crypto: {}, location: { protocol: "http:", hostname: "127.0.0.1" } });
   assert.equal(local.localHttpServer, true);
+  assert.equal(local.hostedHttps, false);
   assert.equal(local.unsafeLanHttp, false);
 
   const lan = detectCapabilities({ navigator: {}, crypto: {}, location: { protocol: "http:", hostname: "192.168.1.10" } });
   assert.equal(lan.localHttpServer, false);
   assert.equal(lan.unsafeLanHttp, true);
+
+  const hosted = detectCapabilities({ navigator: {}, crypto: {}, location: { protocol: "https:", hostname: "example.com" } });
+  assert.equal(hosted.hostedHttps, true);
+  assert.equal(hosted.localHttpServer, false);
+  assert.equal(hosted.unsafeLanHttp, false);
 });
 
 test("unknown routes return to overview", () => {

@@ -27,7 +27,12 @@ npm run build
 npm run verify
 ```
 
-Nova Ultimate is designed to run from an HTTP-server application installed on the phone or tablet:
+Nova Ultimate supports two complete runtime modes:
+
+- **Hosted web:** open the HTTPS deployment normally whenever internet access is available.
+- **Device-local server:** run the same static bundle from an HTTP-server application installed on the phone or tablet when internet or Wi-Fi is unavailable.
+
+For device-local operation:
 
 1. Build or download the static `dist/` release bundle.
 2. Copy the complete bundle into the mobile server's document directory.
@@ -36,7 +41,9 @@ Nova Ultimate is designed to run from an HTTP-server application installed on th
 
 The server must return JavaScript modules with a JavaScript MIME type. All application assets use relative paths and require no server-side routes.
 
-Web Bluetooth requires a secure context. Chromium treats loopback hosts as trustworthy for powerful web features, but a plain LAN address such as `http://192.168.x.x` may not qualify. Ultimate will detect and explain an incompatible hosting context before live robot controls are enabled.
+Web Bluetooth requires a secure context. Hosted mode uses HTTPS. Chromium treats loopback hosts as trustworthy for powerful web features, but a plain LAN address such as `http://192.168.x.x` may not qualify. Ultimate will detect and explain an incompatible hosting context before live robot controls are enabled.
+
+The locally served application does not require an upstream internet or Wi-Fi connection; the browser and server operate on the same device through loopback.
 
 ## Credits
 

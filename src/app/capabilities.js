@@ -17,6 +17,7 @@ export function detectCapabilities(environment = globalThis) {
   const locationObject = environment.location ?? {};
   const loopbackHost = isLoopbackHostname(locationObject.hostname);
   const localHttpServer = locationObject.protocol === "http:" && loopbackHost;
+  const hostedHttps = locationObject.protocol === "https:";
 
   return Object.freeze({
     webBluetooth: safely(() => "bluetooth" in navigatorObject),
@@ -30,6 +31,7 @@ export function detectCapabilities(environment = globalThis) {
     secureContext: safely(() => environment.isSecureContext),
     loopbackHost,
     localHttpServer,
+    hostedHttps,
     unsafeLanHttp: locationObject.protocol === "http:" && !loopbackHost,
     sha256: safely(() => typeof cryptoObject.subtle?.digest === "function"),
     randomUuid: safely(() => typeof cryptoObject.randomUUID === "function"),

@@ -50,3 +50,11 @@
 - Stable storage across server restarts on the same origin
 - Warning and disabled live controls for non-loopback plain HTTP
 - Backup/restore after deliberate hostname or port change
+
+## Hosted-web checks
+
+- Production HTTPS deployment
+- Web Bluetooth availability and user-gesture requirement
+- Repository-relative asset loading
+- Persistent storage across ordinary reloads and application updates
+- Export/import between hosted and device-local origins
