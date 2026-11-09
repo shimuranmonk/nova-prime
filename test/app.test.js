@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectCapabilities } from "../src/app/capabilities.js";
+import { detectCapabilities, isLoopbackHostname } from "../src/app/capabilities.js";
 import { enabledFeatures, FEATURE_FLAGS } from "../src/app/feature-flags.js";
 import { routeFromHash } from "../src/app/router.js";
 
@@ -9,9 +9,23 @@ test("foundation features are disabled", () => {
 });
 
 test("capability detection is defensive", () => {
-  const result = detectCapabilities({ navigator: {}, crypto: {}, isSecureContext: false });
+  const result = detectCapabilities({ navigator: {}, crypto: {}, isSecureContext: false, location: {} });
   assert.equal(result.webBluetooth, false);
   assert.equal(result.secureContext, false);
+});
+
+test("mobile loopback HTTP hosting is identified", () => {
+  assert.equal(isLoopbackHostname("localhost"), true);
+  assert.equal(isLoopbackHostname("127.0.0.1"), true);
+  assert.equal(isLoopbackHostname("192.168.1.10"), false);
+
+  const local = detectCapabilities({ navigator: {}, crypto: {}, location: { protocol: "http:", hostname: "127.0.0.1" } });
+  assert.equal(local.localHttpServer, true);
+  assert.equal(local.unsafeLanHttp, false);
+
+  const lan = detectCapabilities({ navigator: {}, crypto: {}, location: { protocol: "http:", hostname: "192.168.1.10" } });
+  assert.equal(lan.localHttpServer, false);
+  assert.equal(lan.unsafeLanHttp, true);
 });
 
 test("unknown routes return to overview", () => {

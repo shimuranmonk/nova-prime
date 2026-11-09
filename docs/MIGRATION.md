@@ -21,7 +21,7 @@
 
 Migration must be idempotent. Matching Track hashes and immutable drill IDs prevent duplication.
 
-When browser origins differ, migration uses explicit export/import. Ultimate never claims access to an inaccessible origin.
+When browser origins differ, migration uses explicit export/import. This includes changes to a mobile server's protocol, hostname, or port. Ultimate never claims access to an inaccessible origin.
 
 ## Failure behavior
 

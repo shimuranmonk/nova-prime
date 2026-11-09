@@ -27,7 +27,16 @@ npm run build
 npm run verify
 ```
 
-Open `dist/index.html` through a local web server after building. Web Bluetooth requires a secure context when live robot support is added.
+Nova Ultimate is designed to run from an HTTP-server application installed on the phone or tablet:
+
+1. Build or download the static `dist/` release bundle.
+2. Copy the complete bundle into the mobile server's document directory.
+3. Configure a fixed port and serve it through `http://localhost:<port>/` or `http://127.0.0.1:<port>/`.
+4. Keep the same hostname, port, and path so browser storage remains accessible.
+
+The server must return JavaScript modules with a JavaScript MIME type. All application assets use relative paths and require no server-side routes.
+
+Web Bluetooth requires a secure context. Chromium treats loopback hosts as trustworthy for powerful web features, but a plain LAN address such as `http://192.168.x.x` may not qualify. Ultimate will detect and explain an incompatible hosting context before live robot controls are enabled.
 
 ## Credits
 

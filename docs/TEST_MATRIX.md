@@ -39,3 +39,14 @@
 - Compatible Chromium browser on Android
 - Bluefy on supported iPhone and iPad workflows
 - Phone, tablet, and desktop layouts in portrait and landscape
+
+## Mobile HTTP-server checks
+
+- Complete release bundle served from an installed phone/tablet HTTP server
+- `http://localhost:<fixed-port>/`
+- `http://127.0.0.1:<fixed-port>/`
+- Application installed in a server subdirectory
+- JavaScript module MIME type verification
+- Stable storage across server restarts on the same origin
+- Warning and disabled live controls for non-loopback plain HTTP
+- Backup/restore after deliberate hostname or port change

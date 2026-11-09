@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Nova Ultimate is a static, local-first ES-module application. It will use one robot transport, one protocol layer, one execution queue, one session controller, and mode adapters for Reps, Time, Music, and MSYNC.
+Nova Ultimate is a static, local-first ES-module application. Its primary runtime environment is an HTTP-server application installed on the phone or tablet. It will use one robot transport, one protocol layer, one execution queue, one session controller, and mode adapters for Reps, Time, Music, and MSYNC.
 
 ```text
 UI
@@ -44,6 +44,19 @@ Every command returns `EXECUTED`, `IGNORED`, `BLOCKED`, or `FAILED`. Repeated St
 ## Persistence
 
 The target IndexedDB database is `nova_ultimate`, with stores for metadata, settings, drills, calibrations, tracks, playlists, MSYNC attachments, session records, migration receipts, and backups. localStorage is limited to small bootstrap preferences and tab coordination.
+
+Browser persistence is origin-scoped. Mobile installations must therefore use a stable protocol, hostname, port, and application path. A change from `localhost` to `127.0.0.1`, or from one port to another, may expose a different storage origin and requires export/import recovery.
+
+## Mobile HTTP-server packaging
+
+- `npm run build` produces the complete static `dist/` directory.
+- Releases will publish that directory as a downloadable archive.
+- All HTML, CSS, JavaScript, JSON, and media references use relative URLs.
+- Navigation uses URL hashes and requires no rewrite or fallback configuration.
+- The installed server must provide correct MIME types, especially JavaScript for `.js` modules.
+- The recommended address is `http://localhost:<fixed-port>/` or `http://127.0.0.1:<fixed-port>/`.
+- A private-LAN address over plain HTTP is not treated as an equivalent deployment because it may not provide the secure context required by Web Bluetooth.
+- GitHub Pages remains a secondary preview and distribution environment rather than the only runtime target.
 
 ## Safety boundary
 
