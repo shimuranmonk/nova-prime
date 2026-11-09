@@ -2,7 +2,7 @@ import { createId } from "../shared/id.js";
 
 export const DRILL_SCHEMA_VERSION = 1;
 export const DRILL_SOURCES = Object.freeze(["builtin", "custom", "imported"]);
-export const DRILL_GROUPS = Object.freeze(["builtin", "A", "B", "C"]);
+export const DRILL_GROUPS = Object.freeze(["builtin", "basic", "combined", "complex", "A", "B", "C"]);
 export const ROBOT_POSITIONS = Object.freeze(["left", "middle", "right"]);
 export const BALL_TYPES = Object.freeze(["top", "back"]);
 
@@ -59,3 +59,4 @@ export function createDrill(overrides = {}) {
     ...overrides,
   });
 }
+

@@ -15,6 +15,7 @@ This branch advances the JewelFlow 0.1 Foundation with local sessions and recove
 - Reps and Time dry-run sessions with countdown, Pause, Resume, Stop, and completion
 - Trainer-first application dashboard with selected Nova Plus training controls
 - Compact connection, calibration, session, built-in drill, and custom drill cards
+- Verified 34-drill Nova Trainer catalogue with Basic, Combined, Complex, random, and three-level programs
 - Application drawer for Data, About, Diagnostics, and Roadmap
 - Persistent simulation history that never claims physical ball dispatch
 - Versioned JSON backup with complete pre-restore validation
@@ -43,7 +44,7 @@ Reps and Time are simulation-only in this increment. They exercise the same cano
 
 Browser data is scoped to the complete origin. Keep the same protocol, hostname, port, and path, and export a backup before changing a hosted or device-local address.
 
-The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
+The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), and drill provenance is recorded in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
 
 Nova Ultimate supports two complete runtime modes:
 

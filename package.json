@@ -1,6 +1,6 @@
 {
   "name": "nova-ultimate",
-  "version": "0.1.0-app-shell.0",
+  "version": "0.1.0-drill-library.0",
   "private": true,
   "type": "module",
   "scripts": {

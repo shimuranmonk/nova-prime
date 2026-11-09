@@ -45,6 +45,8 @@ Every command returns `EXECUTED`, `IGNORED`, `BLOCKED`, or `FAILED`. Repeated St
 - MSYNC attachments retain authoritative source text and a validation receipt.
 - Session records distinguish planned and dispatched balls, outcomes, mode, and duration.
 
+The built-in catalogue is bundled as immutable canonical data with deterministic drill and step IDs. Its source repository, branch, file paths, and Git blob identities are embedded in the module. Built-ins are not duplicated into mutable browser storage; user-created drills will occupy the `drills` store.
+
 ## Persistence
 
 The target IndexedDB database is `nova_ultimate`, with stores for metadata, settings, drills, calibrations, tracks, playlists, MSYNC attachments, session records, migration receipts, and backups. localStorage is limited to small bootstrap preferences and tab coordination.
@@ -79,7 +81,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 ## Deployment and rollback
 
 - `main` contains stable releases.
-- `jewelflow/app-shell-redesign` contains the current hybrid application-shell increment.
+- `jewelflow/0.1-drill-library` contains the current verified built-in catalogue increment.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

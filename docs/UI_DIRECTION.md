@@ -10,7 +10,7 @@ Nova Ultimate uses Nova Trainer as its primary interaction model: a compact appl
 - Connection and calibration appear first, but remain disabled until their safety milestones are complete.
 - Reps and Time controls operate the existing local dry-run controller.
 - Music and MSYNC are visible as disabled future modes rather than represented as complete.
-- The built-in drill area contains only the verified foundation dry run. It does not fabricate the 34 robot programs.
+- The built-in drill area contains the verified 34-drill Nova Trainer catalogue with its 6 Basic, 12 Combined, and 16 Complex entries.
 - Custom groups A, B, and C are visible, while New Drill remains disabled until the editor is implemented.
 - Data, About, Diagnostics, and Roadmap are moved into an application drawer.
 - Active-session progress and Stop remain prominent and accessible.

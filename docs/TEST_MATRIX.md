@@ -19,6 +19,10 @@
 - Drawer exposes secondary screens and becomes inert when closed
 - Mode, level, amount, countdown, and pause controls remain locked during active sessions
 - Configured Reps and Time rests advance deterministically
+- Built-in catalogue contains exactly 6 Basic, 12 Combined, and 16 Complex drills
+- All 34 drills have unique stable IDs and validate at levels 1–3
+- Representative ball parameters match the authoritative Trainer source
+- Sequence order, random flags, UI selection, and session-history drill linkage
 
 ## Future integration checks
 

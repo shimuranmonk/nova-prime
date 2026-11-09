@@ -87,7 +87,13 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 .drill-tile.selected { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
 .drill-tile strong, .drill-tile small { display: block; }
 .drill-tile small, .ball-detail { margin-top: 3px; color: var(--muted); font-size: 0.72rem; }
-.ball-detail i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--teal); }
+.ball-detail { display: flex; align-items: center; gap: 7px; }
+.ball-dots { display: inline-flex; gap: 3px; }
+.ball-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.ball-dot.top { background: #e95a16; }
+.ball-dot.back { background: #2584d8; }
+.ball-dot.serve { background: #8c5ad9; }
+.random-tag { width: max-content; margin-top: 5px !important; padding: 2px 6px; border-radius: 999px; background: #fff0df; color: #9b5913 !important; font-size: 0.6rem !important; font-weight: 850; text-transform: uppercase; }
 .empty-library { grid-column: 1 / -1; display: grid; gap: 5px; padding: 18px; border: 1px dashed var(--line-strong); border-radius: 13px; color: var(--muted); text-align: center; }
 .empty-library span { font-size: 0.78rem; line-height: 1.45; }
 .new-drill { display: grid; place-items: center; width: min(180px, 100%); min-height: 96px; margin-top: 11px; border: 1px dashed var(--line-strong); border-radius: 13px; background: var(--surface-soft); color: var(--muted); }
