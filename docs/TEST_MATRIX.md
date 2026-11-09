@@ -11,6 +11,10 @@
 - Calibration, Track, Playlist, MSYNC, and statistics schemas
 - Foundation feature flags remain disabled
 - Build output contains no live Bluetooth request
+- Reps and Time dry-run countdown, completion, Pause, Resume, and priority Stop
+- Simulation records always report zero physically dispatched balls
+- Memory-store isolation and persistent-store browser smoke test
+- Versioned backup round trip and rejection of invalid, missing, or unknown collections
 
 ## Future integration checks
 
@@ -58,3 +62,4 @@
 - Repository-relative asset loading
 - Persistent storage across ordinary reloads and application updates
 - Export/import between hosted and device-local origins
+

@@ -35,6 +35,9 @@ test("mobile loopback HTTP hosting is identified", () => {
 });
 
 test("unknown routes return to overview", () => {
+  assert.equal(routeFromHash("#train"), "train");
+  assert.equal(routeFromHash("#data"), "data");
   assert.equal(routeFromHash("#roadmap"), "roadmap");
   assert.equal(routeFromHash("#unknown"), "overview");
 });
+

@@ -122,4 +122,5 @@ Nova Ultimate is the unified community application for the PONGBOT Nova S Pro. N
 
 ## Current generated-solution boundary
 
-This branch provides the modular shell, canonical schemas, validators, state machine, tests, CI, and documentation. It intentionally contains no live transport or robot executor.
+The stable foundation provides the modular shell, canonical schemas, validators, state machine, tests, CI, and documentation. The 0.1 local-sessions increment adds IndexedDB persistence, validated backup/restore, persistent simulation records, and usable Reps/Time dry runs. It intentionally contains no live transport or robot executor and records zero physically dispatched balls.
+

@@ -6,11 +6,15 @@ The project combines Nova Trainer's robot control, calibration, physics, visual 
 
 ## Current status
 
-This branch contains the JewelFlow 0.1 Foundation:
+This branch advances the JewelFlow 0.1 Foundation with local sessions and recovery:
 
 - Native JavaScript ES-module project structure
 - Canonical domain schemas and validation
 - Canonical session state machine
+- IndexedDB persistence with a clearly reported in-memory fallback
+- Reps and Time dry-run sessions with countdown, Pause, Resume, Stop, and completion
+- Persistent simulation history that never claims physical ball dispatch
+- Versioned JSON backup with complete pre-restore validation
 - Static build and verification tooling
 - Automated unit tests and CI scaffolding
 - Approved PRD, solution specification, migration plan, and test matrix
@@ -25,7 +29,16 @@ Requirements: Node.js 20 or newer.
 npm test
 npm run build
 npm run verify
+npm run preview
 ```
+
+`npm run preview` serves the built bundle at `http://127.0.0.1:4173/` for loopback testing.
+
+## Current safety boundary
+
+Reps and Time are simulation-only in this increment. They exercise the same canonical lifecycle intended for future robot sessions, but record zero dispatched balls and cannot access Bluetooth. Live robot control remains blocked until the executor, queue cancellation, priority Stop path, and physical-device verification are complete.
+
+Browser data is scoped to the complete origin. Keep the same protocol, hostname, port, and path, and export a backup before changing a hosted or device-local address.
 
 Nova Ultimate supports two complete runtime modes:
 
@@ -58,3 +71,4 @@ Nova Ultimate is an unofficial community project and is not affiliated with or e
 ## License
 
 A public software license has not yet been selected. Until one is added, no license is granted beyond rights separately provided by the relevant copyright holders.
+
