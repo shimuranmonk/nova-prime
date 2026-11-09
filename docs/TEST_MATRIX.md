@@ -23,6 +23,12 @@
 - All 34 drills have unique stable IDs and validate at levels 1–3
 - Representative ball parameters match the authoritative Trainer source
 - Sequence order, random flags, UI selection, and session-history drill linkage
+- Custom drill immutable IDs, sanitized unique names, and Groups A/B/C persistence
+- Duplicate drill and step identity regeneration
+- Reorder and post-delete order compaction
+- Atomic custom-drill import rejection and versioned JSON round trip
+- 100-drill capacity enforcement for every custom group
+- Phone-sized create, rename, duplicate, group move, reorder, selection, simulated completion, history naming, export, and fresh-tab persistence smoke test
 
 ## Future integration checks
 
@@ -70,4 +76,3 @@
 - Repository-relative asset loading
 - Persistent storage across ordinary reloads and application updates
 - Export/import between hosted and device-local origins
-
