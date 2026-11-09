@@ -1,0 +1,11 @@
+{
+  "name": "nova-ultimate",
+  "version": "0.1.0-foundation.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test",
+    "verify": "node scripts/verify.mjs"
+  }
+}

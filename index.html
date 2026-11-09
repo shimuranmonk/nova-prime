@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#08111f">
+    <meta name="description" content="Nova Ultimate foundation for the PONGBOT Nova S Pro.">
+    <title>Nova Ultimate</title>
+    <link rel="stylesheet" href="./src/styles/app.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">PONGBOT NOVA S PRO · COMMUNITY PROJECT</p>
+          <h1>Nova Ultimate</h1>
+        </div>
+        <span class="release-badge">0.1 Foundation</span>
+      </header>
+
+      <main id="app" tabindex="-1">
+        <section class="hero">
+          <div>
+            <p class="eyebrow">JEWELFLOW GENERATED SOLUTION</p>
+            <h2>The unified foundation is online.</h2>
+            <p>
+              Canonical models, validation, session states, tests, and build tooling are ready.
+              Live robot commands remain intentionally disabled until the safety executor is verified.
+            </p>
+          </div>
+          <div class="safety-card" role="status">
+            <span class="status-dot"></span>
+            <div>
+              <strong>Foundation-only mode</strong>
+              <span>No Bluetooth commands can be sent from this milestone.</span>
+            </div>
+          </div>
+        </section>
+
+        <nav class="section-tabs" aria-label="Foundation sections">
+          <a href="#overview" data-route="overview">Overview</a>
+          <a href="#capabilities" data-route="capabilities">Capabilities</a>
+          <a href="#roadmap" data-route="roadmap">Roadmap</a>
+        </nav>
+
+        <section id="route-view" class="route-view" aria-live="polite"></section>
+      </main>
+
+      <footer>
+        <span>Nova Ultimate · local-first · safety-led</span>
+        <span id="build-version"></span>
+      </footer>
+    </div>
+    <script type="module" src="./src/app/bootstrap.js"></script>
+  </body>
+</html>
