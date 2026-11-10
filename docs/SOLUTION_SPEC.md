@@ -1,6 +1,6 @@
 # Nova Prime Solution Specification
 
-> Implementation status: the MSYNC simulation path and local Statistics aggregation/guidance path are implemented through `0.4.0-statistics.0`; transport remains deliberately absent.
+> Implementation status: MSYNC simulation, local Statistics, and versioned custom-drill sharing are implemented through `0.5.0-sharing.0`; robot transport remains deliberately absent.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Features outside the robot executor may not write Bluetooth commands directly.
 
 ## Application interface
 
-The default route is the operational Training dashboard, not a product or development landing page. Its information hierarchy follows Nova Trainer: header, connection, calibration, training setup, built-in drills, custom drills, and totals. Nova Plus contributes difficulty selection, Reps/Time/Music/MSYNC modes, count or duration, and pause controls. Secondary Statistics, Data, About, Diagnostics, and Roadmap screens live in a drawer. Controls whose backing capability is not implemented remain disabled and explicitly labelled.
+The default route is the operational Training dashboard, not a product or development landing page. Its information hierarchy follows Nova Trainer: header, connection, calibration, training setup, built-in drills, custom drills, and totals. Nova Plus contributes difficulty selection, Reps/Time/Music/MSYNC modes, count or duration, and pause controls. Secondary Statistics, Sharing, Data, About, Diagnostics, and Roadmap screens live in a drawer. Controls whose backing capability is not implemented remain disabled and explicitly labelled.
 
 ## Canonical session lifecycle
 
@@ -67,6 +67,8 @@ Music is split between a storage-facing library service and a browser-facing aud
 
 Statistics use a pure domain aggregator over `sessionRecords`. It accepts a period and active calibration profile, filters invalid or future timestamps, and returns immutable summaries, daily activity, mode mix, drill ranking, and at most three rule-based suggestions. The UI renders these results with dependency-free CSS and states that activity completion is neither skill scoring nor evidence of physical ball delivery. No analytics request leaves the device.
 
+Sharing uses a dedicated `nova-prime-share` version 1 envelope for selected custom drill definitions. The domain validator enforces the package type, date, title, note, 100-drill limit, 1 MB limit, unique identities, allowed sources, and the complete canonical drill schema. Preview returns immutable counts and names without writing. Confirmed import adapts the validated drills to the existing atomic custom-drill importer. File download is universal; the Web Share adapter is capability-gated and invoked only from the user's button activation.
+
 ## Dual deployment and mobile packaging
 
 - `npm run build` produces the complete static `dist/` directory.
@@ -95,6 +97,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 - `main` contains stable releases.
 - `jewelflow/0.2-music` contains local tracks, playlists, Quick Music, unified Music sessions, and playable-audio recovery.
 - `jewelflow/0.4-statistics` contains local activity summaries and explainable plan guidance.
+- `jewelflow/0.5-sharing` contains versioned custom-drill packs, explicit device sharing, preview, and confirmed import.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

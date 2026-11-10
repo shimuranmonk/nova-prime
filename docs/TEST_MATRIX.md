@@ -53,6 +53,11 @@
 - Explainable baseline, low-completion, mode-diversity, inactivity, progress, and calibration guidance rules
 - Legacy session-record validation plus optional level, target, and pause planning fields
 - Phone, tablet portrait, tablet landscape, and desktop Statistics layout smoke tests
+- Versioned sharing envelope, title/note sanitization, drill count, and package-size limits
+- Rejection of unsupported versions, duplicate identities, built-in drills, and unsafe ball parameters
+- Non-mutating incoming preview and atomic import failure with existing data preserved
+- Explicit native-share adapter invocation with exactly one generated JSON file
+- Phone, tablet portrait, tablet landscape, and desktop Sharing layout smoke tests
 
 ## Future integration checks
 
