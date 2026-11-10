@@ -7,6 +7,7 @@ import { AudioPlayer } from "../application/music/audio-player.js";
 import { MusicLibraryService } from "../application/music/music-library-service.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
 import { SharingService } from "../application/sharing/sharing-service.js";
+import { VoiceController } from "../application/voice/voice-controller.js";
 import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
 import { createSessionSpec } from "../domain/sessions/schema.js";
 import { SESSION_STATES } from "../domain/sessions/state-machine.js";
@@ -49,6 +50,8 @@ let msyncIssues = [];
 let msyncSnapshot = null;
 let sharingMessage = "";
 let sharingImportPreview = null;
+let voiceStatus = "ready";
+let voiceMessage = "Voice controls are off. Touch controls always remain available.";
 let appReady = false;
 
 const uiState = {
@@ -69,6 +72,8 @@ const uiState = {
   sharingTitle: "My Nova Prime drills",
   sharingNote: "",
   sharingDrillIds: [],
+  voiceEnabled: false,
+  voicePendingStart: false,
 };
 
 const store = await IndexedDbStore.open().catch(() => {
@@ -139,6 +144,69 @@ const controller = new LocalSessionController({
     await store.put("sessionRecords", record);
     await refreshFooter();
     if (["data", "statistics"].includes(activeRoute)) await render(activeRoute);
+  },
+});
+
+async function executeSessionCommand(command) {
+  const snapshot = controller.snapshot();
+  const musicSession = snapshot.spec?.mode === "music";
+  const msyncSession = snapshot.spec?.mode === "msync";
+  if (command === "pause") {
+    if (musicSession || msyncSession) audioPlayer.pause();
+    if (msyncSession) msyncSimulator.pause();
+    return controller.pause();
+  }
+  if (command === "resume") {
+    if (musicSession || msyncSession) await audioPlayer.resume();
+    if (msyncSession) msyncSimulator.resume();
+    return controller.resume();
+  }
+  if (command === "stop") {
+    if (musicSession || msyncSession) audioPlayer.stop();
+    if (msyncSession) msyncSimulator.stop();
+    uiState.voicePendingStart = false;
+    return controller.stop();
+  }
+  if (command === "reset") {
+    if (musicSession || msyncSession) audioPlayer.stop();
+    if (msyncSession) msyncSimulator.stop();
+    uiState.voicePendingStart = false;
+    return controller.reset();
+  }
+  return Object.freeze({ status: "REJECTED", reason: "UNKNOWN_COMMAND" });
+}
+
+const voiceController = new VoiceController({
+  recognitionFactory: capabilities.speechRecognition
+    ? () => {
+      const Recognition = globalThis.SpeechRecognition ?? globalThis.webkitSpeechRecognition;
+      return new Recognition();
+    }
+    : null,
+  onStatus: (status) => {
+    voiceStatus = status.state;
+    voiceMessage = status.message;
+    if (appReady && activeRoute === "train") void render("train");
+  },
+  onCommand: async (command) => {
+    const state = controller.snapshot().state;
+    if (command === "start") {
+      if (state !== SESSION_STATES.IDLE) {
+        voiceStatus = "rejected";
+        voiceMessage = "A session is already active. Nothing changed.";
+      } else {
+        uiState.voicePendingStart = true;
+        voiceStatus = "confirm";
+        voiceMessage = "Start recognized. Review the setup and tap Confirm start.";
+      }
+    } else {
+      const result = await executeSessionCommand(command);
+      voiceStatus = result?.status === "EXECUTED" ? "executed" : "rejected";
+      voiceMessage = result?.status === "EXECUTED"
+        ? `${command[0].toUpperCase()}${command.slice(1)} command executed.`
+        : `${command[0].toUpperCase()}${command.slice(1)} is not available in the current session state.`;
+    }
+    if (activeRoute === "train") await render("train");
   },
 });
 
@@ -273,6 +341,24 @@ function sessionConsole(session) {
         <button type="button" class="stop-button" data-command="stop" ${stoppable ? "" : "disabled"}>Stop</button>
         <button type="button" data-command="reset" ${[SESSION_STATES.COMPLETED, SESSION_STATES.ERROR].includes(session.state) ? "" : "disabled"}>New session</button>
       </div>
+    </section>`;
+}
+
+function voiceControlCard(session) {
+  const supported = voiceController.supported;
+  const enabled = supported && uiState.voiceEnabled;
+  const pending = enabled && uiState.voicePendingStart && session.state === SESSION_STATES.IDLE;
+  return `
+    <section class="app-card voice-card" aria-labelledby="voice-title">
+      <div class="section-heading"><div><span class="eyebrow">OPTIONAL · ONE COMMAND</span><h2 id="voice-title">Voice controls</h2><p>${supported ? "Press Listen, then say one exact command." : "Speech recognition is not available in this browser."}</p></div><span class="voice-state voice-${escapeHtml(voiceStatus)}">${enabled ? escapeHtml(voiceStatus) : "Off"}</span></div>
+      <div class="voice-actions">
+        ${enabled
+          ? `<button type="button" data-voice-listen class="primary-button" ${voiceController.listening ? "disabled" : ""}>${voiceController.listening ? "Listening…" : "Listen for command"}</button><button type="button" data-voice-disable>Turn off</button>`
+          : `<button type="button" data-voice-enable class="primary-button" ${supported ? "" : "disabled"}>Turn on voice</button>`}
+      </div>
+      <p class="voice-message" role="status" aria-live="polite">${escapeHtml(voiceMessage)}</p>
+      ${pending ? `<div class="voice-confirm" role="alert"><div><strong>Confirm session start</strong><span>Voice never starts the robot or a simulation without this touch confirmation.</span></div><button type="button" data-voice-confirm-start class="primary-button">Confirm start</button><button type="button" data-voice-cancel-start>Cancel</button></div>` : ""}
+      <details><summary>Commands and privacy</summary><p><strong>Start:</strong> “Nova start” · <strong>Pause:</strong> “Nova pause” · <strong>Resume:</strong> “Nova resume” · <strong>Stop:</strong> “Stop” or “Nova emergency stop”.</p><p>Nova Prime stores no audio or transcript history. Your browser or speech provider may process speech online. You can keep voice off and use every touch control.</p></details>
     </section>`;
 }
 
@@ -456,7 +542,7 @@ async function trainView() {
   await Promise.all([refreshCustomCache(), refreshCalibrationProfile(), refreshMusicCache()]);
   await refreshMsyncCache();
   const session = controller.snapshot();
-  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
+  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${voiceControlCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
 }
 
 async function dataView() {
@@ -542,7 +628,7 @@ async function sharingView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Versioned sharing</strong><p>Create validated custom-drill packs, use explicit device sharing, and preview every incoming file before import.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Versioned sharing</strong><p>Create validated custom-drill packs, use explicit device sharing, and preview every incoming file before import.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Stable voice commands</strong><p>Use optional press-to-listen start, pause, resume, and stop commands, with touch confirmation before every spoken start.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -550,7 +636,7 @@ function capabilityView() {
 }
 
 function roadmap() {
-  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing; stable voice commands next"]];
+  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing and stable, optional voice commands"], ["0.6", "Robot", "Safety executor and hardware verification before live control"]];
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
@@ -672,6 +758,33 @@ function bindRouteActions(route) {
     }));
   }
   if (route === "train") {
+    document.querySelector("[data-voice-enable]")?.addEventListener("click", async () => {
+      uiState.voiceEnabled = true;
+      voiceStatus = "ready";
+      voiceMessage = "Voice is ready. Tap Listen and say one command.";
+      await render("train");
+    });
+    document.querySelector("[data-voice-disable]")?.addEventListener("click", async () => {
+      voiceController.cancel();
+      uiState.voiceEnabled = false;
+      uiState.voicePendingStart = false;
+      voiceStatus = "ready";
+      voiceMessage = "Voice controls are off. Touch controls always remain available.";
+      await render("train");
+    });
+    document.querySelector("[data-voice-listen]")?.addEventListener("click", () => voiceController.listen());
+    document.querySelector("[data-voice-confirm-start]")?.addEventListener("click", () => {
+      uiState.voicePendingStart = false;
+      voiceStatus = "ready";
+      voiceMessage = "Start confirmed by touch.";
+      document.querySelector("#session-form")?.requestSubmit();
+    });
+    document.querySelector("[data-voice-cancel-start]")?.addEventListener("click", async () => {
+      uiState.voicePendingStart = false;
+      voiceStatus = "ready";
+      voiceMessage = "Spoken start cancelled. Nothing changed.";
+      await render("train");
+    });
     document.querySelector("[data-calibration-open]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, false));
     document.querySelector("[data-calibration-quick]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, true));
     document.querySelector("[data-calibration-export]")?.addEventListener("click", async () => downloadJson(await calibrationService.export(), `nova-prime-calibration-${new Date().toISOString().slice(0, 10)}.json`));
@@ -791,13 +904,7 @@ function bindRouteActions(route) {
       await render("train");
     });
     document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", async () => {
-      const command = button.dataset.command;
-      const musicSession = controller.snapshot().spec?.mode === "music";
-      const msyncSession = controller.snapshot().spec?.mode === "msync";
-      if (command === "pause") { if (musicSession || msyncSession) audioPlayer.pause(); if (msyncSession) msyncSimulator.pause(); controller.pause(); }
-      if (command === "resume") { if (musicSession || msyncSession) await audioPlayer.resume(); if (msyncSession) msyncSimulator.resume(); controller.resume(); }
-      if (command === "stop") { if (musicSession || msyncSession) audioPlayer.stop(); if (msyncSession) msyncSimulator.stop(); controller.stop(); }
-      if (command === "reset") { if (musicSession || msyncSession) audioPlayer.stop(); if (msyncSession) msyncSimulator.stop(); controller.reset(); }
+      await executeSessionCommand(button.dataset.command);
       await render("train");
     }));
   }
@@ -1048,7 +1155,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.5.0-sharing.0";
+document.querySelector("#build-version").textContent = "v0.5.0-voice.0";
 await refreshFooter();
 
 setInterval(() => {

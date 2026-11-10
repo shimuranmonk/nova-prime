@@ -1,6 +1,6 @@
 # Nova Prime Solution Specification
 
-> Implementation status: MSYNC simulation, local Statistics, and versioned custom-drill sharing are implemented through `0.5.0-sharing.0`; robot transport remains deliberately absent.
+> Implementation status: MSYNC simulation, local Statistics, versioned custom-drill sharing, and optional stable voice commands are implemented through `0.5.0-voice.0`; robot transport remains deliberately absent.
 
 ## Architecture
 
@@ -19,6 +19,8 @@ Bluetooth transport and persistent storage
 ```
 
 Features outside the robot executor may not write Bluetooth commands directly.
+
+Voice is an input adapter, not a session controller. It converts a confidence-checked exact phrase into a canonical session intent. Pause, Resume, and Stop enter the same application command path as touch. Start can only create a pending confirmation and requires a separate touch before the existing form submits. Recognition is one-shot, disabled by default, and never persists audio or transcripts.
 
 ## Application interface
 
@@ -98,6 +100,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 - `jewelflow/0.2-music` contains local tracks, playlists, Quick Music, unified Music sessions, and playable-audio recovery.
 - `jewelflow/0.4-statistics` contains local activity summaries and explainable plan guidance.
 - `jewelflow/0.5-sharing` contains versioned custom-drill packs, explicit device sharing, preview, and confirmed import.
+- `jewelflow/0.5-voice` contains capability-gated one-shot speech recognition, strict commands, privacy disclosure, and touch-confirmed Start.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

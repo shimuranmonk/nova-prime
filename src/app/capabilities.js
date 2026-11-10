@@ -29,6 +29,7 @@ export function detectCapabilities(environment = globalThis) {
     }),
     broadcastChannel: safely(() => "BroadcastChannel" in environment),
     webShare: safely(() => typeof navigatorObject.share === "function"),
+    speechRecognition: safely(() => typeof environment.SpeechRecognition === "function" || typeof environment.webkitSpeechRecognition === "function"),
     secureContext: safely(() => environment.isSecureContext),
     loopbackHost,
     localHttpServer,

@@ -1,6 +1,6 @@
 # Nova Prime Interface Direction
 
-> `0.5.0-sharing.0` adds a responsive Sharing page with explicit drill selection, a compact pack builder, capability-gated device sharing, and a clear validated import preview.
+> `0.5.0-voice.0` adds a compact responsive Voice card to Training, keeping it off by default and preserving every touch control.
 
 ## Approved visual hierarchy
 
@@ -25,4 +25,4 @@ The base presentation is light, compact, and card-led, with Nova teal for select
 
 ## Safety representation
 
-The interface never presents disabled robot functionality or simulated MSYNC as live transport. Custom drill management, visual editing, manual guided calibration, local Music, MSYNC validation/simulation, local Statistics, and versioned Sharing are operational. Calibration explicitly states that the user sends test balls with a separate safe control path; Nova Prime sends no robot command. Music is labelled as local audio, while table placement and sessions remain estimates or simulation and record zero physically dispatched balls. Statistics are labelled as activity analytics rather than skill scoring. Sharing states when data can leave the device and separates read-only preview from confirmed import.
+The interface never presents disabled robot functionality or simulated MSYNC as live transport. Custom drill management, visual editing, manual guided calibration, local Music, MSYNC validation/simulation, local Statistics, versioned Sharing, and optional Voice are operational. Voice exposes one deliberate Listen action, an exact-command disclosure, a privacy note, and a prominent touch confirmation for Start. Calibration explicitly states that the user sends test balls with a separate safe control path; Nova Prime sends no robot command. Music is labelled as local audio, while table placement and sessions remain estimates or simulation and record zero physically dispatched balls. Statistics are labelled as activity analytics rather than skill scoring. Sharing states when data can leave the device and separates read-only preview from confirmed import.
