@@ -1,5 +1,7 @@
 # Nova Prime Solution Specification
 
+> Implementation status: the MSYNC `Parser → Validator → Resolver → Timeline → Simulator → Session adapter` path is implemented in `0.3.0-msync.0`; transport remains deliberately absent.
+
 ## Architecture
 
 Nova Prime is a static, local-first ES-module application with two equal runtime environments: a hosted HTTPS web deployment and a device-local loopback HTTP server for use without internet or Wi-Fi. It will use one robot transport, one protocol layer, one execution queue, one session controller, and mode adapters for Reps, Time, Music, and MSYNC.

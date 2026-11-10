@@ -2,7 +2,7 @@ const DEFAULT_ROUTE = "train";
 
 export function routeFromHash(hash = "") {
   const candidate = hash.replace(/^#/, "").trim().toLowerCase();
-  return ["train", "music", "data", "overview", "capabilities", "roadmap"].includes(candidate)
+  return ["train", "music", "msync", "data", "overview", "capabilities", "roadmap"].includes(candidate)
     ? candidate
     : DEFAULT_ROUTE;
 }

@@ -293,6 +293,23 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 .playlist-add select { flex: 1; }
 .playlist-actions { margin-top: auto; }
 .playlist-actions .primary-button { flex: 1; }
+.msync-import-card { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(420px, 1.2fr); align-items: end; gap: 18px; margin-bottom: 12px; }
+.msync-import-card h2, .msync-attachment-card h2, .msync-issues h2 { margin: 0; }
+.msync-import-card p, .msync-attachment-card p { margin: 4px 0 0; color: var(--muted); font-size: .76rem; line-height: 1.45; }
+#msync-import-form { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: end; gap: 8px; }
+#msync-import-form label { display: grid; gap: 5px; color: var(--muted); font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+#msync-import-form select { width: 100%; min-height: 46px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); font: inherit; }
+#msync-import-form .file-button { min-height: 46px; padding: 9px 12px; color: white; cursor: pointer; }
+.msync-list { display: grid; gap: 10px; }
+.msync-attachment-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.msync-card-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.msync-card-actions button { min-height: 40px; }
+.msync-issues { margin-bottom: 12px; }
+.msync-issues ul { display: grid; gap: 7px; margin: 12px 0 0; padding: 0; list-style: none; }
+.msync-issues li { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; font-size: .74rem; }
+.msync-issues li span { color: var(--muted); }
+.msync-error { background: #fff1f2; }
+.msync-warning { background: #fff8e9; }
 
 .app-footer { display: flex; justify-content: space-between; gap: 12px; padding: 18px 2px 0; color: var(--muted); font-size: 0.72rem; }
 .menu-scrim { position: fixed; inset: 0; z-index: 9; border: 0; background: rgba(10, 26, 36, 0.42); }
@@ -387,6 +404,11 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
   .track-row { grid-template-columns: auto 1fr auto; }
   .track-rename { grid-column: 1 / -1; }
   .playlist-create form { min-width: 0; flex-direction: column; }
+  .msync-import-card { grid-template-columns: 1fr; }
+  #msync-import-form { grid-template-columns: 1fr; }
+  .msync-attachment-card { align-items: stretch; flex-direction: column; }
+  .msync-card-actions .primary-button { flex: 1 1 100%; }
+  .msync-issues li { grid-template-columns: 1fr; gap: 3px; }
 }
 
 @media (max-width: 390px) {

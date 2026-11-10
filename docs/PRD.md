@@ -1,5 +1,7 @@
 # Nova Prime Product Requirements
 
+> Implementation status: Foundation, Music, and the MSYNC v1 validation/simulation scope are implemented in `0.3.0-msync.0`. Live robot execution remains excluded.
+
 ## Vision
 
 Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova Trainer supplies the canonical robot, calibration, physics, editor, and session foundation. Nova Plus contributes Music, playlists, MSYNC, statistics, sharing, and later stable voice control.

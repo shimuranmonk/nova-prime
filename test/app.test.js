@@ -4,8 +4,8 @@ import { detectCapabilities, isLoopbackHostname } from "../src/app/capabilities.
 import { enabledFeatures, FEATURE_FLAGS } from "../src/app/feature-flags.js";
 import { routeFromHash } from "../src/app/router.js";
 
-test("Music is enabled while connected features remain disabled", () => {
-  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), ["music"]);
+test("Music and MSYNC are enabled while connected features remain disabled", () => {
+  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), ["music", "msync"]);
 });
 
 test("capability detection is defensive", () => {
@@ -40,5 +40,9 @@ test("unknown routes return to training", () => {
   assert.equal(routeFromHash("#music"), "music");
   assert.equal(routeFromHash("#roadmap"), "roadmap");
   assert.equal(routeFromHash("#unknown"), "train");
+});
+
+test("MSYNC has a first-class application route", () => {
+  assert.equal(routeFromHash("#msync"), "msync");
 });
 
