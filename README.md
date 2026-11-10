@@ -4,6 +4,10 @@ Nova Prime is the unified community platform for controlling and training with t
 
 The project combines Nova Trainer's robot control, calibration, physics, visual drill editing, and adaptive feedback with Nova Plus's Music, playlists, MSYNC, statistics, sharing, and future voice control.
 
+**Live application:** [shimuranmonk.github.io/nova-prime](https://shimuranmonk.github.io/nova-prime/)
+
+**Repository:** [github.com/shimuranmonk/nova-prime](https://github.com/shimuranmonk/nova-prime)
+
 ## Current status
 
 This branch advances the JewelFlow 0.1 Foundation with local sessions, recovery, and persistent custom drills:
