@@ -37,12 +37,18 @@
 - Phone-sized create, rename, duplicate, group move, reorder, selection, simulated completion, history naming, export, and fresh-tab persistence smoke test
 - Phone/tablet visual-editor create, reorder, parameter edit, level copy, save, cancel, and reopen smoke test
 - Phone portrait guided calibration, five observations, save, Quick Check suggestions, and calibrated-editor smoke test
+- Audio content-identity deduplication, metadata validation, and missing-audio recovery
+- Playlist create, rename, ordering, add/remove, delete protection, and resolution
+- Quick Music selection and canonical Music session lifecycle
+- Fake audio Pause, Resume, automatic advancement, completion, error, and Stop
+- Playable audio Blob backup and validated restore
+- Phone, tablet portrait, and tablet landscape Music-library and Music-session smoke tests
 
 ## Future integration checks
 
 - Fake Bluetooth login, writes, notifications, failures, and disconnects
 - Fake monotonic timers and visibility changes
-- Fake audio playback and playlist completion
+- Browser-specific codec and quota failure fixtures
 - Fake IndexedDB transactions and quota failures
 - MSYNC parser, validation, simulation, cue drift, and queue boundaries
 - Legacy Trainer and Plus migration fixtures

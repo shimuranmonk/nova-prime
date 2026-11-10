@@ -1,6 +1,8 @@
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
 import { CalibrationService } from "../application/calibration/calibration-service.js";
 import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
+import { AudioPlayer } from "../application/music/audio-player.js";
+import { MusicLibraryService } from "../application/music/music-library-service.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
 import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
 import { createSessionSpec } from "../domain/sessions/schema.js";
@@ -32,6 +34,11 @@ let customMessage = "";
 let customCache = [];
 let calibrationProfile = null;
 let calibrationMessage = "";
+let musicMessage = "";
+let trackCache = [];
+let playlistCache = [];
+let musicSnapshot = null;
+let appReady = false;
 
 const uiState = {
   mode: "reps",
@@ -43,6 +50,8 @@ const uiState = {
   group: "A",
   customArrange: false,
   drillId: BUILTIN_DRILLS[0].id,
+  playlistId: null,
+  quickTrackIds: [],
 };
 
 const store = await IndexedDbStore.open().catch(() => {
@@ -51,6 +60,8 @@ const store = await IndexedDbStore.open().catch(() => {
 });
 const customDrillService = new CustomDrillService(store);
 const calibrationService = new CalibrationService(store);
+const musicLibrary = new MusicLibraryService(store);
+const audioPlayer = new AudioPlayer();
 const drillEditor = createDrillEditor({
   dialog: editorDialog,
   root: editorRoot,
@@ -83,6 +94,12 @@ async function refreshCalibrationProfile() {
   calibrationProfile = await calibrationService.active();
 }
 
+async function refreshMusicCache() {
+  [trackCache, playlistCache] = await Promise.all([musicLibrary.tracks(), musicLibrary.playlists()]);
+  if (uiState.playlistId && !playlistCache.some((playlist) => playlist.id === uiState.playlistId)) uiState.playlistId = null;
+  uiState.quickTrackIds = uiState.quickTrackIds.filter((id) => trackCache.some((track) => track.id === id));
+}
+
 function resolveDrill(id) {
   return getBuiltinDrill(id) ?? customCache.find((drill) => drill.id === id) ?? null;
 }
@@ -99,12 +116,48 @@ const controller = new LocalSessionController({
   },
 });
 
+audioPlayer.subscribe((snapshot) => {
+  const previousState = musicSnapshot?.state;
+  musicSnapshot = snapshot;
+  const activeMusic = controller.snapshot().spec?.mode === "music";
+  if (snapshot.state === "completed" && previousState !== "completed" && activeMusic) {
+    controller.complete({ completedCycles: snapshot.completedTracks });
+  }
+  if (snapshot.state === "error" && previousState !== "error" && activeMusic) {
+    musicMessage = snapshot.error;
+    controller.fail("AUDIO_PLAYBACK_FAILED");
+  }
+  if (appReady && ["train", "music"].includes(activeRoute)) void render(activeRoute);
+});
+
 const escapeHtml = (value) => String(value)
   .replaceAll("&", "&amp;")
   .replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;")
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#039;");
+
+function formatDuration(milliseconds) {
+  const seconds = Math.max(0, Math.round(Number(milliseconds) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  return value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function selectedMusicSummary() {
+  if (uiState.playlistId) {
+    const playlist = playlistCache.find((item) => item.id === uiState.playlistId);
+    if (playlist) {
+      const durationMs = playlist.items.reduce((total, item) => total + (trackCache.find((track) => track.id === item.trackId)?.durationMs ?? 0), 0);
+      return { label: playlist.name, count: playlist.items.length, durationMs };
+    }
+  }
+  const tracks = uiState.quickTrackIds.map((id) => trackCache.find((track) => track.id === id)).filter(Boolean);
+  return { label: "Quick Music", count: tracks.length, durationMs: tracks.reduce((total, track) => total + track.durationMs, 0) };
+}
 
 function connectionCard() {
   return `
@@ -132,18 +185,19 @@ function modeButton(mode, label, available = true, locked = false) {
 function sessionConsole(session) {
   if (session.state === SESSION_STATES.IDLE) return "";
   const target = session.spec?.mode === "time" ? session.spec.durationSeconds : session.spec?.repetitions;
-  let metric = session.spec?.mode === "time"
-    ? `${Math.round(session.elapsedSeconds)} / ${target} seconds`
-    : `${session.completedCycles} / ${target} repetitions`;
+  let metric = session.spec?.mode === "music"
+    ? `${musicSnapshot?.completedTracks ?? 0} / ${musicSnapshot?.trackCount ?? 0} tracks · ${formatDuration((musicSnapshot?.currentTime ?? 0) * 1000)} / ${formatDuration((musicSnapshot?.duration ?? 0) * 1000)}`
+    : session.spec?.mode === "time" ? `${Math.round(session.elapsedSeconds)} / ${target} seconds` : `${session.completedCycles} / ${target} repetitions`;
   if (session.state === SESSION_STATES.COUNTDOWN) metric = `Starting in ${Math.ceil(session.countdownRemaining)}`;
   if (session.state === SESSION_STATES.PAUSED) metric = `Paused · ${metric}`;
   if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s · ${metric}`;
-  const progress = Math.round(session.progress * 100);
+  const progress = Math.round((session.spec?.mode === "music" ? musicSnapshot?.progress ?? 0 : session.progress) * 100);
   const drill = resolveDrill(session.spec?.drillId);
+  const trackLabel = session.spec?.mode === "music" && musicSnapshot?.currentTrack ? ` · ${escapeHtml(musicSnapshot.currentTrack.displayName)}` : "";
   const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
   return `
     <section class="app-card session-console" aria-label="Active session">
-      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${escapeHtml(drill?.name ?? "Local session")}</p></div><span class="simulation-pill">Simulation</span></div>
+      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${escapeHtml(drill?.name ?? "Local session")}${trackLabel}</p></div><span class="simulation-pill">${session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
       <strong class="session-metric">${metric}</strong>
       <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
       <div class="console-actions">
@@ -159,6 +213,25 @@ function setupCard(session) {
   const locked = session.state !== SESSION_STATES.IDLE;
   const amountLabel = uiState.mode === "time" ? "Duration (s)" : "Count";
   const selectedDrill = resolveDrill(uiState.drillId);
+  const music = selectedMusicSummary();
+  const sourceOptions = [
+    ...(uiState.quickTrackIds.length ? [`<option value="quick" ${uiState.playlistId ? "" : "selected"}>Quick Music · ${uiState.quickTrackIds.length} tracks</option>`] : []),
+    ...playlistCache.map((playlist) => `<option value="${escapeHtml(playlist.id)}" ${uiState.playlistId === playlist.id ? "selected" : ""}>${escapeHtml(playlist.name)} · ${playlist.items.length} tracks</option>`),
+  ].join("");
+  const musicForm = `
+      <form id="session-form" class="session-form music-session-form">
+        <label><span>Music source</span><select name="musicSource" ${locked ? "disabled" : ""} required>${sourceOptions || '<option value="">No music saved</option>'}</select></label>
+        <div class="music-source-summary"><strong>${escapeHtml(music.label)}</strong><span>${music.count} track${music.count === 1 ? "" : "s"} · ${formatDuration(music.durationMs)}</span></div>
+        <a class="manage-music-link" href="#music">Manage music</a>
+        <button class="primary-button" type="submit" ${locked || music.count === 0 ? "disabled" : ""}>Start Music session</button>
+      </form>`;
+  const standardForm = `
+      <form id="session-form" class="session-form">
+        <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
+        <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
+        <label><span>Countdown</span><select name="countdown" ${locked ? "disabled" : ""}><option value="3" ${uiState.countdownSeconds === 3 ? "selected" : ""}>3 seconds</option><option value="5" ${uiState.countdownSeconds === 5 ? "selected" : ""}>5 seconds</option><option value="0" ${uiState.countdownSeconds === 0 ? "selected" : ""}>None</option></select></label>
+        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>
+      </form>`;
   return `
     <section class="app-card setup-card" aria-labelledby="setup-title">
       <div class="section-heading"><div><span class="eyebrow">QUICK TRAINING</span><h2 id="setup-title">Session setup</h2></div><span class="simulation-pill">Dry run</span></div>
@@ -173,17 +246,13 @@ function setupCard(session) {
       <div class="mode-selector" role="group" aria-label="Training mode">
         ${modeButton("reps", "Reps", true, locked)}
         ${modeButton("time", "Time", true, locked)}
-        ${modeButton("music", "Music", false, locked)}
+        ${modeButton("music", "Music", true, locked)}
         ${modeButton("msync", "MSYNC", false, locked)}
       </div>
 
-      <form id="session-form" class="session-form">
-        <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
-        <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
-        <label><span>Countdown</span><select name="countdown" ${locked ? "disabled" : ""}><option value="3" ${uiState.countdownSeconds === 3 ? "selected" : ""}>3 seconds</option><option value="5" ${uiState.countdownSeconds === 5 ? "selected" : ""}>5 seconds</option><option value="0" ${uiState.countdownSeconds === 0 ? "selected" : ""}>None</option></select></label>
-        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>
-      </form>
-      <p class="helper-text">Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. Uses the canonical lifecycle, sends no robot commands, and records zero dispatched balls.</p>
+      ${uiState.mode === "music" ? musicForm : standardForm}
+      <p class="helper-text">Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. ${uiState.mode === "music" ? "Audio stays on this device and completes automatically." : "Uses the canonical lifecycle."} Sends no robot commands and records zero dispatched balls.</p>
+      ${musicMessage ? `<p class="custom-message" role="status">${escapeHtml(musicMessage)}</p>` : ""}
     </section>`;
 }
 
@@ -246,8 +315,42 @@ function customDrills(session) {
     </section>`;
 }
 
+function playlistCard(playlist) {
+  const ordered = [...playlist.items].sort((a, b) => a.order - b.order);
+  const durationMs = ordered.reduce((total, item) => total + (trackCache.find((track) => track.id === item.trackId)?.durationMs ?? 0), 0);
+  const items = ordered.map((item, index) => {
+    const track = trackCache.find((entry) => entry.id === item.trackId);
+    return `<li><div><strong>${escapeHtml(track?.displayName ?? "Missing track")}</strong><span>${track ? formatDuration(track.durationMs) : "Unavailable"}</span></div><div class="music-row-actions"><button type="button" data-playlist-move="${escapeHtml(playlist.id)}" data-index="${index}" data-direction="-1" ${index === 0 ? "disabled" : ""} aria-label="Move track up">↑</button><button type="button" data-playlist-move="${escapeHtml(playlist.id)}" data-index="${index}" data-direction="1" ${index === ordered.length - 1 ? "disabled" : ""} aria-label="Move track down">↓</button><button type="button" data-playlist-remove="${escapeHtml(playlist.id)}" data-index="${index}" aria-label="Remove track">×</button></div></li>`;
+  }).join("");
+  return `<article class="app-card playlist-card">
+    <form data-playlist-rename="${escapeHtml(playlist.id)}" class="playlist-heading"><label><span>Playlist name</span><input name="name" maxlength="80" value="${escapeHtml(playlist.name)}" required></label><button type="submit">Save name</button></form>
+    <p>${ordered.length} track${ordered.length === 1 ? "" : "s"} · ${formatDuration(durationMs)}</p>
+    <ol class="playlist-items">${items}</ol>
+    <div class="playlist-add"><select data-playlist-add-select="${escapeHtml(playlist.id)}" aria-label="Track to add">${trackCache.map((track) => `<option value="${escapeHtml(track.id)}">${escapeHtml(track.displayName)}</option>`).join("")}</select><button type="button" data-playlist-add="${escapeHtml(playlist.id)}" ${trackCache.length ? "" : "disabled"}>Add track</button></div>
+    <div class="playlist-actions"><button class="primary-button" type="button" data-playlist-use="${escapeHtml(playlist.id)}">Use in training</button><button class="danger-button" type="button" data-playlist-delete="${escapeHtml(playlist.id)}">Delete playlist</button></div>
+  </article>`;
+}
+
+async function musicView() {
+  await refreshMusicCache();
+  const trackRows = trackCache.map((track) => `<article class="track-row">
+    <input type="checkbox" data-quick-track="${escapeHtml(track.id)}" aria-label="Select ${escapeHtml(track.displayName)} for Quick Music" ${uiState.quickTrackIds.includes(track.id) ? "checked" : ""}>
+    <div class="track-copy"><strong>${escapeHtml(track.displayName)}</strong><span>${formatDuration(track.durationMs)} · ${formatBytes(track.byteSize)} · stored locally</span></div>
+    <form data-track-rename="${escapeHtml(track.id)}" class="track-rename"><input name="name" value="${escapeHtml(track.displayName)}" maxlength="80" aria-label="Rename ${escapeHtml(track.displayName)}"><button type="submit">Rename</button></form>
+    <button class="danger-button" type="button" data-track-delete="${escapeHtml(track.id)}">Delete</button>
+  </article>`).join("");
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">LOCAL MUSIC</span><h1>Music library</h1><p>Import audio once, build playlists, or select a few tracks for Quick Music. Audio remains in this browser and can play without internet or Wi-Fi.</p></div>
+    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
+    <section class="app-card music-import-card"><div><h2>Tracks</h2><p>${trackCache.length} stored · duplicate files are skipped by content identity</p></div><label class="primary-button music-import">Import audio<input id="music-import" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.opus,.flac,.aac" multiple></label></section>
+    ${musicMessage ? `<p class="notice music-notice" role="status">${escapeHtml(musicMessage)}</p>` : ""}
+    <section class="music-track-list" aria-label="Stored tracks">${trackRows || '<div class="app-card empty-library"><strong>No music stored yet</strong><span>Import audio files from this device. Nova Prime stores them locally and does not upload them.</span></div>'}</section>
+    <section class="app-card quick-music-card"><div><h2>Quick Music</h2><p>Select tracks above for a one-off training queue.</p></div><div><button id="quick-music-use" class="primary-button" type="button" ${uiState.quickTrackIds.length ? "" : "disabled"}>Use ${uiState.quickTrackIds.length} selected</button></div></section>
+    <section class="app-card playlist-create"><div><h2>New playlist</h2><p>Create a reusable playlist from the tracks currently selected for Quick Music.</p></div><form id="playlist-create"><input name="name" maxlength="80" placeholder="Playlist name" required><button class="primary-button" type="submit" ${uiState.quickTrackIds.length ? "" : "disabled"}>Create from selected</button></form></section>
+    <div class="playlist-grid">${playlistCache.map(playlistCard).join("")}</div>`;
+}
+
 async function trainView() {
-  await Promise.all([refreshCustomCache(), refreshCalibrationProfile()]);
+  await Promise.all([refreshCustomCache(), refreshCalibrationProfile(), refreshMusicCache()]);
   const session = controller.snapshot();
   return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
 }
@@ -268,7 +371,7 @@ async function dataView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -280,7 +383,7 @@ function roadmap() {
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
-const renderers = { train: trainView, data: dataView, overview, capabilities: capabilityView, roadmap };
+const renderers = { train: trainView, music: musicView, data: dataView, overview, capabilities: capabilityView, roadmap };
 
 async function render(route) {
   activeRoute = route;
@@ -328,7 +431,13 @@ function bindRouteActions(route) {
       await render("train");
     });
     document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
-    document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.mode = button.dataset.uiMode; uiState.amount = uiState.mode === "time" ? 60 : 10; void render("train"); }));
+    document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => {
+      uiState.mode = button.dataset.uiMode;
+      uiState.amount = uiState.mode === "time" ? 60 : 10;
+      if (uiState.mode === "music" && !uiState.playlistId && uiState.quickTrackIds.length === 0) uiState.playlistId = playlistCache[0]?.id ?? null;
+      musicMessage = "";
+      void render("train");
+    }));
     document.querySelectorAll("[data-category]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; uiState.drillId = getBuiltinDrills(uiState.category)[0].id; void render("train"); }));
     document.querySelectorAll("[data-drill-id]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.drillId; void render("train"); }));
     document.querySelectorAll("[data-group]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; uiState.customArrange = false; void render("train"); }));
@@ -363,27 +472,134 @@ function bindRouteActions(route) {
     });
     document.querySelector("#session-form")?.addEventListener("input", (event) => {
       const form = new FormData(event.currentTarget);
-      uiState.amount = Number(form.get("amount"));
-      uiState.pauseSeconds = Number(form.get("pause"));
-      uiState.countdownSeconds = Number(form.get("countdown"));
+      if (form.has("amount")) uiState.amount = Number(form.get("amount"));
+      if (form.has("pause")) uiState.pauseSeconds = Number(form.get("pause"));
+      if (form.has("countdown")) uiState.countdownSeconds = Number(form.get("countdown"));
+      if (form.has("musicSource")) {
+        uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
+        void render("train");
+      }
     });
-    document.querySelector("#session-form")?.addEventListener("submit", (event) => {
+    document.querySelector("#session-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      uiState.amount = Number(form.get("amount"));
-      uiState.pauseSeconds = Number(form.get("pause"));
-      uiState.countdownSeconds = Number(form.get("countdown"));
-      const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
-      controller.start(spec, { countdownSeconds: uiState.countdownSeconds });
-      void render("train");
+      if (uiState.mode === "music") {
+        uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
+        try {
+          const selection = await musicLibrary.resolve({ playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds });
+          const spec = createSessionSpec({ mode: "music", level: uiState.level, drillId: uiState.drillId, playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds, pauseSeconds: 0 });
+          const result = controller.start(spec, { countdownSeconds: 0 });
+          if (result.status !== "EXECUTED") throw new Error("Music session could not start");
+          musicMessage = `Playing ${selection.label}.`;
+          await audioPlayer.start(selection.tracks);
+        } catch (error) {
+          musicMessage = error.message;
+          if (controller.snapshot().spec?.mode === "music") controller.fail("AUDIO_START_FAILED");
+        }
+      } else {
+        uiState.amount = Number(form.get("amount"));
+        uiState.pauseSeconds = Number(form.get("pause"));
+        uiState.countdownSeconds = Number(form.get("countdown"));
+        const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
+        controller.start(spec, { countdownSeconds: uiState.countdownSeconds });
+      }
+      await render("train");
     });
-    document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", () => {
+    document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", async () => {
       const command = button.dataset.command;
-      if (command === "pause") controller.pause();
-      if (command === "resume") controller.resume();
-      if (command === "stop") controller.stop();
-      if (command === "reset") controller.reset();
-      void render("train");
+      const musicSession = controller.snapshot().spec?.mode === "music";
+      if (command === "pause") { if (musicSession) audioPlayer.pause(); controller.pause(); }
+      if (command === "resume") { if (musicSession) await audioPlayer.resume(); controller.resume(); }
+      if (command === "stop") { if (musicSession) audioPlayer.stop(); controller.stop(); }
+      if (command === "reset") { if (musicSession) audioPlayer.stop(); controller.reset(); }
+      await render("train");
+    }));
+  }
+
+  if (route === "music") {
+    document.querySelector("#music-import")?.addEventListener("change", async (event) => {
+      try {
+        const result = await musicLibrary.importFiles(event.target.files);
+        musicMessage = `Imported ${result.imported.length} track${result.imported.length === 1 ? "" : "s"}${result.duplicates.length ? `; skipped ${result.duplicates.length} duplicate${result.duplicates.length === 1 ? "" : "s"}` : ""}.`;
+      } catch (error) { musicMessage = `Import blocked: ${error.message}`; }
+      await render("music");
+    });
+    document.querySelectorAll("[data-quick-track]").forEach((input) => input.addEventListener("change", () => {
+      const selected = new Set(uiState.quickTrackIds);
+      input.checked ? selected.add(input.dataset.quickTrack) : selected.delete(input.dataset.quickTrack);
+      uiState.quickTrackIds = trackCache.filter((track) => selected.has(track.id)).map((track) => track.id);
+      void render("music");
+    }));
+    document.querySelector("#quick-music-use")?.addEventListener("click", () => {
+      uiState.mode = "music";
+      uiState.playlistId = null;
+      location.hash = "#train";
+    });
+    document.querySelector("#playlist-create")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const playlist = await musicLibrary.createPlaylist(new FormData(event.currentTarget).get("name"), uiState.quickTrackIds);
+        uiState.playlistId = playlist.id;
+        musicMessage = `Created ${playlist.name}.`;
+      } catch (error) { musicMessage = error.message; }
+      await render("music");
+    });
+    document.querySelectorAll("[data-track-rename]").forEach((form) => form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try { await musicLibrary.renameTrack(form.dataset.trackRename, new FormData(form).get("name")); musicMessage = "Track renamed."; }
+      catch (error) { musicMessage = error.message; }
+      await render("music");
+    }));
+    document.querySelectorAll("[data-track-delete]").forEach((button) => button.addEventListener("click", async () => {
+      const track = trackCache.find((item) => item.id === button.dataset.trackDelete);
+      if (!track || !globalThis.confirm(`Delete “${track.displayName}” from this device?`)) return;
+      try { await musicLibrary.deleteTrack(track.id); uiState.quickTrackIds = uiState.quickTrackIds.filter((id) => id !== track.id); musicMessage = "Track deleted."; }
+      catch (error) { musicMessage = error.message; }
+      await render("music");
+    }));
+    document.querySelectorAll("[data-playlist-rename]").forEach((form) => form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const playlist = playlistCache.find((item) => item.id === form.dataset.playlistRename);
+      try { await musicLibrary.updatePlaylist(playlist.id, { name: new FormData(form).get("name"), trackIds: [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId) }); musicMessage = "Playlist renamed."; }
+      catch (error) { musicMessage = error.message; }
+      await render("music");
+    }));
+    document.querySelectorAll("[data-playlist-move]").forEach((button) => button.addEventListener("click", async () => {
+      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistMove);
+      const ids = [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId);
+      const from = Number(button.dataset.index); const to = from + Number(button.dataset.direction);
+      [ids[from], ids[to]] = [ids[to], ids[from]];
+      await musicLibrary.updatePlaylist(playlist.id, { name: playlist.name, trackIds: ids });
+      await render("music");
+    }));
+    document.querySelectorAll("[data-playlist-remove]").forEach((button) => button.addEventListener("click", async () => {
+      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistRemove);
+      const ids = [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId);
+      ids.splice(Number(button.dataset.index), 1);
+      if (ids.length === 0) { musicMessage = "A playlist needs at least one track; delete the playlist instead."; await render("music"); return; }
+      await musicLibrary.updatePlaylist(playlist.id, { name: playlist.name, trackIds: ids });
+      await render("music");
+    }));
+    document.querySelectorAll("[data-playlist-add]").forEach((button) => button.addEventListener("click", async () => {
+      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistAdd);
+      const select = document.querySelector(`[data-playlist-add-select="${CSS.escape(playlist.id)}"]`);
+      const ids = [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId);
+      ids.push(select.value);
+      await musicLibrary.updatePlaylist(playlist.id, { name: playlist.name, trackIds: ids });
+      await render("music");
+    }));
+    document.querySelectorAll("[data-playlist-use]").forEach((button) => button.addEventListener("click", () => {
+      uiState.mode = "music";
+      uiState.playlistId = button.dataset.playlistUse;
+      location.hash = "#train";
+    }));
+    document.querySelectorAll("[data-playlist-delete]").forEach((button) => button.addEventListener("click", async () => {
+      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistDelete);
+      if (!playlist || !globalThis.confirm(`Delete playlist “${playlist.name}”? Audio tracks will remain stored.`)) return;
+      await musicLibrary.deletePlaylist(playlist.id);
+      if (uiState.playlistId === playlist.id) uiState.playlistId = null;
+      musicMessage = "Playlist deleted.";
+      await render("music");
     }));
   }
 
@@ -502,8 +718,9 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
   await render("train");
 });
 
+appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.1.0-calibration.0";
+document.querySelector("#build-version").textContent = "v0.2.0-music.0";
 await refreshFooter();
 
 setInterval(() => {

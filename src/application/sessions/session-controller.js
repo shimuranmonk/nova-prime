@@ -15,6 +15,8 @@ export class LocalSessionController {
   #completedCycles = 0;
   #cyclePauseRemaining = 0;
   #startedAt = null;
+  #errorCode = null;
+  #recorded = false;
   #now;
   #onRecord;
 
@@ -47,7 +49,7 @@ export class LocalSessionController {
   start(spec, { countdownSeconds = 3 } = {}) {
     if (this.state !== SESSION_STATES.IDLE) return freezeSnapshot({ status: COMMAND_RESULTS.BLOCKED, reason: "SESSION_ACTIVE" });
     const validation = validateSessionSpec(spec);
-    if (!validation.valid || !["reps", "time"].includes(spec.mode)) {
+    if (!validation.valid || !["reps", "time", "music"].includes(spec.mode)) {
       return freezeSnapshot({ status: COMMAND_RESULTS.BLOCKED, reason: "INVALID_LOCAL_SESSION", issues: validation.issues });
     }
 
@@ -57,6 +59,8 @@ export class LocalSessionController {
     this.#completedCycles = 0;
     this.#cyclePauseRemaining = 0;
     this.#startedAt = this.#now();
+    this.#errorCode = null;
+    this.#recorded = false;
     this.#machine.dispatch(SESSION_EVENTS.PREPARE);
     this.#machine.dispatch(SESSION_EVENTS.ARM);
     this.#machine.dispatch(SESSION_EVENTS.COUNTDOWN);
@@ -72,7 +76,10 @@ export class LocalSessionController {
       if (this.#countdownRemaining === 0) this.#machine.dispatch(SESSION_EVENTS.START);
     } else if (this.state === SESSION_STATES.RUNNING) {
       this.#elapsedSeconds += amount;
-      if (this.#spec.mode === "reps") {
+      if (this.#spec.mode === "music") {
+        // Audio owns completion; the canonical session still owns elapsed time,
+        // Pause, Resume, Stop, recording, and failure recovery.
+      } else if (this.#spec.mode === "reps") {
         if (this.#cyclePauseRemaining > 0) {
           this.#cyclePauseRemaining = Math.max(0, this.#cyclePauseRemaining - amount);
         } else {
@@ -88,7 +95,7 @@ export class LocalSessionController {
 
       const complete = this.#spec.mode === "reps"
         ? this.#completedCycles >= this.#spec.repetitions
-        : this.#elapsedSeconds >= this.#spec.durationSeconds;
+        : this.#spec.mode === "time" && this.#elapsedSeconds >= this.#spec.durationSeconds;
       if (complete) void this.#finish("completed");
     }
     this.#notify();
@@ -103,6 +110,26 @@ export class LocalSessionController {
 
   resume() {
     const result = this.#machine.dispatch(SESSION_EVENTS.RESUME);
+    this.#notify();
+    return result;
+  }
+
+  complete({ completedCycles = this.#completedCycles } = {}) {
+    const result = this.#machine.dispatch(SESSION_EVENTS.COMPLETE);
+    if (result.status === COMMAND_RESULTS.EXECUTED) {
+      this.#completedCycles = Math.max(0, Math.floor(completedCycles));
+      void this.#record("completed");
+    }
+    this.#notify();
+    return result;
+  }
+
+  fail(errorCode = "SESSION_FAILED") {
+    const result = this.#machine.dispatch(SESSION_EVENTS.FAIL);
+    if (result.status === COMMAND_RESULTS.EXECUTED) {
+      this.#errorCode = String(errorCode);
+      void this.#record("failed");
+    }
     this.#notify();
     return result;
   }
@@ -124,7 +151,8 @@ export class LocalSessionController {
   }
 
   async #record(outcome) {
-    if (!this.#spec || !this.#startedAt) return;
+    if (!this.#spec || !this.#startedAt || this.#recorded) return;
+    this.#recorded = true;
     const record = createSessionRecord({
       mode: this.#spec.mode,
       startedAt: this.#startedAt,
@@ -135,6 +163,9 @@ export class LocalSessionController {
       completedCycles: this.#completedCycles,
       durationSeconds: Math.round(this.#elapsedSeconds),
       drillId: this.#spec.drillId,
+      playlistId: this.#spec.playlistId,
+      quickTrackIds: this.#spec.quickTrackIds,
+      errorCode: this.#errorCode,
       simulation: true,
     });
     await this.#onRecord(record);
@@ -157,10 +188,13 @@ export class LocalSessionController {
     this.#completedCycles = 0;
     this.#cyclePauseRemaining = 0;
     this.#startedAt = null;
+    this.#errorCode = null;
+    this.#recorded = false;
   }
 
   #progress() {
     if (!this.#spec) return 0;
+    if (this.#spec.mode === "music") return 0;
     const current = this.#spec.mode === "reps" ? this.#completedCycles : this.#elapsedSeconds;
     const target = this.#spec.mode === "reps" ? this.#spec.repetitions : this.#spec.durationSeconds;
     return Math.min(1, target > 0 ? current / target : 0);

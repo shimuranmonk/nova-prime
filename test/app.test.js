@@ -4,8 +4,8 @@ import { detectCapabilities, isLoopbackHostname } from "../src/app/capabilities.
 import { enabledFeatures, FEATURE_FLAGS } from "../src/app/feature-flags.js";
 import { routeFromHash } from "../src/app/router.js";
 
-test("foundation features are disabled", () => {
-  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), []);
+test("Music is enabled while connected features remain disabled", () => {
+  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), ["music"]);
 });
 
 test("capability detection is defensive", () => {
@@ -37,6 +37,7 @@ test("mobile loopback HTTP hosting is identified", () => {
 test("unknown routes return to training", () => {
   assert.equal(routeFromHash("#train"), "train");
   assert.equal(routeFromHash("#data"), "data");
+  assert.equal(routeFromHash("#music"), "music");
   assert.equal(routeFromHash("#roadmap"), "roadmap");
   assert.equal(routeFromHash("#unknown"), "train");
 });
