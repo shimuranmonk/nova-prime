@@ -10,7 +10,7 @@ The project combines Nova Trainer's robot control foundation, calibration, physi
 
 ## Current status
 
-This branch advances Nova Prime through the JewelFlow 0.6 robot foundation, retaining all prior features while packaging a safety-gated live-control stack:
+This branch advances Nova Prime through the JewelFlow 0.7 migration increment, retaining the safety-gated robot foundation while adding a controlled Nova Plus custom-drill migration path:
 
 - Native JavaScript ES-module project structure
 - Canonical domain schemas and validation
@@ -43,6 +43,7 @@ This branch advances Nova Prime through the JewelFlow 0.6 robot foundation, reta
 - Versioned `nova-prime-share` drill packs with 100-drill and 1 MB safety limits
 - Explicit custom-drill selection, portable download, and optional operating-system share sheet
 - Read-only incoming preview followed by confirmed atomic import with safe conflict handling
+- Nova Plus CSV preview for Groups A–C with strict ball validation, built-in exclusion, atomic import, and idempotent migration receipts
 - Versioned backup and restore that preserves playable local audio
 - Dedicated phone, tablet portrait, tablet landscape, and desktop layouts from one static bundle
 - Application drawer for Data, About, Diagnostics, and Roadmap
@@ -73,7 +74,7 @@ Reps, Time, Music, and MSYNC exercise the same canonical lifecycle and record ze
 
 Browser data is scoped to the complete origin. Keep the same protocol, hostname, port, and path, and export a backup before changing a hosted or device-local address.
 
-The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), robot release gate in [`docs/ROBOT.md`](docs/ROBOT.md), guided calibration in [`docs/CALIBRATION.md`](docs/CALIBRATION.md), Music in [`docs/MUSIC.md`](docs/MUSIC.md), MSYNC in [`docs/MSYNC.md`](docs/MSYNC.md), Statistics in [`docs/STATISTICS.md`](docs/STATISTICS.md), Sharing in [`docs/SHARING.md`](docs/SHARING.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unverified controls remain visibly disabled and are not counted as live features.
+The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), migration behavior in [`docs/MIGRATION.md`](docs/MIGRATION.md), robot release gate in [`docs/ROBOT.md`](docs/ROBOT.md), guided calibration in [`docs/CALIBRATION.md`](docs/CALIBRATION.md), Music in [`docs/MUSIC.md`](docs/MUSIC.md), MSYNC in [`docs/MSYNC.md`](docs/MSYNC.md), Statistics in [`docs/STATISTICS.md`](docs/STATISTICS.md), Sharing in [`docs/SHARING.md`](docs/SHARING.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unverified controls remain visibly disabled and are not counted as live features.
 
 Nova Prime supports two complete runtime modes:
 

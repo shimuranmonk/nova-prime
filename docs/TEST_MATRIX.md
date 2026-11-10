@@ -63,6 +63,8 @@
 - Fake Web Bluetooth profile discovery, notifications, serialized writes, and disconnect
 - Fake authenticated login success and timeout failure
 - Executor stale-queue cancellation, priority Stop ordering, and bounded idempotent Stop retry
+- Nova Plus CSV built-in exclusion, variant grouping, and Levels 1–3 transformation
+- Read-only preview, strict row rejection, atomic drill-and-receipt commit, duplicate receipt blocking, capacity failure, and simulated transaction failure
 
 ## Future integration checks
 
@@ -70,7 +72,7 @@
 - Browser-specific codec and quota failure fixtures
 - Fake IndexedDB transactions and quota failures
 - Long-running cue drift across live-executor queue boundaries
-- Legacy Trainer and Plus migration fixtures
+- Legacy Trainer and remaining Nova Plus settings, statistics, and media migration fixtures
 
 ## Required physical robot checks before live release
 
