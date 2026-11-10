@@ -5,6 +5,7 @@ import { MsyncService } from "../application/msync/msync-service.js";
 import { MsyncSimulator } from "../application/msync/msync-simulator.js";
 import { AudioPlayer } from "../application/music/audio-player.js";
 import { MusicLibraryService } from "../application/music/music-library-service.js";
+import { NovaPlusCsvMigrationService } from "../application/migration/nova-plus-csv-migration.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
 import { SharingService } from "../application/sharing/sharing-service.js";
 import { VoiceController } from "../application/voice/voice-controller.js";
@@ -36,6 +37,8 @@ const calibrationRoot = document.querySelector("#calibration-root");
 let activeRoute = "train";
 let storageNotice = "";
 let dataMessage = "";
+let migrationMessage = "";
+let migrationPreview = null;
 let customMessage = "";
 let customCache = [];
 let calibrationProfile = null;
@@ -81,6 +84,7 @@ const store = await IndexedDbStore.open().catch(() => {
   return new MemoryStore();
 });
 const customDrillService = new CustomDrillService(store);
+const novaPlusMigration = new NovaPlusCsvMigrationService(store);
 const sharingService = new SharingService(customDrillService);
 const calibrationService = new CalibrationService(store);
 const musicLibrary = new MusicLibraryService(store);
@@ -551,12 +555,23 @@ async function dataView() {
   const rows = records.length
     ? records.map((record) => `<li><div><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)}</span></div><span>${escapeHtml(resolveDrill(record.drillId)?.name ?? "Local drill")} · ${record.completedCycles} cycles · ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
     : `<li class="empty-row">No local sessions recorded yet.</li>`;
+  const migrationCard = migrationPreview ? `<section class="app-card migration-preview" aria-label="Nova Plus migration preview">
+      <div class="section-heading"><div><span class="eyebrow">VALIDATED PREVIEW</span><h2>${migrationPreview.alreadyMigrated ? "Already migrated" : `${migrationPreview.drills} custom drill${migrationPreview.drills === 1 ? "" : "s"} ready`}</h2><p>${migrationPreview.rows} CSV rows · ${formatBytes(migrationPreview.bytes)} · ${migrationPreview.excludedRows} built-in row${migrationPreview.excludedRows === 1 ? "" : "s"} excluded</p></div></div>
+      <div class="share-group-summary"><span>Group A <strong>${migrationPreview.groups.A}</strong></span><span>Group B <strong>${migrationPreview.groups.B}</strong></span><span>Group C <strong>${migrationPreview.groups.C}</strong></span></div>
+      ${migrationPreview.names.length ? `<ul class="share-name-list">${migrationPreview.names.slice(0, 8).map((name) => `<li>${escapeHtml(name)}</li>`).join("")}${migrationPreview.names.length > 8 ? `<li>+ ${migrationPreview.names.length - 8} more</li>` : ""}</ul>` : ""}
+      ${migrationPreview.warnings.length ? `<ul class="migration-messages migration-warnings">${migrationPreview.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
+      ${migrationPreview.errors.length ? `<ul class="migration-messages migration-errors">${migrationPreview.errors.map((error) => `<li>${error.line ? `Line ${error.line}: ` : ""}${escapeHtml(error.message)}</li>`).join("")}</ul>` : ""}
+      <div class="share-actions">${migrationPreview.canCommit ? `<button id="migration-confirm" class="primary-button" type="button">Import ${migrationPreview.drills} drill${migrationPreview.drills === 1 ? "" : "s"}</button>` : ""}<button id="migration-cancel" type="button">Close preview</button></div>
+      <p class="helper-text">The preview changed nothing. Import adds validated drills atomically, records a receipt, and never edits your Nova Plus file.</p>
+    </section>` : "";
   return `
     <div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">LOCAL-FIRST</span><h1>Data and recovery</h1></div>
     ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
     <div class="data-layout">
       <section class="app-card"><div class="section-heading"><div><h2>Session history</h2><p>${records.length} saved</p></div></div><ul class="history-list">${rows}</ul></section>
       <section class="app-card recovery-card"><h2>Backup and restore</h2><p>Restore validates the complete file before atomically replacing local collections.</p><div class="backup-actions"><button id="export-backup" class="primary-button" type="button">Export backup</button><label class="file-button">Restore backup<input id="import-backup" type="file" accept="application/json,.json"></label></div><p id="backup-result" class="helper-text" aria-live="polite">${escapeHtml(dataMessage)}</p></section>
+      <section class="app-card migration-card"><div><span class="eyebrow">NOVA PLUS</span><h2>Migrate custom drills</h2><p>Choose a Nova Plus CSV export. Prime previews Groups A–C, validates every ball, and excludes its own built-in catalogue before you confirm.</p></div><label class="file-button">Choose Nova Plus CSV<input id="migration-file" type="file" accept="text/csv,.csv"></label><p class="helper-text" aria-live="polite">${escapeHtml(migrationMessage || "Your original file and legacy app remain unchanged.")}</p></section>
+      ${migrationCard}
     </div>`;
 }
 
@@ -636,7 +651,7 @@ function capabilityView() {
 }
 
 function roadmap() {
-  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing and stable, optional voice commands"], ["0.6", "Robot", "Safety executor and hardware verification before live control"]];
+  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing and stable, optional voice commands"], ["0.6", "Robot", "Safety executor and hardware verification before live control"], ["0.7", "Migration", "Previewed and atomic Nova Plus custom-drill migration"]];
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
@@ -1039,6 +1054,39 @@ function bindRouteActions(route) {
   }
 
   if (route === "data") {
+    document.querySelector("#migration-file")?.addEventListener("change", async (event) => {
+      try {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        migrationPreview = await novaPlusMigration.preview(file);
+        migrationMessage = migrationPreview.alreadyMigrated
+          ? "This exact file was already migrated; no duplicate import is allowed."
+          : migrationPreview.canCommit
+            ? `Validated ${file.name}. Review the preview before importing.`
+            : `Preview found ${migrationPreview.errors.length} blocking error${migrationPreview.errors.length === 1 ? "" : "s"}.`;
+      } catch (error) {
+        migrationPreview = null;
+        migrationMessage = `Migration preview blocked: ${error.message}`;
+      }
+      await render("data");
+    });
+    document.querySelector("#migration-cancel")?.addEventListener("click", () => {
+      migrationPreview = null;
+      migrationMessage = "Migration preview closed; no local data changed.";
+      void render("data");
+    });
+    document.querySelector("#migration-confirm")?.addEventListener("click", async () => {
+      if (!migrationPreview) return;
+      try {
+        const result = await novaPlusMigration.commit(migrationPreview);
+        migrationMessage = `Migration complete: imported ${result.imported} custom drill${result.imported === 1 ? "" : "s"}.`;
+        migrationPreview = null;
+        await refreshCustomCache();
+      } catch (error) {
+        migrationMessage = `Migration blocked without changes: ${error.message}`;
+      }
+      await render("data");
+    });
     document.querySelector("#export-backup")?.addEventListener("click", async () => {
       const backup = await createBackup(store);
       const url = URL.createObjectURL(new Blob([`${JSON.stringify(backup, null, 2)}\n`], { type: "application/json" }));
@@ -1155,7 +1203,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.6.0-robot-foundation.0";
+document.querySelector("#build-version").textContent = "v0.7.0-migration.0";
 await refreshFooter();
 
 setInterval(() => {

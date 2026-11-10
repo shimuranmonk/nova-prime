@@ -1,6 +1,6 @@
 # Nova Prime Product Requirements
 
-> Implementation status: Foundation through stable optional voice commands is implemented. `0.6.0-robot-foundation.0` adds the source-attributed protocol, Web Bluetooth transport, authenticated connection, and priority-Stop executor behind a disabled production flag. Physical robot execution remains excluded pending the release gate.
+> Implementation status: `0.7.0-migration.0` adds previewed, validated, atomic Nova Plus custom-drill CSV migration and idempotent receipts. The robot foundation remains behind a disabled production flag pending physical verification.
 
 ## Vision
 
@@ -27,6 +27,7 @@ Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova
 | 0.4 Insights | Local statistics and explainable adaptive plan guidance |
 | 0.5 Connected | Versioned sharing and stable voice control |
 | 0.6 Robot foundation | Protocol, authenticated transport, executor, and physical release gate |
+| 0.7 Migration | Nova Plus custom-drill CSV preview, validation, atomic commit, and receipt |
 | 1.0 Stable | Verified unified product with migration and documentation |
 
 ## Requirement groups
@@ -99,6 +100,8 @@ Implementation status: 7-day, 30-day, and all-time local summaries, completion r
 - Preview, back up, validate, and commit migrations atomically.
 - Support file migration across origins.
 - Provide scoped reset, quota warnings, backup, and validated restore.
+
+Implementation status: Nova Plus CSV exports can be selected explicitly in Data and Recovery. Groups A–C are transformed in memory, validated against the canonical drill schema, previewed with warnings and errors, and imported only after confirmation. Built-in rows are excluded because Prime supplies the verified catalogue. Drills and a content-fingerprint receipt are committed atomically; an identical file cannot be migrated twice. The legacy file and application are never modified. Settings, statistics, music, playlists, MSYNC, and Nova Trainer records remain later migration work.
 
 ### Interface — NU-FR-079 to NU-FR-085
 

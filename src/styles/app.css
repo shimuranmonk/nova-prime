@@ -430,6 +430,15 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 .history-list li span, .history-list time { color: var(--muted); font-size: 0.75rem; }
 .empty-row { color: var(--muted); text-align: center; }
 .recovery-card p { margin-bottom: 13px; }
+.migration-card, .migration-preview { display: grid; gap: 12px; }
+.migration-card { grid-column: 1 / -1; grid-template-columns: 1fr auto; align-items: center; }
+.migration-card h2, .migration-preview h2 { margin: 4px 0 5px; }
+.migration-card p { margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.5; }
+.migration-card .helper-text { grid-column: 1 / -1; }
+.migration-preview { grid-column: 1 / -1; }
+.migration-messages { display: grid; gap: 5px; margin: 0; padding: 10px 10px 10px 30px; border-radius: 9px; font-size: .72rem; line-height: 1.45; }
+.migration-warnings { background: #fff5e8; color: #79531b; }
+.migration-errors { background: #fff0ed; color: #8d2f22; }
 .backup-actions { display: grid; gap: 8px; }
 .file-button { position: relative; display: grid; place-items: center; background: var(--ink); }
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -479,6 +488,8 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
   .voice-confirm { grid-template-columns: 1fr 1fr; }
   .voice-confirm div { grid-column: 1 / -1; }
   .data-layout, .info-grid { grid-template-columns: 1fr; }
+  .migration-card { grid-template-columns: 1fr; }
+  .migration-card .helper-text { grid-column: auto; }
   .editor-dialog { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
   .editor-workspace { grid-template-columns: 1fr; overflow-y: auto; }
   .preview-panel, .step-panel, .ball-panel { overflow: visible; }

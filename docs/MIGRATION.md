@@ -1,5 +1,16 @@
 # Nova Prime Migration Plan
 
+> `0.7.0-migration.0` implements Nova Plus custom-drill CSV migration. Other source types remain planned and are not implied by the interface.
+
+## JewelFlow decision
+
+- **Business challenge:** preserve useful Nova Plus work when users move to Prime without risking either legacy data or existing Prime records.
+- **Intent:** make migration deliberate, understandable, repeatable, and safe across hosted and device-local origins.
+- **Intent analysis:** browsers cannot read another origin's storage; therefore the first reliable bridge is an explicit file. Duplicate built-ins, invalid parameters, capacity, identity, partial writes, and repeated imports are treated as blocking or reported conditions.
+- **Product requirement:** preview before mutation, validate every drill, never overwrite silently, commit drills and receipt together, and leave the source untouched.
+- **Solution specification:** parse the ten-column Nova Plus CSV, fingerprint it with SHA-256, transform Groups A–C in memory, reproduce programs at Levels 1–3, validate canonical records, and use one IndexedDB transaction.
+- **Generated solution:** Data and Recovery now provides file selection, read-only inventory, warnings/errors, confirmation, atomic import, conflict-safe naming, and an idempotent receipt.
+
 ## Supported sources
 
 - Nova Trainer `nf.*` local records and calibration
@@ -35,6 +46,6 @@ When browser origins differ, migration uses explicit export/import. This include
 
 The 0.1 local-sessions increment implements versioned Nova Prime JSON backup and restore. Export includes every current non-backup store. Restore rejects unsupported versions, unknown or missing collections, duplicate IDs, malformed records, and invalid canonical domain records before opening the replacement transaction. Valid collections are then replaced in one storage transaction.
 
-Legacy Nova Trainer and Nova Plus detection and transformation remain planned work. The current restore path accepts Nova Prime backups and pre-rename Nova Ultimate backups, but does not claim to migrate inaccessible browser origins.
+Nova Plus custom-drill CSV transformation is now implemented. Settings, statistics, `nova_music` tracks, playlists, MSYNC attachments, and Nova Trainer local records remain planned. The current restore path accepts Nova Prime backups and pre-rename Nova Ultimate backups, but does not claim direct access to another browser origin.
 
 The Nova Prime branding release deliberately retains the deployed IndexedDB identity `nova_ultimate`. This is an internal compatibility key, not a visible product name, and keeps existing drills, settings, and session history available without a destructive cross-database move.

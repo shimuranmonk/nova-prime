@@ -1,6 +1,6 @@
 # Nova Prime Interface Direction
 
-> `0.6.0-robot-foundation.0` makes the robot gate explicit: the tested transport/executor foundation is reported honestly while Connect remains disabled pending physical verification.
+> `0.7.0-migration.0` adds a responsive Nova Plus migration card and a separate read-only preview. The tested robot foundation remains explicitly gated pending physical verification.
 
 ## Approved visual hierarchy
 
@@ -25,4 +25,4 @@ The base presentation is light, compact, and card-led, with Nova teal for select
 
 ## Safety representation
 
-The interface never presents disabled robot functionality or simulated MSYNC as live transport. Custom drill management, visual editing, manual guided calibration, local Music, MSYNC validation/simulation, local Statistics, versioned Sharing, and optional Voice are operational. Voice exposes one deliberate Listen action, an exact-command disclosure, a privacy note, and a prominent touch confirmation for Start. Calibration explicitly states that the user sends test balls with a separate safe control path; Nova Prime sends no robot command. Music is labelled as local audio, while table placement and sessions remain estimates or simulation and record zero physically dispatched balls. Statistics are labelled as activity analytics rather than skill scoring. Sharing states when data can leave the device and separates read-only preview from confirmed import.
+The interface never presents disabled robot functionality or simulated MSYNC as live transport. Custom drill management, visual editing, manual guided calibration, local Music, MSYNC validation/simulation, local Statistics, versioned Sharing, optional Voice, and Nova Plus custom-drill CSV migration are operational. Voice exposes one deliberate Listen action, an exact-command disclosure, a privacy note, and a prominent touch confirmation for Start. Calibration explicitly states that the user sends test balls with a separate safe control path; Nova Prime sends no robot command. Music is labelled as local audio, while table placement and sessions remain estimates or simulation and record zero physically dispatched balls. Statistics are labelled as activity analytics rather than skill scoring. Sharing and migration separate read-only preview from confirmed atomic import and state when the source remains unchanged.

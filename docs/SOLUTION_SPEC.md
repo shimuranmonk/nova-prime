@@ -1,6 +1,6 @@
 # Nova Prime Solution Specification
 
-> Implementation status: `0.6.0-robot-foundation.0` packages the protocol, Web Bluetooth transport, authenticated connection, and priority-Stop executor. Production bootstrap and the robot feature flag keep this stack inactive until physical verification passes.
+> Implementation status: `0.7.0-migration.0` adds the first controlled legacy migration adapter. The robot foundation remains packaged but inactive until physical verification passes.
 
 ## Architecture
 
@@ -73,6 +73,8 @@ Statistics use a pure domain aggregator over `sessionRecords`. It accepts a peri
 
 Sharing uses a dedicated `nova-prime-share` version 1 envelope for selected custom drill definitions. The domain validator enforces the package type, date, title, note, 100-drill limit, 1 MB limit, unique identities, allowed sources, and the complete canonical drill schema. Preview returns immutable counts and names without writing. Confirmed import adapts the validated drills to the existing atomic custom-drill importer. File download is universal; the Web Share adapter is capability-gated and invoked only from the user's button activation.
 
+Nova Plus migration is an application adapter over explicit CSV file selection. It accepts the documented ten-column export, fingerprints the complete source with SHA-256, excludes built-in sets, groups custom rows by Group A–C and name, preserves same-number ball variants, and creates Levels 1–3 to match Nova Plus behavior. Preview performs no write. Commit rechecks receipt and group capacity, resolves name conflicts without replacing existing records, validates every canonical drill, then replaces `drills` and `migrationReceipts` in one transaction. The one-megabyte limit bounds untrusted input, and source files are never changed.
+
 ## Dual deployment and mobile packaging
 
 - `npm run build` produces the complete static `dist/` directory.
@@ -104,6 +106,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 - `jewelflow/0.5-sharing` contains versioned custom-drill packs, explicit device sharing, preview, and confirmed import.
 - `jewelflow/0.5-voice` contains capability-gated one-shot speech recognition, strict commands, privacy disclosure, and touch-confirmed Start.
 - `jewelflow/0.6-robot-foundation` contains the gated transport, authentication, protocol encoder, executor, provenance, and physical release checklist.
+- `jewelflow/0.7-migration` contains explicit Nova Plus CSV preview, transformation, validation, atomic commit, and receipt handling.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

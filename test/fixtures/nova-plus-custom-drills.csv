@@ -1,0 +1,6 @@
+Set;Ball;Name;Speed;Spin;Type;Height;Drop;BPM;Reps
+Basic;1;Push BH;4;2;back;40;0;45;1
+A;1;Serve receive;4;2;back;40;-1;45;2
+A;1;Serve receive;5;3;top;45;1;50;1
+A;2;Serve receive;6;4;top;50;2;55;1
+B;1;Footwork;7;5;top;55;3;60;3
