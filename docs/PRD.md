@@ -1,6 +1,6 @@
 # Nova Prime Product Requirements
 
-> Implementation status: Foundation, Music, MSYNC v1 validation/simulation, local Statistics, versioned custom-drill sharing, and stable optional voice commands are implemented through `0.5.0-voice.0`. Live robot execution remains excluded.
+> Implementation status: Foundation through stable optional voice commands is implemented. `0.6.0-robot-foundation.0` adds the source-attributed protocol, Web Bluetooth transport, authenticated connection, and priority-Stop executor behind a disabled production flag. Physical robot execution remains excluded pending the release gate.
 
 ## Vision
 
@@ -26,6 +26,7 @@ Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova
 | 0.3 MSYNC | Validation, simulation, safe live synchronization |
 | 0.4 Insights | Local statistics and explainable adaptive plan guidance |
 | 0.5 Connected | Versioned sharing and stable voice control |
+| 0.6 Robot foundation | Protocol, authenticated transport, executor, and physical release gate |
 | 1.0 Stable | Verified unified product with migration and documentation |
 
 ## Requirement groups
@@ -41,6 +42,8 @@ Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova
 - Provide timestamped diagnostics.
 - Avoid duplicate balls after visibility changes.
 - Request wake support where available.
+
+Implementation status: verified GATT discovery, bounded authenticated login, notification handling, drill and Stop packet encoding, serialized writes, command epochs, stale-queue cancellation, idempotent Stop retry, and disconnect behavior pass fake-device tests. Production does not import the robot modules and the feature flag remains off until the physical checklist passes. Timestamped diagnostics, wake handling, visibility recovery, and physical behavior remain open.
 
 ### Drills and editor — NU-FR-010 to NU-FR-024
 
@@ -135,7 +138,7 @@ Implementation status: explicit selection, versioned drill packs, size and count
 
 ## Current generated-solution boundary
 
-The stable foundation provides the modular shell, canonical schemas, validators, state machine, tests, CI, and documentation. The 0.1 local-sessions increment adds IndexedDB persistence, validated backup/restore, persistent simulation records, and usable Reps/Time dry runs. It intentionally contains no live transport or robot executor and records zero physically dispatched balls.
+The stable foundation provides the modular shell, canonical schemas, validators, state machine, tests, CI, and documentation. The 0.1 local-sessions increment adds IndexedDB persistence, validated backup/restore, persistent simulation records, and usable Reps/Time dry runs. The 0.6 robot foundation packages—but does not activate—the source-attributed transport, authentication, protocol encoder, and executor. All current UI sessions still record zero physically dispatched balls.
 
 The app-shell increment makes Training the default experience and adopts the approved Nova Trainer-first card hierarchy with Nova Plus level, mode, amount, and pause controls. It does not mark the drill library, editor, calibration, Music, MSYNC, or robot connection complete merely because their future locations are visible.
 

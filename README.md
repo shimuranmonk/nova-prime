@@ -10,7 +10,7 @@ The project combines Nova Trainer's robot control foundation, calibration, physi
 
 ## Current status
 
-This branch advances Nova Prime through JewelFlow 0.5 Connected voice, retaining Foundation, Music, MSYNC, Insights, and sharing while adding stable one-command voice control:
+This branch advances Nova Prime through the JewelFlow 0.6 robot foundation, retaining all prior features while packaging a safety-gated live-control stack:
 
 - Native JavaScript ES-module project structure
 - Canonical domain schemas and validation
@@ -35,6 +35,8 @@ This branch advances Nova Prime through JewelFlow 0.5 Connected voice, retaining
 - Adjustable Robot Lead planning that is explicitly diagnostic and never transmitted to a robot
 - Optional press-to-listen Start, Pause, Resume, and Stop commands with strict confidence and grammar checks
 - Mandatory touch confirmation after every spoken Start; voice remains off by default
+- Verified Nova S Pro GATT profile, authenticated handshake, drill packet encoding, and completion notifications
+- Serialized command executor with epochs, stale-queue cancellation, and priority Stop with bounded retry
 - Device-local 7-day, 30-day, and all-time activity summaries
 - Responsive activity trend, mode mix, most-used drills, and deterministic adaptive plan guidance
 - Explicit analytics boundary: simulation history is not skill scoring or proof of physical ball delivery
@@ -50,7 +52,7 @@ This branch advances Nova Prime through JewelFlow 0.5 Connected voice, retaining
 - Automated unit tests and CI scaffolding
 - Approved PRD, solution specification, migration plan, and test matrix
 
-Live Bluetooth robot control is deliberately not enabled in this milestone. Voice uses the canonical simulated session lifecycle and cannot bypass the future robot executor. Robot behavior will be introduced only after the executor, priority Stop path, safety contracts, and physical tests pass.
+Live Bluetooth robot control is deliberately not enabled in this milestone. The transport and executor are packaged and verified against deterministic fake devices, but production does not import them and the robot feature flag remains off. Connection unlocks only after the physical Nova S Pro checklist passes.
 
 ## Development
 
@@ -67,11 +69,11 @@ npm run preview
 
 ## Current safety boundary
 
-Reps, Time, Music, and MSYNC exercise the same canonical lifecycle and record zero dispatched balls. Music controls local browser audio; MSYNC adds timeline simulation only. Statistics summarize these local records and do not score playing skill. Sharing exchanges selected custom-drill definitions only and never enables robot control. None of these modes can access Bluetooth. Live robot control remains blocked until the executor, queue cancellation, priority Stop path, and physical-device verification are complete.
+Reps, Time, Music, and MSYNC exercise the same canonical lifecycle and record zero dispatched balls. Music controls local browser audio; MSYNC adds timeline simulation only. Statistics summarize these local records and do not score playing skill. Sharing exchanges selected custom-drill definitions only and never enables robot control. None of these modes can access Bluetooth. The executor, queue cancellation, and priority Stop path are packaged but unimported; live control remains blocked until physical-device verification is complete.
 
 Browser data is scoped to the complete origin. Keep the same protocol, hostname, port, and path, and export a backup before changing a hosted or device-local address.
 
-The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), guided calibration in [`docs/CALIBRATION.md`](docs/CALIBRATION.md), Music in [`docs/MUSIC.md`](docs/MUSIC.md), MSYNC in [`docs/MSYNC.md`](docs/MSYNC.md), Statistics in [`docs/STATISTICS.md`](docs/STATISTICS.md), Sharing in [`docs/SHARING.md`](docs/SHARING.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
+The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), robot release gate in [`docs/ROBOT.md`](docs/ROBOT.md), guided calibration in [`docs/CALIBRATION.md`](docs/CALIBRATION.md), Music in [`docs/MUSIC.md`](docs/MUSIC.md), MSYNC in [`docs/MSYNC.md`](docs/MSYNC.md), Statistics in [`docs/STATISTICS.md`](docs/STATISTICS.md), Sharing in [`docs/SHARING.md`](docs/SHARING.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unverified controls remain visibly disabled and are not counted as live features.
 
 Nova Prime supports two complete runtime modes:
 

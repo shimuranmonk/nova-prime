@@ -26,9 +26,16 @@ async function listFiles(directory) {
 
 const files = await listFiles(dist);
 const sourceFiles = files.filter((file) => file.endsWith(".js"));
+const allowedTransport = path.join(dist, "src", "infrastructure", "robot", "web-bluetooth-transport.js");
 for (const file of sourceFiles) {
   const source = await readFile(file, "utf8");
-  if (/requestDevice\s*\(/.test(source)) throw new Error(`Live Bluetooth request found in foundation build: ${file}`);
+  if (/requestDevice\s*\(/.test(source) && path.normalize(file) !== path.normalize(allowedTransport)) {
+    throw new Error(`Bluetooth device request escaped the gated transport: ${file}`);
+  }
 }
+const flags = await readFile(path.join(dist, "src", "app", "feature-flags.js"), "utf8");
+if (!/robot:\s*false/.test(flags)) throw new Error("Robot feature flag must remain disabled until physical verification passes");
+const bootstrap = await readFile(path.join(dist, "src", "app", "bootstrap.js"), "utf8");
+if (/application\/robot|infrastructure\/robot/.test(bootstrap)) throw new Error("Production bootstrap must not activate the unverified robot stack");
 
-console.log(`Verified ${files.length} built files; live Bluetooth remains disabled.`);
+console.log(`Verified ${files.length} built files; robot transport is packaged but feature-gated off.`);
