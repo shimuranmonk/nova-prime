@@ -1,3 +1,4 @@
+// Retained across the Nova Prime rename so existing browser data stays available.
 export const DATABASE_NAME = "nova_ultimate";
 export const DATABASE_VERSION = 1;
 
@@ -40,8 +41,8 @@ export function openNovaDatabase(indexedDb = globalThis.indexedDB) {
       }
     });
     request.addEventListener("success", () => resolve(request.result), { once: true });
-    request.addEventListener("error", () => reject(request.error ?? new Error("Unable to open Nova Ultimate storage")), { once: true });
-    request.addEventListener("blocked", () => reject(new Error("Nova Ultimate storage upgrade is blocked")), { once: true });
+    request.addEventListener("error", () => reject(request.error ?? new Error("Unable to open Nova Prime storage")), { once: true });
+    request.addEventListener("blocked", () => reject(new Error("Nova Prime storage upgrade is blocked")), { once: true });
   });
 }
 
@@ -94,4 +95,3 @@ export class IndexedDbStore {
     await transactionDone(transaction);
   }
 }
-
