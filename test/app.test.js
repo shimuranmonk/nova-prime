@@ -4,8 +4,8 @@ import { detectCapabilities, isLoopbackHostname } from "../src/app/capabilities.
 import { enabledFeatures, FEATURE_FLAGS } from "../src/app/feature-flags.js";
 import { routeFromHash } from "../src/app/router.js";
 
-test("Music and MSYNC are enabled while connected features remain disabled", () => {
-  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), ["music", "msync"]);
+test("Music, MSYNC, and sharing are enabled while live robot and voice remain disabled", () => {
+  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), ["music", "msync", "sharing"]);
 });
 
 test("capability detection is defensive", () => {
@@ -39,6 +39,7 @@ test("unknown routes return to training", () => {
   assert.equal(routeFromHash("#data"), "data");
   assert.equal(routeFromHash("#music"), "music");
   assert.equal(routeFromHash("#statistics"), "statistics");
+  assert.equal(routeFromHash("#sharing"), "sharing");
   assert.equal(routeFromHash("#roadmap"), "roadmap");
   assert.equal(routeFromHash("#unknown"), "train");
 });
@@ -49,5 +50,9 @@ test("MSYNC has a first-class application route", () => {
 
 test("Statistics has a first-class application route", () => {
   assert.equal(routeFromHash("#statistics"), "statistics");
+});
+
+test("Sharing has a first-class application route", () => {
+  assert.equal(routeFromHash("#sharing"), "sharing");
 });
 

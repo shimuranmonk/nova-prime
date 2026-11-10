@@ -28,6 +28,7 @@ export function detectCapabilities(environment = globalThis) {
       return storage && typeof storage.getItem === "function";
     }),
     broadcastChannel: safely(() => "BroadcastChannel" in environment),
+    webShare: safely(() => typeof navigatorObject.share === "function"),
     secureContext: safely(() => environment.isSecureContext),
     loopbackHost,
     localHttpServer,

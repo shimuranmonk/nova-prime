@@ -6,10 +6,12 @@ import { MsyncSimulator } from "../application/msync/msync-simulator.js";
 import { AudioPlayer } from "../application/music/audio-player.js";
 import { MusicLibraryService } from "../application/music/music-library-service.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
+import { SharingService } from "../application/sharing/sharing-service.js";
 import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
 import { createSessionSpec } from "../domain/sessions/schema.js";
 import { SESSION_STATES } from "../domain/sessions/state-machine.js";
 import { buildStatistics } from "../domain/statistics/analytics.js";
+import { MAX_SHARE_BYTES } from "../domain/sharing/package.js";
 import { IndexedDbStore } from "../infrastructure/storage/indexed-db-store.js";
 import { MemoryStore } from "../infrastructure/storage/memory-store.js";
 import { detectCapabilities } from "./capabilities.js";
@@ -45,6 +47,8 @@ let msyncMessage = "";
 let msyncCache = [];
 let msyncIssues = [];
 let msyncSnapshot = null;
+let sharingMessage = "";
+let sharingImportPreview = null;
 let appReady = false;
 
 const uiState = {
@@ -62,6 +66,9 @@ const uiState = {
   msyncTrackId: null,
   robotLeadSeconds: 1.3,
   statisticsPeriod: 30,
+  sharingTitle: "My Nova Prime drills",
+  sharingNote: "",
+  sharingDrillIds: [],
 };
 
 const store = await IndexedDbStore.open().catch(() => {
@@ -69,6 +76,7 @@ const store = await IndexedDbStore.open().catch(() => {
   return new MemoryStore();
 });
 const customDrillService = new CustomDrillService(store);
+const sharingService = new SharingService(customDrillService);
 const calibrationService = new CalibrationService(store);
 const musicLibrary = new MusicLibraryService(store);
 const audioPlayer = new AudioPlayer();
@@ -190,8 +198,10 @@ function formatTrainingTime(seconds) {
 }
 
 function formatBytes(bytes) {
-  const value = Number(bytes) || 0;
-  return value < 1024 * 1024 ? `${Math.max(1, Math.round(value / 1024))} KB` : `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function selectedMusicSummary() {
@@ -498,8 +508,41 @@ async function statisticsView() {
     </div>`;
 }
 
+async function sharingView() {
+  await refreshCustomCache();
+  const availableIds = new Set(customCache.map((drill) => drill.id));
+  uiState.sharingDrillIds = uiState.sharingDrillIds.filter((id) => availableIds.has(id));
+  const selected = new Set(uiState.sharingDrillIds);
+  const rows = customCache.length
+    ? customCache.map((drill) => `<label class="share-drill-row"><input type="checkbox" data-share-drill="${escapeHtml(drill.id)}" ${selected.has(drill.id) ? "checked" : ""}><span><strong>${escapeHtml(drill.name)}</strong><small>Group ${escapeHtml(drill.group)} · ${[1, 2, 3].filter((level) => drill.programs[level]).length} level${[1, 2, 3].filter((level) => drill.programs[level]).length === 1 ? "" : "s"}</small></span><b>${escapeHtml(drill.source)}</b></label>`).join("")
+    : '<div class="empty-library"><strong>No custom drills to share</strong><span>Create a drill in Training, then return here to make a versioned pack.</span><a class="manage-music-link" href="#train">Go to Training</a></div>';
+  const preview = sharingImportPreview?.summary;
+  const previewCard = preview ? `<section class="app-card share-preview-card" aria-label="Validated import preview">
+      <div class="section-heading"><div><span class="eyebrow">VALIDATED PREVIEW</span><h2>${escapeHtml(preview.title)}</h2><p>${preview.drills} drill${preview.drills === 1 ? "" : "s"} · ${preview.programs} level programs · ${preview.steps} steps · ${formatBytes(preview.bytes)}</p></div></div>
+      ${preview.note ? `<p class="share-note">${escapeHtml(preview.note)}</p>` : ""}
+      <div class="share-group-summary"><span>Group A <strong>${preview.groups.A}</strong></span><span>Group B <strong>${preview.groups.B}</strong></span><span>Group C <strong>${preview.groups.C}</strong></span></div>
+      <ul class="share-name-list">${preview.names.slice(0, 8).map((name) => `<li>${escapeHtml(name)}</li>`).join("")}${preview.names.length > 8 ? `<li>+ ${preview.names.length - 8} more</li>` : ""}</ul>
+      <div class="share-actions"><button id="share-import-confirm" class="primary-button" type="button">Import ${preview.drills} drill${preview.drills === 1 ? "" : "s"}</button><button id="share-import-clear" type="button">Cancel preview</button></div>
+      <p class="helper-text">Nothing has been imported yet. Names and identities are resolved safely only after you confirm.</p>
+    </section>` : "";
+  return `<div class="page-heading sharing-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">EXPLICIT · VERSIONED · LOCAL-FIRST</span><h1>Share custom drills</h1><p>Create a validated Nova Prime drill pack, save it as a file, or open your device’s share sheet. Import always shows a preview before changing local data.</p></div>
+    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
+    <div class="sharing-boundary"><strong>You choose when data leaves this device</strong><span>Nova Prime has no sharing account or background upload. The system share button sends a file only to the destination you select.</span></div>
+    ${sharingMessage ? `<p class="notice sharing-notice" role="status">${escapeHtml(sharingMessage)}</p>` : ""}
+    <div class="sharing-layout">
+      <section class="app-card share-create-card"><div class="section-heading"><div><h2>Create a drill pack</h2><p>${uiState.sharingDrillIds.length} of ${customCache.length} selected</p></div><div class="share-selection-actions"><button data-share-select-all type="button" ${customCache.length ? "" : "disabled"}>Select all</button><button data-share-clear type="button" ${uiState.sharingDrillIds.length ? "" : "disabled"}>Clear</button></div></div>
+        <div class="share-drill-list">${rows}</div>
+        <form id="share-create-form" class="share-metadata"><label><span>Pack title</span><input name="title" maxlength="80" value="${escapeHtml(uiState.sharingTitle)}" required></label><label><span>Optional note</span><textarea name="note" maxlength="280" rows="3" placeholder="What should the recipient know?">${escapeHtml(uiState.sharingNote)}</textarea></label></form>
+        <div class="share-actions"><button data-share-download class="primary-button" type="button" ${uiState.sharingDrillIds.length ? "" : "disabled"}>Download pack</button><button data-share-native type="button" ${uiState.sharingDrillIds.length && capabilities.webShare ? "" : "disabled"}>Share with device…</button></div>
+        <p class="helper-text">${capabilities.webShare ? "Your browser provides a system share sheet." : "System sharing is unavailable here; downloading the same validated pack always works."}</p>
+      </section>
+      <section class="app-card share-import-card"><div><h2>Preview an incoming pack</h2><p>Select a <code>.nova-share.json</code> file. Nova Prime validates its version, size, drill types, identities, and every ball parameter before showing the confirmation step.</p></div><label class="file-button">Choose drill pack<input id="share-import-file" type="file" accept="application/json,.json,.nova-share.json"></label><small>Maximum file size: ${formatBytes(MAX_SHARE_BYTES)}</small></section>
+      ${previewCard}
+    </div>`;
+}
+
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Versioned sharing</strong><p>Create validated custom-drill packs, use explicit device sharing, and preview every incoming file before import.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -507,11 +550,11 @@ function capabilityView() {
 }
 
 function roadmap() {
-  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Sharing and stable voice commands"]];
+  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing; stable voice commands next"]];
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
-const renderers = { train: trainView, music: musicView, msync: msyncView, statistics: statisticsView, data: dataView, overview, capabilities: capabilityView, roadmap };
+const renderers = { train: trainView, music: musicView, msync: msyncView, statistics: statisticsView, sharing: sharingView, data: dataView, overview, capabilities: capabilityView, roadmap };
 
 async function render(route) {
   activeRoute = route;
@@ -554,6 +597,74 @@ function openDrillDialog(drill = null) {
 }
 
 function bindRouteActions(route) {
+  if (route === "sharing") {
+    const titleInput = document.querySelector("#share-create-form [name=title]");
+    const noteInput = document.querySelector("#share-create-form [name=note]");
+    titleInput?.addEventListener("input", () => { uiState.sharingTitle = titleInput.value; });
+    noteInput?.addEventListener("input", () => { uiState.sharingNote = noteInput.value; });
+    document.querySelectorAll("[data-share-drill]").forEach((input) => input.addEventListener("change", () => {
+      const chosen = new Set(uiState.sharingDrillIds);
+      if (input.checked) chosen.add(input.dataset.shareDrill); else chosen.delete(input.dataset.shareDrill);
+      uiState.sharingDrillIds = customCache.filter((drill) => chosen.has(drill.id)).map((drill) => drill.id);
+      void render("sharing");
+    }));
+    document.querySelector("[data-share-select-all]:not(:disabled)")?.addEventListener("click", () => {
+      uiState.sharingDrillIds = customCache.map((drill) => drill.id);
+      void render("sharing");
+    });
+    document.querySelector("[data-share-clear]:not(:disabled)")?.addEventListener("click", () => {
+      uiState.sharingDrillIds = [];
+      void render("sharing");
+    });
+    document.querySelector("[data-share-download]:not(:disabled)")?.addEventListener("click", async () => {
+      try {
+        const bundle = await sharingService.create({ ids: uiState.sharingDrillIds, title: uiState.sharingTitle, note: uiState.sharingNote });
+        downloadJson(bundle.payload, bundle.filename);
+        sharingMessage = `Downloaded ${bundle.summary.drills} validated drill${bundle.summary.drills === 1 ? "" : "s"} as ${bundle.filename}.`;
+      } catch (error) { sharingMessage = `Share pack blocked: ${error.message}`; }
+      await render("sharing");
+    });
+    document.querySelector("[data-share-native]:not(:disabled)")?.addEventListener("click", async () => {
+      try {
+        const bundle = await sharingService.create({ ids: uiState.sharingDrillIds, title: uiState.sharingTitle, note: uiState.sharingNote });
+        await sharingService.share(bundle);
+        sharingMessage = `Shared ${bundle.filename} through the device share sheet.`;
+      } catch (error) {
+        sharingMessage = error.name === "AbortError" ? "Sharing cancelled; no file was sent by Nova Prime." : `System sharing blocked: ${error.message}`;
+      }
+      await render("sharing");
+    });
+    document.querySelector("#share-import-file")?.addEventListener("change", async (event) => {
+      try {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (file.size > MAX_SHARE_BYTES) throw new Error("File exceeds the 1 MB safety limit");
+        const payload = JSON.parse(await file.text());
+        const summary = sharingService.preview(payload);
+        sharingImportPreview = { payload, summary, filename: file.name };
+        sharingMessage = `Validated ${file.name}. Review the preview before importing.`;
+      } catch (error) {
+        sharingImportPreview = null;
+        sharingMessage = `Import preview blocked: ${error.message}`;
+      }
+      await render("sharing");
+    });
+    document.querySelector("#share-import-clear")?.addEventListener("click", () => {
+      sharingImportPreview = null;
+      sharingMessage = "Import preview cancelled; no local data changed.";
+      void render("sharing");
+    });
+    document.querySelector("#share-import-confirm")?.addEventListener("click", async () => {
+      if (!sharingImportPreview) return;
+      try {
+        const result = await sharingService.import(sharingImportPreview.payload);
+        sharingMessage = `Imported ${result.added} drill${result.added === 1 ? "" : "s"}. Conflicting identities and names were resolved safely.`;
+        sharingImportPreview = null;
+        await refreshCustomCache();
+      } catch (error) { sharingMessage = `Import blocked without changes: ${error.message}`; }
+      await render("sharing");
+    });
+  }
   if (route === "statistics") {
     document.querySelectorAll("[data-statistics-period]").forEach((button) => button.addEventListener("click", () => {
       uiState.statisticsPeriod = button.dataset.statisticsPeriod === "all" ? "all" : Number(button.dataset.statisticsPeriod);
@@ -937,7 +1048,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.4.0-statistics.0";
+document.querySelector("#build-version").textContent = "v0.5.0-sharing.0";
 await refreshFooter();
 
 setInterval(() => {
