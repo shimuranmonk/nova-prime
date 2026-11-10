@@ -202,7 +202,7 @@ function customDrills(session) {
       <div class="pill-row" role="group" aria-label="Custom drill group">${CUSTOM_GROUPS.map((group) => `<button type="button" data-group="${group}" class="pill ${uiState.group === group ? "selected" : ""}" aria-pressed="${uiState.group === group}" ${locked ? "disabled" : ""}>Group ${group} <small>${counts[group]}</small></button>`).join("")}</div>
       ${customMessage ? `<p class="custom-message" role="status">${escapeHtml(customMessage)}</p>` : ""}
       <div class="custom-drill-grid">${groupDrills.map((drill, index) => customDrillCard(drill, locked, index, groupDrills.length)).join("")}</div>
-      ${groupDrills.length === 0 ? `<div class="empty-library"><strong>Group ${uiState.group} is empty</strong><span>Create a drill here or import a Nova Ultimate drill file.</span></div>` : ""}
+      ${groupDrills.length === 0 ? `<div class="empty-library"><strong>Group ${uiState.group} is empty</strong><span>Create a drill here or import a Nova Prime drill file.</span></div>` : ""}
       <button class="new-drill" type="button" data-custom-new ${locked ? "disabled" : ""}><span>＋</span><strong>New drill</strong><small>Group ${uiState.group}</small></button>
     </section>`;
 }
@@ -229,7 +229,7 @@ async function dataView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Ultimate</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill library</strong><p>Groups A/B/C, naming, duplication, ordering, import/export, selection, and simulated sessions are available.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Visual ball editor</strong><p>Edit ball placement and parameters, then add guided calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill library</strong><p>Groups A/B/C, naming, duplication, ordering, import/export, selection, and simulated sessions are available.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Visual ball editor</strong><p>Edit ball placement and parameters, then add guided calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -247,7 +247,7 @@ async function render(route) {
   activeRoute = route;
   document.querySelectorAll("[data-menu-route]").forEach((link) => link.toggleAttribute("aria-current", link.dataset.menuRoute === route));
   view.innerHTML = await renderers[route]();
-  document.title = `Nova Ultimate · ${route[0].toUpperCase()}${route.slice(1)}`;
+  document.title = `Nova Prime · ${route[0].toUpperCase()}${route.slice(1)}`;
   bindRouteActions(route);
   closeMenu();
 }
@@ -291,7 +291,7 @@ function bindRouteActions(route) {
       await render("train");
     }));
     document.querySelector("#custom-export-all:not(:disabled)")?.addEventListener("click", async () => {
-      downloadJson(await customDrillService.export(), `nova-ultimate-drills-${new Date().toISOString().slice(0, 10)}.json`);
+      downloadJson(await customDrillService.export(), `nova-prime-drills-${new Date().toISOString().slice(0, 10)}.json`);
       customMessage = "All custom drills exported.";
       await render("train");
     });
@@ -342,7 +342,7 @@ function bindRouteActions(route) {
       const url = URL.createObjectURL(new Blob([`${JSON.stringify(backup, null, 2)}\n`], { type: "application/json" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `nova-ultimate-backup-${backup.createdAt.slice(0, 10)}.json`;
+      link.download = `nova-prime-backup-${backup.createdAt.slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
       dataMessage = "Backup exported.";
@@ -424,7 +424,7 @@ document.querySelector("#drill-export-one").addEventListener("click", async () =
   try {
     const payload = await customDrillService.export([drillForm.elements.id.value]);
     const name = payload.drills[0]?.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "custom-drill";
-    downloadJson(payload, `nova-ultimate-${name}.json`);
+    downloadJson(payload, `nova-prime-${name}.json`);
     drillDialogResult.textContent = "Drill exported.";
   } catch (error) {
     drillDialogResult.textContent = error.message;
@@ -442,7 +442,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 });
 
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.1.0-custom-drills.0";
+document.querySelector("#build-version").textContent = "v0.1.0-prime.0";
 await refreshFooter();
 
 setInterval(() => {
@@ -452,4 +452,4 @@ setInterval(() => {
   }
 }, 1000);
 
-globalThis.NOVA_ULTIMATE_FOUNDATION = Object.freeze({ capabilities, featureFlags: FEATURE_FLAGS, storage: store.kind });
+globalThis.NOVA_PRIME_FOUNDATION = Object.freeze({ capabilities, featureFlags: FEATURE_FLAGS, storage: store.kind });
