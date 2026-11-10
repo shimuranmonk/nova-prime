@@ -1,7 +1,7 @@
 export const FEATURE_FLAGS = Object.freeze({
   robot: false,
   music: true,
-  msync: false,
+  msync: true,
   sharing: false,
   voice: false,
 });

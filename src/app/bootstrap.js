@@ -1,6 +1,8 @@
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
 import { CalibrationService } from "../application/calibration/calibration-service.js";
 import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
+import { MsyncService } from "../application/msync/msync-service.js";
+import { MsyncSimulator } from "../application/msync/msync-simulator.js";
 import { AudioPlayer } from "../application/music/audio-player.js";
 import { MusicLibraryService } from "../application/music/music-library-service.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
@@ -38,6 +40,10 @@ let musicMessage = "";
 let trackCache = [];
 let playlistCache = [];
 let musicSnapshot = null;
+let msyncMessage = "";
+let msyncCache = [];
+let msyncIssues = [];
+let msyncSnapshot = null;
 let appReady = false;
 
 const uiState = {
@@ -52,6 +58,8 @@ const uiState = {
   drillId: BUILTIN_DRILLS[0].id,
   playlistId: null,
   quickTrackIds: [],
+  msyncTrackId: null,
+  robotLeadSeconds: 1.3,
 };
 
 const store = await IndexedDbStore.open().catch(() => {
@@ -62,6 +70,8 @@ const customDrillService = new CustomDrillService(store);
 const calibrationService = new CalibrationService(store);
 const musicLibrary = new MusicLibraryService(store);
 const audioPlayer = new AudioPlayer();
+const msyncService = new MsyncService(store);
+const msyncSimulator = new MsyncSimulator();
 const drillEditor = createDrillEditor({
   dialog: editorDialog,
   root: editorRoot,
@@ -100,6 +110,12 @@ async function refreshMusicCache() {
   uiState.quickTrackIds = uiState.quickTrackIds.filter((id) => trackCache.some((track) => track.id === id));
 }
 
+async function refreshMsyncCache() {
+  msyncCache = await msyncService.list();
+  const attachedTracks = trackCache.filter((track) => msyncCache.some((attachment) => attachment.id === track.msyncAttachmentId));
+  if (!attachedTracks.some((track) => track.id === uiState.msyncTrackId)) uiState.msyncTrackId = attachedTracks[0]?.id ?? null;
+}
+
 function resolveDrill(id) {
   return getBuiltinDrill(id) ?? customCache.find((drill) => drill.id === id) ?? null;
 }
@@ -119,7 +135,9 @@ const controller = new LocalSessionController({
 audioPlayer.subscribe((snapshot) => {
   const previousState = musicSnapshot?.state;
   musicSnapshot = snapshot;
-  const activeMusic = controller.snapshot().spec?.mode === "music";
+  const activeMode = controller.snapshot().spec?.mode;
+  const activeMusic = activeMode === "music";
+  const activeMsync = activeMode === "msync";
   if (snapshot.state === "completed" && previousState !== "completed" && activeMusic) {
     controller.complete({ completedCycles: snapshot.completedTracks });
   }
@@ -127,7 +145,25 @@ audioPlayer.subscribe((snapshot) => {
     musicMessage = snapshot.error;
     controller.fail("AUDIO_PLAYBACK_FAILED");
   }
-  if (appReady && ["train", "music"].includes(activeRoute)) void render(activeRoute);
+  if (activeMsync && snapshot.state === "playing") msyncSimulator.advance(snapshot.currentTime * 1000);
+  if (activeMsync && snapshot.state === "completed" && previousState !== "completed") msyncSimulator.advance(msyncSnapshot?.durationMs ?? 0);
+  if (snapshot.state === "error" && previousState !== "error" && activeMsync) {
+    msyncMessage = snapshot.error;
+    msyncSimulator.stop();
+    controller.fail("MSYNC_AUDIO_PLAYBACK_FAILED");
+  }
+  if (appReady && ["train", "music", "msync"].includes(activeRoute)) void render(activeRoute);
+});
+
+msyncSimulator.subscribe((snapshot) => {
+  const previousState = msyncSnapshot?.state;
+  msyncSnapshot = snapshot;
+  const activeMsync = controller.snapshot().spec?.mode === "msync";
+  if (activeMsync && snapshot.state === "completed" && previousState !== "completed") {
+    audioPlayer.stop();
+    controller.complete({ completedCycles: snapshot.activations });
+  }
+  if (appReady && activeRoute === "train") void render("train");
 });
 
 const escapeHtml = (value) => String(value)
@@ -159,6 +195,12 @@ function selectedMusicSummary() {
   return { label: "Quick Music", count: tracks.length, durationMs: tracks.reduce((total, track) => total + track.durationMs, 0) };
 }
 
+function selectedMsync() {
+  const track = trackCache.find((item) => item.id === uiState.msyncTrackId) ?? null;
+  const attachment = msyncCache.find((item) => item.id === track?.msyncAttachmentId) ?? null;
+  return { track, attachment };
+}
+
 function connectionCard() {
   return `
     <section class="app-card status-card" aria-labelledby="connection-title">
@@ -185,20 +227,24 @@ function modeButton(mode, label, available = true, locked = false) {
 function sessionConsole(session) {
   if (session.state === SESSION_STATES.IDLE) return "";
   const target = session.spec?.mode === "time" ? session.spec.durationSeconds : session.spec?.repetitions;
+  const isMsync = session.spec?.mode === "msync";
   let metric = session.spec?.mode === "music"
     ? `${musicSnapshot?.completedTracks ?? 0} / ${musicSnapshot?.trackCount ?? 0} tracks · ${formatDuration((musicSnapshot?.currentTime ?? 0) * 1000)} / ${formatDuration((musicSnapshot?.duration ?? 0) * 1000)}`
+    : isMsync
+      ? `${formatDuration(msyncSnapshot?.positionMs ?? 0)} / ${formatDuration(msyncSnapshot?.durationMs ?? 0)}${msyncSnapshot?.resting ? " · REST" : msyncSnapshot?.active ? ` · ${msyncSnapshot.active.type} ${escapeHtml(msyncSnapshot.active.name)}` : " · IDLE"}`
     : session.spec?.mode === "time" ? `${Math.round(session.elapsedSeconds)} / ${target} seconds` : `${session.completedCycles} / ${target} repetitions`;
   if (session.state === SESSION_STATES.COUNTDOWN) metric = `Starting in ${Math.ceil(session.countdownRemaining)}`;
   if (session.state === SESSION_STATES.PAUSED) metric = `Paused · ${metric}`;
   if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s · ${metric}`;
-  const progress = Math.round((session.spec?.mode === "music" ? musicSnapshot?.progress ?? 0 : session.progress) * 100);
+  const progress = Math.round((session.spec?.mode === "music" ? musicSnapshot?.progress ?? 0 : isMsync ? msyncSnapshot?.progress ?? 0 : session.progress) * 100);
   const drill = resolveDrill(session.spec?.drillId);
-  const trackLabel = session.spec?.mode === "music" && musicSnapshot?.currentTrack ? ` · ${escapeHtml(musicSnapshot.currentTrack.displayName)}` : "";
+  const trackLabel = ["music", "msync"].includes(session.spec?.mode) && musicSnapshot?.currentTrack ? ` · ${escapeHtml(musicSnapshot.currentTrack.displayName)}` : "";
   const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
   return `
     <section class="app-card session-console" aria-label="Active session">
-      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${escapeHtml(drill?.name ?? "Local session")}${trackLabel}</p></div><span class="simulation-pill">${session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
+      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${isMsync ? "MSYNC timeline" : escapeHtml(drill?.name ?? "Local session")}${trackLabel}</p></div><span class="simulation-pill">${isMsync ? "Timeline simulation" : session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
       <strong class="session-metric">${metric}</strong>
+      ${isMsync ? `<p class="helper-text">Robot Lead ${((msyncSnapshot?.robotLeadMs ?? 1300) / 1000).toFixed(3)}s · planned robot cues are displayed only and never transmitted.</p>` : ""}
       <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
       <div class="console-actions">
         <button type="button" data-command="pause" ${session.state === SESSION_STATES.RUNNING ? "" : "disabled"}>Pause</button>
@@ -214,6 +260,7 @@ function setupCard(session) {
   const amountLabel = uiState.mode === "time" ? "Duration (s)" : "Count";
   const selectedDrill = resolveDrill(uiState.drillId);
   const music = selectedMusicSummary();
+  const msync = selectedMsync();
   const sourceOptions = [
     ...(uiState.quickTrackIds.length ? [`<option value="quick" ${uiState.playlistId ? "" : "selected"}>Quick Music · ${uiState.quickTrackIds.length} tracks</option>`] : []),
     ...playlistCache.map((playlist) => `<option value="${escapeHtml(playlist.id)}" ${uiState.playlistId === playlist.id ? "selected" : ""}>${escapeHtml(playlist.name)} · ${playlist.items.length} tracks</option>`),
@@ -224,6 +271,16 @@ function setupCard(session) {
         <div class="music-source-summary"><strong>${escapeHtml(music.label)}</strong><span>${music.count} track${music.count === 1 ? "" : "s"} · ${formatDuration(music.durationMs)}</span></div>
         <a class="manage-music-link" href="#music">Manage music</a>
         <button class="primary-button" type="submit" ${locked || music.count === 0 ? "disabled" : ""}>Start Music session</button>
+      </form>`;
+  const msyncOptions = trackCache.filter((track) => msyncCache.some((attachment) => attachment.id === track.msyncAttachmentId))
+    .map((track) => `<option value="${escapeHtml(track.id)}" ${uiState.msyncTrackId === track.id ? "selected" : ""}>${escapeHtml(track.displayName)}</option>`).join("");
+  const msyncForm = `
+      <form id="session-form" class="session-form music-session-form">
+        <label><span>Validated timeline</span><select name="msyncTrack" ${locked ? "disabled" : ""} required>${msyncOptions || '<option value="">No validated MSYNC timeline</option>'}</select></label>
+        <label><span>Robot Lead (s)</span><input name="robotLead" type="number" min="0" max="5" step="0.001" value="${uiState.robotLeadSeconds}" ${locked ? "disabled" : ""} required></label>
+        <div class="music-source-summary"><strong>${escapeHtml(msync.track?.displayName ?? "No timeline selected")}</strong><span>${msync.attachment ? `${msync.attachment.validationReceipt.summary.cues} cues · ${formatDuration(msync.attachment.validationReceipt.summary.durationMs)}` : "Attach an MSYNC file first"}</span></div>
+        <a class="manage-music-link" href="#msync">Manage MSYNC</a>
+        <button class="primary-button" type="submit" ${locked || !msync.attachment ? "disabled" : ""}>Start MSYNC simulation</button>
       </form>`;
   const standardForm = `
       <form id="session-form" class="session-form">
@@ -247,12 +304,12 @@ function setupCard(session) {
         ${modeButton("reps", "Reps", true, locked)}
         ${modeButton("time", "Time", true, locked)}
         ${modeButton("music", "Music", true, locked)}
-        ${modeButton("msync", "MSYNC", false, locked)}
+        ${modeButton("msync", "MSYNC", true, locked)}
       </div>
 
-      ${uiState.mode === "music" ? musicForm : standardForm}
-      <p class="helper-text">Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. ${uiState.mode === "music" ? "Audio stays on this device and completes automatically." : "Uses the canonical lifecycle."} Sends no robot commands and records zero dispatched balls.</p>
-      ${musicMessage ? `<p class="custom-message" role="status">${escapeHtml(musicMessage)}</p>` : ""}
+      ${uiState.mode === "music" ? musicForm : uiState.mode === "msync" ? msyncForm : standardForm}
+      <p class="helper-text">${uiState.mode === "msync" ? "MSYNC controls the drill timeline from validated cues." : `Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. ${uiState.mode === "music" ? "Audio stays on this device and completes automatically." : "Uses the canonical lifecycle."}`} Sends no robot commands and records zero dispatched balls.</p>
+      ${(uiState.mode === "msync" ? msyncMessage : musicMessage) ? `<p class="custom-message" role="status">${escapeHtml(uiState.mode === "msync" ? msyncMessage : musicMessage)}</p>` : ""}
     </section>`;
 }
 
@@ -349,8 +406,34 @@ async function musicView() {
     <div class="playlist-grid">${playlistCache.map(playlistCard).join("")}</div>`;
 }
 
+function msyncIssueList() {
+  if (!msyncIssues.length) return "";
+  return `<section class="app-card msync-issues" aria-label="MSYNC validation results"><h2>Validation details</h2><ul>${msyncIssues.map((item) => `<li class="${item.severity === "ERROR" ? "msync-error" : "msync-warning"}"><strong>${escapeHtml(item.code)}</strong><span>${item.line ? `Line ${item.line} · ` : ""}${escapeHtml(item.section ?? "MSYNC")} · ${escapeHtml(item.message)}</span></li>`).join("")}</ul></section>`;
+}
+
+async function msyncView() {
+  await refreshMusicCache();
+  await refreshMsyncCache();
+  const attachments = msyncCache.map((attachment) => {
+    const track = trackCache.find((item) => item.id === attachment.trackId);
+    const summary = attachment.validationReceipt.summary;
+    return `<article class="app-card msync-attachment-card">
+      <div><span class="eyebrow">VALIDATED V1</span><h2>${escapeHtml(track?.displayName ?? "Missing audio")}</h2><p>${escapeHtml(attachment.sourceFilename)} · ${summary.cues} cues · ${formatDuration(summary.durationMs)} · ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}</p></div>
+      <div class="msync-card-actions"><button class="primary-button" type="button" data-msync-use="${escapeHtml(track?.id ?? "")}" ${track ? "" : "disabled"}>Use in training</button><button type="button" data-msync-export="${escapeHtml(attachment.id)}">Export source</button><button class="danger-button" type="button" data-msync-remove="${escapeHtml(attachment.trackId)}">Remove</button></div>
+    </article>`;
+  }).join("");
+  const trackOptions = trackCache.map((track) => `<option value="${escapeHtml(track.id)}">${escapeHtml(track.displayName)} · ${formatDuration(track.durationMs)}</option>`).join("");
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">FROZEN FORMAT V1</span><h1>MSYNC timelines</h1><p>Validate a timeline against its exact local audio file, then simulate synchronized cues. Nova Prime never repairs a file silently and sends no robot commands in this release.</p></div>
+    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
+    <section class="app-card msync-import-card"><div><h2>Validate and attach</h2><p>The selected track’s SHA-256 identity and measured duration must match the MSYNC file.</p></div><form id="msync-import-form"><label><span>Audio track</span><select name="trackId" required>${trackOptions || '<option value="">Import audio in Music first</option>'}</select></label><label class="file-button">Choose MSYNC<input name="msyncFile" type="file" accept=".ini,.msync,text/plain" required></label><button class="primary-button" type="submit" ${trackCache.length ? "" : "disabled"}>Validate and attach</button></form></section>
+    ${msyncMessage ? `<p class="notice music-notice" role="status">${escapeHtml(msyncMessage)}</p>` : ""}
+    ${msyncIssueList()}
+    <section class="msync-list" aria-label="Validated MSYNC timelines">${attachments || '<div class="app-card empty-library"><strong>No validated timeline yet</strong><span>Import audio in Music, then attach its matching MSYNC v1 file here.</span></div>'}</section>`;
+}
+
 async function trainView() {
   await Promise.all([refreshCustomCache(), refreshCalibrationProfile(), refreshMusicCache()]);
+  await refreshMsyncCache();
   const session = controller.snapshot();
   return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
 }
@@ -371,7 +454,7 @@ async function dataView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -383,7 +466,7 @@ function roadmap() {
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
-const renderers = { train: trainView, music: musicView, data: dataView, overview, capabilities: capabilityView, roadmap };
+const renderers = { train: trainView, music: musicView, msync: msyncView, data: dataView, overview, capabilities: capabilityView, roadmap };
 
 async function render(route) {
   activeRoute = route;
@@ -396,6 +479,15 @@ async function render(route) {
 
 function downloadJson(payload, filename) {
   const url = URL.createObjectURL(new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function downloadText(text, filename) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -435,7 +527,9 @@ function bindRouteActions(route) {
       uiState.mode = button.dataset.uiMode;
       uiState.amount = uiState.mode === "time" ? 60 : 10;
       if (uiState.mode === "music" && !uiState.playlistId && uiState.quickTrackIds.length === 0) uiState.playlistId = playlistCache[0]?.id ?? null;
+      if (uiState.mode === "msync" && !uiState.msyncTrackId) uiState.msyncTrackId = trackCache.find((track) => track.msyncAttachmentId)?.id ?? null;
       musicMessage = "";
+      msyncMessage = "";
       void render("train");
     }));
     document.querySelectorAll("[data-category]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; uiState.drillId = getBuiltinDrills(uiState.category)[0].id; void render("train"); }));
@@ -475,7 +569,14 @@ function bindRouteActions(route) {
       if (form.has("amount")) uiState.amount = Number(form.get("amount"));
       if (form.has("pause")) uiState.pauseSeconds = Number(form.get("pause"));
       if (form.has("countdown")) uiState.countdownSeconds = Number(form.get("countdown"));
-      if (form.has("musicSource")) {
+      if (form.has("robotLead")) uiState.robotLeadSeconds = Number(form.get("robotLead"));
+      if (event.target.name === "msyncTrack") {
+        uiState.msyncTrackId = form.get("msyncTrack");
+        const attachment = msyncCache.find((item) => item.id === trackCache.find((track) => track.id === uiState.msyncTrackId)?.msyncAttachmentId);
+        uiState.robotLeadSeconds = attachment?.parsed?.session?.robotLead ?? uiState.robotLeadSeconds;
+        void render("train");
+      }
+      if (event.target.name === "musicSource") {
         uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
         void render("train");
       }
@@ -483,7 +584,29 @@ function bindRouteActions(route) {
     document.querySelector("#session-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      if (uiState.mode === "music") {
+      if (uiState.mode === "msync") {
+        uiState.msyncTrackId = form.get("msyncTrack");
+        uiState.robotLeadSeconds = Number(form.get("robotLead"));
+        const track = trackCache.find((item) => item.id === uiState.msyncTrackId);
+        try {
+          if (!track?.msyncAttachmentId) throw new Error("Choose a track with a validated MSYNC timeline");
+          const checked = await msyncService.revalidate(track.msyncAttachmentId);
+          if (!checked.valid) {
+            msyncIssues = checked.validation.issues;
+            throw new Error(checked.validation.errors[0]?.message ?? "MSYNC revalidation failed");
+          }
+          const spec = createSessionSpec({ mode: "msync", level: uiState.level, msyncAttachmentId: checked.attachment.id, pauseSeconds: 0 });
+          const result = controller.start(spec, { countdownSeconds: 0 });
+          if (result.status !== "EXECUTED") throw new Error("MSYNC simulation could not start");
+          msyncSimulator.start(checked.validation.parsed, { robotLeadSeconds: uiState.robotLeadSeconds });
+          msyncMessage = `Simulating ${track.displayName}.`;
+          await audioPlayer.start([checked.track]);
+        } catch (error) {
+          msyncMessage = error.message;
+          msyncSimulator.stop();
+          if (controller.snapshot().spec?.mode === "msync") controller.fail("MSYNC_START_FAILED");
+        }
+      } else if (uiState.mode === "music") {
         uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
         try {
           const selection = await musicLibrary.resolve({ playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds });
@@ -508,11 +631,54 @@ function bindRouteActions(route) {
     document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", async () => {
       const command = button.dataset.command;
       const musicSession = controller.snapshot().spec?.mode === "music";
-      if (command === "pause") { if (musicSession) audioPlayer.pause(); controller.pause(); }
-      if (command === "resume") { if (musicSession) await audioPlayer.resume(); controller.resume(); }
-      if (command === "stop") { if (musicSession) audioPlayer.stop(); controller.stop(); }
-      if (command === "reset") { if (musicSession) audioPlayer.stop(); controller.reset(); }
+      const msyncSession = controller.snapshot().spec?.mode === "msync";
+      if (command === "pause") { if (musicSession || msyncSession) audioPlayer.pause(); if (msyncSession) msyncSimulator.pause(); controller.pause(); }
+      if (command === "resume") { if (musicSession || msyncSession) await audioPlayer.resume(); if (msyncSession) msyncSimulator.resume(); controller.resume(); }
+      if (command === "stop") { if (musicSession || msyncSession) audioPlayer.stop(); if (msyncSession) msyncSimulator.stop(); controller.stop(); }
+      if (command === "reset") { if (musicSession || msyncSession) audioPlayer.stop(); if (msyncSession) msyncSimulator.stop(); controller.reset(); }
       await render("train");
+    }));
+  }
+
+  if (route === "msync") {
+    document.querySelector("#msync-import-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const file = form.get("msyncFile");
+      try {
+        const result = await msyncService.attach(file, form.get("trackId"));
+        msyncIssues = result.validation.issues;
+        if (!result.attached) {
+          msyncMessage = `Not attached: ${result.validation.errors.length} validation error${result.validation.errors.length === 1 ? "" : "s"}.`;
+        } else {
+          uiState.msyncTrackId = result.track.id;
+          uiState.robotLeadSeconds = result.attachment.parsed.session.robotLead;
+          msyncMessage = `Validated and attached ${file.name}.`;
+        }
+      } catch (error) {
+        msyncIssues = [];
+        msyncMessage = `Import blocked: ${error.message}`;
+      }
+      await render("msync");
+    });
+    document.querySelectorAll("[data-msync-use]").forEach((button) => button.addEventListener("click", () => {
+      uiState.mode = "msync";
+      uiState.msyncTrackId = button.dataset.msyncUse;
+      const attachment = msyncCache.find((item) => item.id === trackCache.find((track) => track.id === uiState.msyncTrackId)?.msyncAttachmentId);
+      uiState.robotLeadSeconds = attachment?.parsed?.session?.robotLead ?? 1.3;
+      location.hash = "#train";
+    }));
+    document.querySelectorAll("[data-msync-export]").forEach((button) => button.addEventListener("click", () => {
+      const attachment = msyncCache.find((item) => item.id === button.dataset.msyncExport);
+      if (attachment) downloadText(attachment.sourceText, attachment.sourceFilename);
+    }));
+    document.querySelectorAll("[data-msync-remove]").forEach((button) => button.addEventListener("click", async () => {
+      const track = trackCache.find((item) => item.id === button.dataset.msyncRemove);
+      if (!track || !globalThis.confirm(`Remove the MSYNC timeline from “${track.displayName}”? The audio will remain stored.`)) return;
+      await msyncService.remove(track.id);
+      msyncIssues = [];
+      msyncMessage = "MSYNC timeline removed; audio remains stored.";
+      await render("msync");
     }));
   }
 
@@ -720,12 +886,13 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.2.0-music.0";
+document.querySelector("#build-version").textContent = "v0.3.0-msync.0";
 await refreshFooter();
 
 setInterval(() => {
   if ([SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING].includes(controller.state)) {
     controller.tick(1);
+    if (controller.snapshot().spec?.mode === "msync" && musicSnapshot?.state === "playing") msyncSimulator.advance((musicSnapshot.currentTime ?? 0) * 1000);
     if (activeRoute === "train") void render("train");
   }
 }, 1000);

@@ -43,6 +43,11 @@
 - Fake audio Pause, Resume, automatic advancement, completion, error, and Stop
 - Playable audio Blob backup and validated restore
 - Phone, tablet portrait, and tablet landscape Music-library and Music-session smoke tests
+- Frozen MSYNC v1 parsing and exact audio filename, SHA-256, and duration validation
+- Rejection without mutation for invalid format, casing, ranges, drill references, cues, and STOP rules
+- Atomic attachment replacement, source fingerprint, backup compatibility, and pre-start revalidation
+- DRILL, INLINE, FLAVOR, REST, IDLE, STOP, Robot Lead, Pause, Resume, completion, and priority Stop simulation
+- MSYNC session history records zero physically dispatched balls
 
 ## Future integration checks
 
@@ -50,7 +55,7 @@
 - Fake monotonic timers and visibility changes
 - Browser-specific codec and quota failure fixtures
 - Fake IndexedDB transactions and quota failures
-- MSYNC parser, validation, simulation, cue drift, and queue boundaries
+- Long-running cue drift and future live-executor queue boundaries
 - Legacy Trainer and Plus migration fixtures
 
 ## Required physical robot checks before live release

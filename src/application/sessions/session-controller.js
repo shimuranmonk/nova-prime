@@ -49,7 +49,7 @@ export class LocalSessionController {
   start(spec, { countdownSeconds = 3 } = {}) {
     if (this.state !== SESSION_STATES.IDLE) return freezeSnapshot({ status: COMMAND_RESULTS.BLOCKED, reason: "SESSION_ACTIVE" });
     const validation = validateSessionSpec(spec);
-    if (!validation.valid || !["reps", "time", "music"].includes(spec.mode)) {
+    if (!validation.valid || !["reps", "time", "music", "msync"].includes(spec.mode)) {
       return freezeSnapshot({ status: COMMAND_RESULTS.BLOCKED, reason: "INVALID_LOCAL_SESSION", issues: validation.issues });
     }
 
@@ -76,7 +76,7 @@ export class LocalSessionController {
       if (this.#countdownRemaining === 0) this.#machine.dispatch(SESSION_EVENTS.START);
     } else if (this.state === SESSION_STATES.RUNNING) {
       this.#elapsedSeconds += amount;
-      if (this.#spec.mode === "music") {
+      if (["music", "msync"].includes(this.#spec.mode)) {
         // Audio owns completion; the canonical session still owns elapsed time,
         // Pause, Resume, Stop, recording, and failure recovery.
       } else if (this.#spec.mode === "reps") {
@@ -165,6 +165,7 @@ export class LocalSessionController {
       drillId: this.#spec.drillId,
       playlistId: this.#spec.playlistId,
       quickTrackIds: this.#spec.quickTrackIds,
+      msyncAttachmentId: this.#spec.msyncAttachmentId,
       errorCode: this.#errorCode,
       simulation: true,
     });
@@ -194,7 +195,7 @@ export class LocalSessionController {
 
   #progress() {
     if (!this.#spec) return 0;
-    if (this.#spec.mode === "music") return 0;
+    if (["music", "msync"].includes(this.#spec.mode)) return 0;
     const current = this.#spec.mode === "reps" ? this.#completedCycles : this.#elapsedSeconds;
     const target = this.#spec.mode === "reps" ? this.#spec.repetitions : this.#spec.durationSeconds;
     return Math.min(1, target > 0 ? current / target : 0);

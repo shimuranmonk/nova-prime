@@ -1,5 +1,7 @@
 # Nova Prime Interface Direction
 
+> `0.3.0-msync.0` adds a responsive MSYNC management page and training console using the same Trainer-first cards, with explicit validation details and a visible simulation-only Robot Lead status.
+
 ## Approved visual hierarchy
 
 Nova Prime uses Nova Trainer as its primary interaction model: a compact application header, prominent connection and calibration status, card-based drill libraries, custom-drill groups, and training totals. It incorporates Nova Plus controls where they improve the training workflow: difficulty levels, Reps/Time/Music/MSYNC mode selection, count or duration, pause, and compact session actions.
