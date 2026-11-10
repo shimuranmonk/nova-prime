@@ -111,6 +111,8 @@ Implementation status: Nova Plus CSV exports can be selected explicitly in Data 
 - Communicate state with text and accessible controls.
 - Keep advanced functionality out of the simple training path.
 
+Implementation status: Auto, Light, Dark, and Court themes are selectable from the drawer and persist as a small bootstrap preference. Auto follows the operating-system color preference. Responsive layouts, accessible text state, and the prominent Stop path remain shared across themes.
+
 ### Web and offline deployment — NU-FR-094 to NU-FR-099
 
 - Support normal hosted-web operation over HTTPS.

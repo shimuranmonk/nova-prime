@@ -21,8 +21,11 @@ import { createCalibrationWizard } from "./calibration-wizard.js";
 import { createDrillEditor } from "./drill-editor.js";
 import { FEATURE_FLAGS } from "./feature-flags.js";
 import { createRouter } from "./router.js";
+import { ThemeController } from "./theme-controller.js";
 
 const capabilities = detectCapabilities();
+const themeController = new ThemeController();
+themeController.load();
 const view = document.querySelector("#route-view");
 const menu = document.querySelector("#app-menu");
 const menuScrim = document.querySelector("#menu-scrim");
@@ -1138,6 +1141,9 @@ async function refreshFooter() {
 menuToggle.addEventListener("click", openMenu);
 document.querySelector("#menu-close").addEventListener("click", closeMenu);
 menuScrim.addEventListener("click", closeMenu);
+const themeSelect = document.querySelector("#theme-select");
+themeSelect.value = themeController.value;
+themeSelect.addEventListener("change", () => themeController.set(themeSelect.value));
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });
 document.querySelector("#drill-dialog-close").addEventListener("click", () => drillDialog.close());
 document.querySelector("#drill-cancel").addEventListener("click", () => drillDialog.close());
@@ -1203,7 +1209,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.7.0-migration.0";
+document.querySelector("#build-version").textContent = "v0.8.0-themes.0";
 await refreshFooter();
 
 setInterval(() => {
