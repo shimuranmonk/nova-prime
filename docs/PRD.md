@@ -53,8 +53,11 @@ Implementation status: verified GATT discovery, bounded authenticated login, not
 - Support complete custom-drill management and import/export.
 - Support sequential/random operation, variants, scatter, and bulk adjustments.
 - Provide visual table editing, predictions, rulers, grid, reordering, and safe testing.
+- Show the complete table and support direct pointer and keyboard landing placement.
+- Preserve Height, Spin, type, Tempo, Repeats, and Scatter when direct placement fits Speed and Direction.
+- Report unreachable targets as closest safe estimates without claiming physical accuracy.
 
-Implementation status: the 34 built-ins, Groups A/B/C library management, immutable custom identities, ordering, import/export, selection, safe simulation, ball parameters, and visual table editing are complete.
+Implementation status: the 34 built-ins, Groups A/B/C library management, immutable custom identities, ordering, import/export, selection, safe simulation, ball parameters, complete-table editing, and bounded direct-placement fitting are complete.
 
 ### Calibration and feedback — NU-FR-025 to NU-FR-032
 

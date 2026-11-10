@@ -63,6 +63,8 @@ The 0.1 local-sessions increment creates all target stores at database version 1
 
 The table preview is a domain-only, deterministic adaptation of Nova Trainer's uncalibrated start-value physics. It has no transport dependency and cannot emit robot commands. An active calibration adds measured lateral and depth offsets to successful landing estimates while retaining the profile accuracy label.
 
+Interactive placement reverses the preview coordinate mapping for a requested point on the player half, then performs a bounded coarse-and-refined search over only Speed and Direction. Candidate landings use the same physics and active calibration. Non-table outcomes receive a large penalty, Direction is bounded by Scatter, and results over 15 cm from the request are reported as closest estimates. Requested targets are editor-draft state only; canonical persistence remains unchanged and still occurs through one validated Save.
+
 Calibration runs as a transport-free wizard. Standard uses five top, no-spin, backspin, and serve observations; Complete repeats those observations to estimate scatter. The user supplies physical ball delivery independently, selects the observed landing or Net/Long/Wide/Not seen, and may undo any observation. Saving requires at least three landed observations and performs one validated local write. Quick Check stores a dated error summary and suggestions without refitting the profile.
 
 Music is split between a storage-facing library service and a browser-facing audio player. Import calculates a SHA-256 digest before writing, skips exact duplicates, reads duration from browser metadata, and stores the original Blob in `tracks`. Playlists contain contiguous ordered Track IDs. Quick Music retains an in-memory ordered selection of Track IDs. Selection resolution verifies that every Blob is present before the session starts.
@@ -107,6 +109,8 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 - `jewelflow/0.5-voice` contains capability-gated one-shot speech recognition, strict commands, privacy disclosure, and touch-confirmed Start.
 - `jewelflow/0.6-robot-foundation` contains the gated transport, authentication, protocol encoder, executor, provenance, and physical release checklist.
 - `jewelflow/0.7-migration` contains explicit Nova Plus CSV preview, transformation, validation, atomic commit, and receipt handling.
+- `jewelflow/0.8-themes` contains Auto, Light, Dark, and Court appearance preferences.
+- `jewelflow/0.9-interactive-placement` contains the complete-table layout, inverse placement solver, pointer and keyboard interaction, and placement verification.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

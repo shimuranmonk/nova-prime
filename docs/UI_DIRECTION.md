@@ -1,6 +1,6 @@
 # Nova Prime Interface Direction
 
-> `0.8.0-themes.0` completes Auto, Light, Dark, and Court appearance choices while retaining the responsive migration preview and explicit robot gate.
+> `0.9.0-placement.0` makes the complete table the primary drill-editing surface with direct placement while retaining all four themes and the explicit robot gate.
 
 ## Approved visual hierarchy
 
@@ -14,7 +14,7 @@ Nova Prime uses Nova Trainer as its primary interaction model: a compact applica
 - Music is operational through a dedicated library, playlists, Quick Music, and training progress. MSYNC is operational for strict validation and simulation while live transport remains disabled.
 - The built-in drill area contains the verified 34-drill Nova Trainer catalogue with its 6 Basic, 12 Combined, and 16 Complex entries.
 - Custom groups A, B, and C support persistent creation, naming, duplication, group moves, ordering, deletion, import/export, selection, and dry-run sessions.
-- New custom drills begin with one canonical ball, then open into a responsive visual editor for Levels 1–3, ordered steps, ball variants, and estimated landings.
+- New custom drills begin with one canonical ball, then open into a responsive visual editor for Levels 1–3, ordered steps, ball variants, and direct drag/tap/keyboard landing targets. The complete table remains visible beside controls on wider screens and stacks above them on phones.
 - Music, MSYNC, Statistics, Sharing, Data, About, Diagnostics, and Roadmap are moved into an application drawer.
 - Active-session progress and Stop remain prominent and accessible.
 - The layout is responsive for phone portrait, tablet portrait, tablet landscape, and desktop web use from the same static bundle. Tablet landscape uses a wider two-column training dashboard instead of stretching the phone layout, while editors use additional columns for previews, steps, and parameters.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createBall } from "../src/domain/drills/schema.js";
-import { applyCalibration, previewBall, previewPosition } from "../src/domain/drills/preview.js";
+import { applyCalibration, fitBallToTarget, previewBall, previewPosition, tablePointFromPosition } from "../src/domain/drills/preview.js";
 
 test("uncalibrated preview returns deterministic bounded table coordinates", () => {
   const ball = createBall();
@@ -22,7 +22,32 @@ test("robot position changes the lateral estimate", () => {
 });
 
 test("out-of-bounds estimates are clamped to the visible table", () => {
-  assert.deepEqual(previewPosition({ outcome: "side", xCm: -1000, yCm: 1000 }), { x: 2, y: 98 });
+  assert.deepEqual(previewPosition({ outcome: "side", xCm: -1000, yCm: 1000 }), { x: 2, y: 2 });
+});
+
+test("valid player-side landings render below the net and convert back to centimetres", () => {
+  const position = previewPosition({ ok: true, xCm: 0, yCm: 68.5 });
+  assert.deepEqual(position, { x: 50, y: 75 });
+  assert.deepEqual(tablePointFromPosition(position), { xCm: 0, yCm: 68.5 });
+  assert.ok(Math.abs(tablePointFromPosition({ x: 0, y: 0 }).yCm - 131.52) < 1e-9);
+});
+
+test("interactive placement fits speed and direction while preserving the other ball controls", () => {
+  const source = createBall({ speed: 2, spin: 4, type: "back", height: 57, drop: 0, bpm: 52, repetitions: 3 });
+  const fit = fitBallToTarget(source, { xCm: 30, yCm: 65 }, "middle", { scatter: 2 });
+  assert.equal(fit.ball.spin, 4);
+  assert.equal(fit.ball.type, "back");
+  assert.equal(fit.ball.height, 57);
+  assert.equal(fit.ball.bpm, 52);
+  assert.equal(fit.ball.repetitions, 3);
+  assert.ok(fit.ball.drop <= 8 && fit.ball.drop >= -8);
+  assert.ok(Number.isFinite(fit.errorCm));
+  assert.ok(fit.result.ok);
+});
+
+test("interactive placement respects scatter-constrained direction", () => {
+  const fit = fitBallToTarget(createBall(), { xCm: 70, yCm: 40 }, "middle", { scatter: 9 });
+  assert.ok(Math.abs(fit.ball.drop) <= 1);
 });
 
 test("saved calibration offsets adjust successful landing estimates", () => {

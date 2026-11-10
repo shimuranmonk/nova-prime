@@ -29,6 +29,9 @@
 - Atomic custom-drill import rejection and versioned JSON round trip
 - 100-drill capacity enforcement for every custom group
 - Visual editor atomic save and invalid-save rollback
+- Player-half coordinate orientation and reversible percent/centimetre mapping
+- Direct placement preservation of Height, Spin, type, Tempo, and Repeats
+- Speed/Direction fitting, scatter-constrained Direction, closest-target feedback, pointer drag/tap, and keyboard placement
 - 20-step program limit, ordered steps, multiple ball variants, and Levels 1–3 persistence
 - Deterministic uncalibrated physics preview with bounded table markers
 - Standard and Complete calibration plan coverage

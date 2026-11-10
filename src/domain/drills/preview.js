@@ -107,8 +107,56 @@ export function previewBall(ball, robotPosition = "middle", dt = 3e-3) {
 
 export function previewPosition(result) {
   const x = Number.isFinite(result.xCm) ? ((result.xCm + TABLE_DIMENSIONS.widthCm / 2) / TABLE_DIMENSIONS.widthCm) * 100 : 50;
-  const y = Number.isFinite(result.yCm) ? (result.yCm / TABLE_DIMENSIONS.lengthCm) * 100 : result.outcome === "net" ? 50 : 2;
+  const y = Number.isFinite(result.yCm) ? (1 - result.yCm / TABLE_DIMENSIONS.lengthCm) * 100 : result.outcome === "net" ? 50 : 98;
   return Object.freeze({ x: Math.min(98, Math.max(2, x)), y: Math.min(98, Math.max(2, y)) });
+}
+
+export function tablePointFromPosition(position) {
+  const rawX = Number(position?.x);
+  const rawY = Number(position?.y);
+  const x = Math.min(98, Math.max(2, Number.isFinite(rawX) ? rawX : 50));
+  const y = Math.min(98, Math.max(52, Number.isFinite(rawY) ? rawY : 75));
+  return Object.freeze({
+    xCm: (x / 100) * TABLE_DIMENSIONS.widthCm - TABLE_DIMENSIONS.widthCm / 2,
+    yCm: (1 - y / 100) * TABLE_DIMENSIONS.lengthCm,
+  });
+}
+
+function placementScore(result, target) {
+  if (!Number.isFinite(result?.xCm) || !Number.isFinite(result?.yCm)) return Number.POSITIVE_INFINITY;
+  const distance = Math.hypot(result.xCm - target.xCm, result.yCm - target.yCm);
+  return distance + (result.ok ? 0 : 500);
+}
+
+export function fitBallToTarget(ball, target, robotPosition = "middle", { scatter = 0, calibration = null } = {}) {
+  const boundedTarget = Object.freeze({
+    xCm: Math.min(TABLE_DIMENSIONS.widthCm / 2, Math.max(-TABLE_DIMENSIONS.widthCm / 2, Number(target?.xCm) || 0)),
+    yCm: Math.min(TABLE_DIMENSIONS.lengthCm / 2, Math.max(0, Number(target?.yCm) || 0)),
+  });
+  const maximumDrop = Math.max(0, 10 - Math.abs(Number(scatter) || 0));
+  let best = null;
+
+  const consider = (speed, drop) => {
+    const candidate = { ...ball, speed: Math.min(10, Math.max(0, speed)), drop: Math.min(maximumDrop, Math.max(-maximumDrop, drop)) };
+    const result = applyCalibration(previewBall(candidate, robotPosition), calibration);
+    const score = placementScore(result, boundedTarget);
+    if (!best || score < best.score) best = { candidate, result, score };
+  };
+
+  for (let speed = 0; speed <= 10; speed += 0.5) {
+    for (let drop = -maximumDrop; drop <= maximumDrop + 1e-9; drop += 1) consider(speed, drop);
+  }
+  const coarse = best.candidate;
+  for (let speed = coarse.speed - 0.75; speed <= coarse.speed + 0.75 + 1e-9; speed += 0.1) {
+    for (let drop = coarse.drop - 1; drop <= coarse.drop + 1 + 1e-9; drop += 0.1) consider(speed, drop);
+  }
+
+  const fitted = Object.freeze({ ...ball, speed: Number(best.candidate.speed.toFixed(1)), drop: Number(best.candidate.drop.toFixed(1)) });
+  const result = applyCalibration(previewBall(fitted, robotPosition), calibration);
+  const errorCm = Number.isFinite(result.xCm) && Number.isFinite(result.yCm)
+    ? Math.hypot(result.xCm - boundedTarget.xCm, result.yCm - boundedTarget.yCm)
+    : Number.POSITIVE_INFINITY;
+  return Object.freeze({ ball: fitted, target: boundedTarget, result, errorCm, reachable: Boolean(result.ok && errorCm <= 15) });
 }
 
 export function applyCalibration(result, profile) {
