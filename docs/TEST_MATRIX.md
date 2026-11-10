@@ -1,4 +1,4 @@
-# Nova Ultimate Test Matrix
+# Nova Prime Test Matrix
 
 ## Automated foundation checks
 

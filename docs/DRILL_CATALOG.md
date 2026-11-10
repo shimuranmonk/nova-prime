@@ -2,7 +2,7 @@
 
 ## Authoritative source
 
-Nova Ultimate’s built-in catalogue is migrated from `shimuranmonk/nova-advance`, branch `refactor/nova-trainer-modular`:
+Nova Prime’s built-in catalogue is migrated from `shimuranmonk/nova-advance`, branch `refactor/nova-trainer-modular`:
 
 - `js/model/library.js`, Git blob `9a0c54a59deb2fea46e24c8c40296730e14c24d6`
 - `js/model/ball.js`, Git blob `8bb90b539a7b5fb4279e34439039453aebbb4c0d`
@@ -32,5 +32,4 @@ The source reference is embedded in the catalogue module so later updates can id
 
 ## Verification boundary
 
-Automated tests assert the 6/12/16 category counts, unique stable IDs, canonical validation, representative source parameters, sequence order, and random flags. The catalogue is available for local Reps and Time simulation. Physical output remains unverified in Nova Ultimate until the live executor and robot test matrix are complete.
-
+Automated tests assert the 6/12/16 category counts, unique stable IDs, canonical validation, representative source parameters, sequence order, and random flags. The catalogue is available for local Reps and Time simulation. Physical output remains unverified in Nova Prime until the live executor and robot test matrix are complete.

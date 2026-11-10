@@ -1,8 +1,8 @@
-# Nova Ultimate Interface Direction
+# Nova Prime Interface Direction
 
 ## Approved visual hierarchy
 
-Nova Ultimate uses Nova Trainer as its primary interaction model: a compact application header, prominent connection and calibration status, card-based drill libraries, custom-drill groups, and training totals. It incorporates Nova Plus controls where they improve the training workflow: difficulty levels, Reps/Time/Music/MSYNC mode selection, count or duration, pause, and compact session actions.
+Nova Prime uses Nova Trainer as its primary interaction model: a compact application header, prominent connection and calibration status, card-based drill libraries, custom-drill groups, and training totals. It incorporates Nova Plus controls where they improve the training workflow: difficulty levels, Reps/Time/Music/MSYNC mode selection, count or duration, pause, and compact session actions.
 
 ## Implemented app shell
 

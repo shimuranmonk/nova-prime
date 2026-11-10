@@ -1,6 +1,6 @@
 # JewelFlow record
 
-Nova Ultimate was defined through the following approved stages:
+Nova Prime was defined through the following approved stages:
 
 1. **Business Challenge** — Nova Plus and Nova Trainer split important capabilities across incompatible implementations.
 2. **Intent** — Create one local-first product using Trainer as the robot foundation and Plus for unique Music, MSYNC, statistics, sharing, and later voice capabilities.

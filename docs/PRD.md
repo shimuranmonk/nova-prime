@@ -1,8 +1,8 @@
-# Nova Ultimate Product Requirements
+# Nova Prime Product Requirements
 
 ## Vision
 
-Nova Ultimate is the unified community application for the PONGBOT Nova S Pro. Nova Trainer supplies the canonical robot, calibration, physics, editor, and session foundation. Nova Plus contributes Music, playlists, MSYNC, statistics, sharing, and later stable voice control.
+Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova Trainer supplies the canonical robot, calibration, physics, editor, and session foundation. Nova Plus contributes Music, playlists, MSYNC, statistics, sharing, and later stable voice control.
 
 ## Product principles
 

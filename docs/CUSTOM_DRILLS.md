@@ -2,7 +2,7 @@
 
 ## Implemented scope
 
-Nova Ultimate stores custom drills in Groups A, B, and C. Users can create, rename, duplicate, move between groups, reorder, delete, select, export, import, and run custom drills in Reps or Time simulation. Each group accepts up to 100 drills, matching the Nova Trainer library boundary.
+Nova Prime stores custom drills in Groups A, B, and C. Users can create, rename, duplicate, move between groups, reorder, delete, select, export, import, and run custom drills in Reps or Time simulation. Each group accepts up to 100 drills, matching the Nova Trainer library boundary.
 
 New drills receive immutable drill and step identities and begin with one valid canonical ball program. Names are trimmed, restricted to 40 characters, cleaned of Trainer-incompatible separators, and made unique within their group.
 
@@ -10,7 +10,7 @@ New drills receive immutable drill and step identities and begin with one valid 
 
 Custom drill files are JSON envelopes with:
 
-- `format`: `nova-ultimate-drills`
+- `format`: `nova-prime-drills`
 - `version`: `1`
 - `createdAt`: ISO timestamp
 - `drills`: canonical custom or imported drill records
@@ -25,4 +25,6 @@ Library management and simulation are complete for this increment. The visual ba
 
 ## Source alignment
 
-The A/B/C groups, 100-drill group limit, 40-character naming rule, 20-step model boundary, ordering, move, duplicate, and delete behavior are aligned with the Nova Trainer source. Nova Ultimate expresses these rules through its canonical validated schema and local-first storage service rather than copying the original single-file implementation.
+Nova Prime continues to accept legacy `nova-ultimate-drills` files created before the rename.
+
+The A/B/C groups, 100-drill group limit, 40-character naming rule, 20-step model boundary, ordering, move, duplicate, and delete behavior are aligned with the Nova Trainer source. Nova Prime expresses these rules through its canonical validated schema and local-first storage service rather than copying the original single-file implementation.

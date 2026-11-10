@@ -4,8 +4,9 @@ import { validateDrill } from "../../domain/drills/validation.js";
 
 export const CUSTOM_GROUPS = Object.freeze(["A", "B", "C"]);
 export const MAX_CUSTOM_DRILLS_PER_GROUP = 100;
-export const CUSTOM_DRILL_FORMAT = "nova-ultimate-drills";
+export const CUSTOM_DRILL_FORMAT = "nova-prime-drills";
 export const CUSTOM_DRILL_FORMAT_VERSION = 1;
+export const LEGACY_CUSTOM_DRILL_FORMATS = Object.freeze(["nova-ultimate-drills"]);
 
 const clone = (value) => structuredClone(value);
 
@@ -167,8 +168,8 @@ export class CustomDrillService {
   }
 
   async import(payload) {
-    if (!payload || payload.format !== CUSTOM_DRILL_FORMAT || payload.version !== CUSTOM_DRILL_FORMAT_VERSION || !Array.isArray(payload.drills)) {
-      throw new Error("Unsupported Nova Ultimate drill file");
+    if (!payload || ![CUSTOM_DRILL_FORMAT, ...LEGACY_CUSTOM_DRILL_FORMATS].includes(payload.format) || payload.version !== CUSTOM_DRILL_FORMAT_VERSION || !Array.isArray(payload.drills)) {
+      throw new Error("Unsupported Nova Prime drill file");
     }
     const existing = await this.list();
     const working = clone(existing);

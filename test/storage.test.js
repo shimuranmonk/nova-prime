@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createBackup, restoreBackup, validateBackup } from "../src/application/backup/backup-service.js";
+import { BACKUP_FORMAT, createBackup, restoreBackup, validateBackup } from "../src/application/backup/backup-service.js";
 import { createSessionRecord } from "../src/domain/statistics/schema.js";
 import { MemoryStore } from "../src/infrastructure/storage/memory-store.js";
 
@@ -20,12 +20,22 @@ test("backup round trip restores all validated collections", async () => {
   await source.put("sessionRecords", createSessionRecord({ id: "record_1", outcome: "completed", simulation: true }));
   await source.put("settings", { id: "theme", value: "dark" });
   const backup = await createBackup(source, { now: () => "2026-11-09T00:00:00.000Z" });
+  assert.equal(backup.format, "nova-prime-backup");
+  assert.equal(backup.format, BACKUP_FORMAT);
 
   const target = new MemoryStore({ sessionRecords: [{ id: "old_record", outcome: "stopped" }] });
   const result = await restoreBackup(target, backup);
   assert.equal(result.counts.sessionRecords, 1);
   assert.equal((await target.getAll("sessionRecords"))[0].id, "record_1");
   assert.equal((await target.get("settings", "theme")).value, "dark");
+});
+
+test("pre-rename Nova Ultimate backups remain restorable", async () => {
+  const backup = await createBackup(new MemoryStore({ settings: [{ id: "theme", value: "light" }] }));
+  const legacy = { ...backup, format: "nova-ultimate-backup" };
+  const target = new MemoryStore();
+  await restoreBackup(target, legacy);
+  assert.equal((await target.get("settings", "theme")).value, "light");
 });
 
 test("invalid backup is rejected before stored data changes", async () => {
@@ -46,4 +56,3 @@ test("backup validation rejects missing and unknown collections", async () => {
   withUnknown.collections.unexpected = [];
   assert.throws(() => validateBackup(withUnknown), /unknown collection/);
 });
-

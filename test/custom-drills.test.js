@@ -51,6 +51,7 @@ test("custom drill export and atomic import preserve valid programs", async () =
   const source = makeService();
   const created = await source.create({ name: "Exported", group: "C" });
   const payload = await source.export([created.id]);
+  assert.equal(payload.format, "nova-prime-drills");
 
   const targetStore = new MemoryStore();
   const target = makeService(targetStore);
@@ -63,6 +64,10 @@ test("custom drill export and atomic import preserve valid programs", async () =
   invalid.drills[0].programs[1].steps[0].variants[0].speed = 99;
   await assert.rejects(() => target.import(invalid), /Invalid imported drill/);
   assert.equal((await target.list()).length, 1);
+
+  const legacyTarget = makeService();
+  const legacyPayload = { ...payload, format: "nova-ultimate-drills" };
+  assert.equal((await legacyTarget.import(legacyPayload)).added, 1);
 });
 
 test("custom groups enforce the Trainer 100-drill capacity", async () => {
