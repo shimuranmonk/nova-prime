@@ -4,14 +4,20 @@ import { detectCapabilities, isLoopbackHostname } from "../src/app/capabilities.
 import { enabledFeatures, FEATURE_FLAGS } from "../src/app/feature-flags.js";
 import { routeFromHash } from "../src/app/router.js";
 
-test("Music, MSYNC, and sharing are enabled while live robot and voice remain disabled", () => {
-  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), ["music", "msync", "sharing"]);
+test("Music, MSYNC, sharing, and voice are enabled while live robot remains disabled", () => {
+  assert.deepEqual(enabledFeatures(FEATURE_FLAGS), ["music", "msync", "sharing", "voice"]);
 });
 
 test("capability detection is defensive", () => {
   const result = detectCapabilities({ navigator: {}, crypto: {}, isSecureContext: false, location: {} });
   assert.equal(result.webBluetooth, false);
   assert.equal(result.secureContext, false);
+  assert.equal(result.speechRecognition, false);
+});
+
+test("speech recognition capability accepts either browser constructor", () => {
+  assert.equal(detectCapabilities({ navigator: {}, SpeechRecognition: class {}, location: {} }).speechRecognition, true);
+  assert.equal(detectCapabilities({ navigator: {}, webkitSpeechRecognition: class {}, location: {} }).speechRecognition, true);
 });
 
 test("mobile loopback HTTP hosting is identified", () => {

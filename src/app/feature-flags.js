@@ -3,7 +3,7 @@ export const FEATURE_FLAGS = Object.freeze({
   music: true,
   msync: true,
   sharing: true,
-  voice: false,
+  voice: true,
 });
 
 export function enabledFeatures(flags = FEATURE_FLAGS) {

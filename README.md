@@ -2,7 +2,7 @@
 
 Nova Prime is the unified community platform for controlling and training with the PONGBOT Nova S Pro.
 
-The project combines Nova Trainer's robot control, calibration, physics, visual drill editing, and adaptive feedback with Nova Plus's Music, playlists, MSYNC, statistics, sharing, and future voice control.
+The project combines Nova Trainer's robot control foundation, calibration, physics, and visual drill editing with Nova Plus's Music, playlists, MSYNC, statistics, sharing, and optional voice controls.
 
 **Live application:** [shimuranmonk.github.io/nova-prime](https://shimuranmonk.github.io/nova-prime/)
 
@@ -10,7 +10,7 @@ The project combines Nova Trainer's robot control, calibration, physics, visual 
 
 ## Current status
 
-This branch advances Nova Prime through JewelFlow 0.5 Connected sharing, retaining Foundation, Music, MSYNC, and Insights while adding explicit versioned custom-drill exchange:
+This branch advances Nova Prime through JewelFlow 0.5 Connected voice, retaining Foundation, Music, MSYNC, Insights, and sharing while adding stable one-command voice control:
 
 - Native JavaScript ES-module project structure
 - Canonical domain schemas and validation
@@ -33,6 +33,8 @@ This branch advances Nova Prime through JewelFlow 0.5 Connected sharing, retaini
 - Atomic MSYNC-to-audio attachment with SHA-256 identity, duration, and drill-resolution checks
 - Pre-start revalidation plus synchronized DRILL, INLINE, FLAVOR, REST, IDLE, and STOP simulation
 - Adjustable Robot Lead planning that is explicitly diagnostic and never transmitted to a robot
+- Optional press-to-listen Start, Pause, Resume, and Stop commands with strict confidence and grammar checks
+- Mandatory touch confirmation after every spoken Start; voice remains off by default
 - Device-local 7-day, 30-day, and all-time activity summaries
 - Responsive activity trend, mode mix, most-used drills, and deterministic adaptive plan guidance
 - Explicit analytics boundary: simulation history is not skill scoring or proof of physical ball delivery
@@ -48,7 +50,7 @@ This branch advances Nova Prime through JewelFlow 0.5 Connected sharing, retaini
 - Automated unit tests and CI scaffolding
 - Approved PRD, solution specification, migration plan, and test matrix
 
-Live Bluetooth robot control is deliberately not enabled in this milestone. Robot behavior will be introduced only after the executor, priority Stop path, and safety contracts are implemented and tested.
+Live Bluetooth robot control is deliberately not enabled in this milestone. Voice uses the canonical simulated session lifecycle and cannot bypass the future robot executor. Robot behavior will be introduced only after the executor, priority Stop path, safety contracts, and physical tests pass.
 
 ## Development
 

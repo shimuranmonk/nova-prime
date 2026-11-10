@@ -54,6 +54,7 @@
 - Legacy session-record validation plus optional level, target, and pause planning fields
 - Phone, tablet portrait, tablet landscape, and desktop Statistics layout smoke tests
 - Versioned sharing envelope, title/note sanitization, drill count, and package-size limits
+- Voice transcript normalization, exact grammar, confidence threshold, one-shot recognition, rejection, microphone denial, cancellation, and unavailable-browser behavior
 - Rejection of unsupported versions, duplicate identities, built-in drills, and unsafe ball parameters
 - Non-mutating incoming preview and atomic import failure with existing data preserved
 - Explicit native-share adapter invocation with exactly one generated JSON file

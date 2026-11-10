@@ -1,6 +1,6 @@
 # Nova Prime Product Requirements
 
-> Implementation status: Foundation, Music, MSYNC v1 validation/simulation, local Statistics, and versioned custom-drill sharing are implemented through `0.5.0-sharing.0`. Live robot execution remains excluded.
+> Implementation status: Foundation, Music, MSYNC v1 validation/simulation, local Statistics, versioned custom-drill sharing, and stable optional voice commands are implemented through `0.5.0-voice.0`. Live robot execution remains excluded.
 
 ## Vision
 
@@ -122,7 +122,7 @@ Implementation status: 7-day, 30-day, and all-time local summaries, completion r
 - Route Start, Stop, Rest, and Resume through canonical session commands.
 - Preserve touch fallback and all live safety confirmations.
 
-Implementation status: explicit selection, versioned drill packs, size and count limits, file download, capability-gated native sharing, untrusted-input validation, read-only preview, and confirmed atomic import are complete. Sharing has no account or background upload. Voice commands remain disabled and are the next Connected increment.
+Implementation status: explicit selection, versioned drill packs, size and count limits, file download, capability-gated native sharing, untrusted-input validation, read-only preview, and confirmed atomic import are complete. Voice is off by default, capability-gated, press-to-listen, and limited to an exact confidence-checked grammar. Spoken Start requires touch confirmation; Pause, Resume, and Stop share the canonical touch command path. No audio or transcript history is stored.
 
 ## Non-functional requirements
 
