@@ -9,6 +9,7 @@ import { LocalSessionController } from "../application/sessions/session-controll
 import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
 import { createSessionSpec } from "../domain/sessions/schema.js";
 import { SESSION_STATES } from "../domain/sessions/state-machine.js";
+import { buildStatistics } from "../domain/statistics/analytics.js";
 import { IndexedDbStore } from "../infrastructure/storage/indexed-db-store.js";
 import { MemoryStore } from "../infrastructure/storage/memory-store.js";
 import { detectCapabilities } from "./capabilities.js";
@@ -60,6 +61,7 @@ const uiState = {
   quickTrackIds: [],
   msyncTrackId: null,
   robotLeadSeconds: 1.3,
+  statisticsPeriod: 30,
 };
 
 const store = await IndexedDbStore.open().catch(() => {
@@ -128,7 +130,7 @@ const controller = new LocalSessionController({
   onRecord: async (record) => {
     await store.put("sessionRecords", record);
     await refreshFooter();
-    if (activeRoute === "data") await render("data");
+    if (["data", "statistics"].includes(activeRoute)) await render(activeRoute);
   },
 });
 
@@ -176,6 +178,15 @@ const escapeHtml = (value) => String(value)
 function formatDuration(milliseconds) {
   const seconds = Math.max(0, Math.round(Number(milliseconds) / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function formatTrainingTime(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m`;
+  return `${total}s`;
 }
 
 function formatBytes(bytes) {
@@ -453,8 +464,42 @@ async function dataView() {
     </div>`;
 }
 
+async function statisticsView() {
+  await Promise.all([refreshCustomCache(), refreshCalibrationProfile()]);
+  const records = await store.getAll("sessionRecords");
+  const statistics = buildStatistics(records, { days: uiState.statisticsPeriod, calibrationProfile });
+  const { summary } = statistics;
+  const maxDailySessions = Math.max(1, ...statistics.daily.map((day) => day.sessions));
+  const trend = statistics.daily.length
+    ? statistics.daily.map((day) => `<li title="${day.sessions} sessions · ${day.completedCycles} cycles"><span class="trend-bar"><i style="height:${Math.max(10, Math.round((day.sessions / maxDailySessions) * 100))}%"></i></span><strong>${day.sessions}</strong><time>${escapeHtml(new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }))}</time></li>`).join("")
+    : '<li class="statistics-empty">Complete a simulation session to begin the activity trend.</li>';
+  const modes = statistics.modes.map((mode) => `<article class="mode-stat"><div><strong>${escapeHtml(mode.label)}</strong><span>${mode.sessions} session${mode.sessions === 1 ? "" : "s"} · ${formatTrainingTime(mode.durationSeconds)}</span></div><b>${mode.share}%</b><span class="share-track"><i style="width:${mode.share}%"></i></span></article>`).join("");
+  const drills = statistics.drills.length
+    ? statistics.drills.map((drill, index) => `<li><span>${index + 1}</span><div><strong>${escapeHtml(resolveDrill(drill.drillId)?.name ?? "Saved drill")}</strong><small>${drill.sessions} session${drill.sessions === 1 ? "" : "s"} · ${drill.completedCycles} cycles</small></div></li>`).join("")
+    : '<li class="statistics-empty">No drill activity is recorded for this period.</li>';
+  const guidance = statistics.guidance.map((item) => `<article class="guidance-item guidance-${item.tone}"><span class="eyebrow">PLAN GUIDANCE</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.reason)}</p><strong>${escapeHtml(item.action)}</strong></article>`).join("");
+  return `<div class="page-heading statistics-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">DEVICE-LOCAL</span><h1>Statistics</h1><p>Review training consistency and receive transparent plan suggestions based only on session records saved on this device.</p></div>
+    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
+    <div class="statistics-boundary"><strong>Activity analytics—not skill scoring</strong><span>Simulation records do not prove physical ball delivery or playing performance. Nothing is uploaded.</span></div>
+    <div class="statistics-period" role="group" aria-label="Statistics period">${[[7, "7 days"], [30, "30 days"], ["all", "All"]].map(([value, label]) => `<button type="button" data-statistics-period="${value}" class="${String(uiState.statisticsPeriod) === String(value) ? "selected" : ""}" aria-pressed="${String(uiState.statisticsPeriod) === String(value)}">${label}</button>`).join("")}</div>
+    <section class="statistics-summary" aria-label="Training activity summary">
+      <article><span>Sessions</span><strong>${summary.sessions}</strong></article>
+      <article><span>Training time</span><strong>${formatTrainingTime(summary.durationSeconds)}</strong></article>
+      <article><span>Completed cycles</span><strong>${summary.completedCycles}</strong></article>
+      <article><span>Completion</span><strong>${summary.completionRate}%</strong></article>
+      <article><span>Active days</span><strong>${summary.activeDays}</strong></article>
+      <article><span>Current streak</span><strong>${summary.currentStreak} day${summary.currentStreak === 1 ? "" : "s"}</strong></article>
+    </section>
+    <div class="statistics-grid">
+      <section class="app-card trend-card"><div class="section-heading"><div><h2>Activity trend</h2><p>Latest 14 active days in this period</p></div></div><ol class="trend-chart">${trend}</ol></section>
+      <section class="app-card"><div class="section-heading"><div><h2>Mode mix</h2><p>Share of local sessions</p></div></div><div class="mode-stat-list">${modes}</div></section>
+      <section class="app-card"><div class="section-heading"><div><h2>Most used drills</h2><p>Ranked by sessions</p></div></div><ol class="drill-stat-list">${drills}</ol></section>
+      <section class="app-card guidance-card"><div class="section-heading"><div><h2>Adaptive plan guidance</h2><p>Rule-based and explainable</p></div></div><div class="guidance-list">${guidance}</div></section>
+    </div>`;
+}
+
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -462,11 +507,11 @@ function capabilityView() {
 }
 
 function roadmap() {
-  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Connected", "Sharing and stable voice commands"]];
+  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Sharing and stable voice commands"]];
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
-const renderers = { train: trainView, music: musicView, msync: msyncView, data: dataView, overview, capabilities: capabilityView, roadmap };
+const renderers = { train: trainView, music: musicView, msync: msyncView, statistics: statisticsView, data: dataView, overview, capabilities: capabilityView, roadmap };
 
 async function render(route) {
   activeRoute = route;
@@ -509,6 +554,12 @@ function openDrillDialog(drill = null) {
 }
 
 function bindRouteActions(route) {
+  if (route === "statistics") {
+    document.querySelectorAll("[data-statistics-period]").forEach((button) => button.addEventListener("click", () => {
+      uiState.statisticsPeriod = button.dataset.statisticsPeriod === "all" ? "all" : Number(button.dataset.statisticsPeriod);
+      void render("statistics");
+    }));
+  }
   if (route === "train") {
     document.querySelector("[data-calibration-open]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, false));
     document.querySelector("[data-calibration-quick]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, true));
@@ -886,7 +937,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.3.0-msync.0";
+document.querySelector("#build-version").textContent = "v0.4.0-statistics.0";
 await refreshFooter();
 
 setInterval(() => {

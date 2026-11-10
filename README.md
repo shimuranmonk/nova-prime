@@ -10,7 +10,7 @@ The project combines Nova Trainer's robot control, calibration, physics, visual 
 
 ## Current status
 
-This branch advances Nova Prime through JewelFlow 0.3 MSYNC, retaining Foundation and Music while adding validated synchronized timeline simulation:
+This branch advances Nova Prime through JewelFlow 0.4 Insights, retaining Foundation, Music, and MSYNC while adding local activity statistics and explainable plan guidance:
 
 - Native JavaScript ES-module project structure
 - Canonical domain schemas and validation
@@ -33,6 +33,9 @@ This branch advances Nova Prime through JewelFlow 0.3 MSYNC, retaining Foundatio
 - Atomic MSYNC-to-audio attachment with SHA-256 identity, duration, and drill-resolution checks
 - Pre-start revalidation plus synchronized DRILL, INLINE, FLAVOR, REST, IDLE, and STOP simulation
 - Adjustable Robot Lead planning that is explicitly diagnostic and never transmitted to a robot
+- Device-local 7-day, 30-day, and all-time activity summaries
+- Responsive activity trend, mode mix, most-used drills, and deterministic adaptive plan guidance
+- Explicit analytics boundary: simulation history is not skill scoring or proof of physical ball delivery
 - Versioned backup and restore that preserves playable local audio
 - Dedicated phone, tablet portrait, tablet landscape, and desktop layouts from one static bundle
 - Application drawer for Data, About, Diagnostics, and Roadmap
@@ -59,11 +62,11 @@ npm run preview
 
 ## Current safety boundary
 
-Reps, Time, Music, and MSYNC exercise the same canonical lifecycle and record zero dispatched balls. Music controls local browser audio; MSYNC adds timeline simulation only. None of these modes can access Bluetooth. Live robot control remains blocked until the executor, queue cancellation, priority Stop path, and physical-device verification are complete.
+Reps, Time, Music, and MSYNC exercise the same canonical lifecycle and record zero dispatched balls. Music controls local browser audio; MSYNC adds timeline simulation only. Statistics summarize these local records and do not score playing skill. None of these modes can access Bluetooth. Live robot control remains blocked until the executor, queue cancellation, priority Stop path, and physical-device verification are complete.
 
 Browser data is scoped to the complete origin. Keep the same protocol, hostname, port, and path, and export a backup before changing a hosted or device-local address.
 
-The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), guided calibration in [`docs/CALIBRATION.md`](docs/CALIBRATION.md), Music in [`docs/MUSIC.md`](docs/MUSIC.md), MSYNC in [`docs/MSYNC.md`](docs/MSYNC.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
+The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), guided calibration in [`docs/CALIBRATION.md`](docs/CALIBRATION.md), Music in [`docs/MUSIC.md`](docs/MUSIC.md), MSYNC in [`docs/MSYNC.md`](docs/MSYNC.md), Statistics in [`docs/STATISTICS.md`](docs/STATISTICS.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
 
 Nova Prime supports two complete runtime modes:
 

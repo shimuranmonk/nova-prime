@@ -22,6 +22,9 @@ test("reps dry run counts down, completes, and records no physical balls", () =>
   assert.equal(records[0].completedCycles, 3);
   assert.equal(records[0].ballsDispatched, 0);
   assert.equal(records[0].simulation, true);
+  assert.equal(records[0].level, 1);
+  assert.equal(records[0].targetAmount, 3);
+  assert.equal(records[0].pauseSeconds, 0);
 });
 
 test("time dry run pauses explicitly and resumes without advancing while paused", () => {

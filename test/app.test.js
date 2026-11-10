@@ -38,11 +38,16 @@ test("unknown routes return to training", () => {
   assert.equal(routeFromHash("#train"), "train");
   assert.equal(routeFromHash("#data"), "data");
   assert.equal(routeFromHash("#music"), "music");
+  assert.equal(routeFromHash("#statistics"), "statistics");
   assert.equal(routeFromHash("#roadmap"), "roadmap");
   assert.equal(routeFromHash("#unknown"), "train");
 });
 
 test("MSYNC has a first-class application route", () => {
   assert.equal(routeFromHash("#msync"), "msync");
+});
+
+test("Statistics has a first-class application route", () => {
+  assert.equal(routeFromHash("#statistics"), "statistics");
 });
 

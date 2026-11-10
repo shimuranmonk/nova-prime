@@ -37,3 +37,11 @@ test("statistics reject negative counters", () => {
   assert.equal(result.valid, false);
   assert.ok(result.issues.some((entry) => entry.path === "ballsDispatched"));
 });
+
+test("statistics accept legacy records and validate optional planning fields", () => {
+  const legacy = createSessionRecord();
+  const { level, targetAmount, pauseSeconds, ...withoutPlanningFields } = legacy;
+  assert.equal(validateSessionRecord(withoutPlanningFields).valid, true);
+  assert.equal(validateSessionRecord(createSessionRecord({ level: 4 })).valid, false);
+  assert.equal(validateSessionRecord(createSessionRecord({ targetAmount: -1 })).valid, false);
+});

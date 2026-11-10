@@ -48,6 +48,11 @@
 - Atomic attachment replacement, source fingerprint, backup compatibility, and pre-start revalidation
 - DRILL, INLINE, FLAVOR, REST, IDLE, STOP, Robot Lead, Pause, Resume, completion, and priority Stop simulation
 - MSYNC session history records zero physically dispatched balls
+- Statistics period filtering, totals, duration, cycles, completion rate, active days, and current streak
+- Mode share, drill ranking, invalid/future timestamp rejection, and source-record immutability
+- Explainable baseline, low-completion, mode-diversity, inactivity, progress, and calibration guidance rules
+- Legacy session-record validation plus optional level, target, and pause planning fields
+- Phone, tablet portrait, tablet landscape, and desktop Statistics layout smoke tests
 
 ## Future integration checks
 

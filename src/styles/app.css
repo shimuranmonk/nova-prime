@@ -311,6 +311,48 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 .msync-error { background: #fff1f2; }
 .msync-warning { background: #fff8e9; }
 
+.statistics-heading { padding-bottom: 12px; }
+.statistics-boundary { display: grid; gap: 3px; margin-bottom: 12px; padding: 12px 14px; border: 1px solid #e5bb6a; border-radius: 12px; background: #fff5e8; color: #79531b; }
+.statistics-boundary strong { font-size: .82rem; }
+.statistics-boundary span { font-size: .74rem; line-height: 1.45; }
+.statistics-period { display: inline-grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 12px; padding: 4px; border-radius: 12px; background: #dfe6eb; }
+.statistics-period button { min-width: 86px; padding: 9px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-weight: 800; cursor: pointer; }
+.statistics-period button.selected { background: white; color: var(--ink); box-shadow: 0 2px 8px rgba(18,42,57,.1); }
+.statistics-summary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 9px; margin-bottom: 12px; }
+.statistics-summary article { display: grid; gap: 6px; min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: white; box-shadow: 0 6px 16px rgba(18,42,57,.05); }
+.statistics-summary span { color: var(--muted); font-size: .67rem; font-weight: 800; text-transform: uppercase; }
+.statistics-summary strong { color: var(--teal-dark); font-size: clamp(1rem, 2.2vw, 1.35rem); }
+.statistics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.statistics-grid > .app-card { min-width: 0; }
+.trend-chart { display: flex; align-items: stretch; gap: 7px; min-height: 200px; margin: 14px 0 0; padding: 0; overflow-x: auto; list-style: none; }
+.trend-chart li:not(.statistics-empty) { display: grid; grid-template-rows: 1fr auto auto; flex: 1 0 38px; align-items: end; justify-items: center; gap: 4px; min-width: 38px; }
+.trend-bar { display: flex; align-items: end; width: 22px; height: 120px; border-radius: 7px; background: var(--surface-soft); overflow: hidden; }
+.trend-bar i { display: block; width: 100%; border-radius: 7px; background: linear-gradient(180deg, var(--teal), var(--teal-dark)); }
+.trend-chart strong { font-size: .72rem; }
+.trend-chart time { color: var(--muted); font-size: .61rem; white-space: nowrap; }
+.mode-stat-list { display: grid; gap: 10px; margin-top: 14px; }
+.mode-stat { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; }
+.mode-stat div { display: grid; gap: 2px; }
+.mode-stat div span { color: var(--muted); font-size: .7rem; }
+.mode-stat > b { color: var(--teal-dark); }
+.share-track { grid-column: 1 / -1; height: 7px; border-radius: 999px; background: var(--surface-soft); overflow: hidden; }
+.share-track i { display: block; height: 100%; border-radius: inherit; background: var(--teal); }
+.drill-stat-list { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.drill-stat-list li:not(.statistics-empty) { display: grid; grid-template-columns: 30px 1fr; align-items: center; gap: 9px; padding: 9px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.drill-stat-list li > span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: white; color: var(--teal-dark); font-weight: 900; }
+.drill-stat-list li div { display: grid; gap: 2px; }
+.drill-stat-list small { color: var(--muted); }
+.guidance-card { grid-column: 1 / -1; }
+.guidance-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.guidance-item { display: grid; align-content: start; gap: 6px; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.guidance-item h3, .guidance-item p { margin: 0; }
+.guidance-item p { color: var(--muted); font-size: .74rem; line-height: 1.45; }
+.guidance-item > strong { margin-top: 3px; color: var(--teal-dark); font-size: .78rem; line-height: 1.4; }
+.guidance-item:only-child { grid-column: 1 / -1; width: min(100%, 520px); }
+.guidance-progress { border-color: #8ec9b4; background: #effaf5; }
+.guidance-check { border-color: #e5bb6a; background: #fff8e9; }
+.statistics-empty { display: grid; place-items: center; min-height: 112px; width: 100%; padding: 18px; color: var(--muted); text-align: center; }
+
 .app-footer { display: flex; justify-content: space-between; gap: 12px; padding: 18px 2px 0; color: var(--muted); font-size: 0.72rem; }
 .menu-scrim { position: fixed; inset: 0; z-index: 9; border: 0; background: rgba(10, 26, 36, 0.42); }
 .app-menu { position: fixed; top: 0; right: 0; z-index: 10; display: flex; flex-direction: column; width: min(360px, 88vw); height: 100dvh; padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom)); background: white; box-shadow: -16px 0 40px rgba(18, 42, 57, 0.2); transform: translateX(105%); transition: transform 180ms ease; }
@@ -409,9 +451,17 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
   .msync-attachment-card { align-items: stretch; flex-direction: column; }
   .msync-card-actions .primary-button { flex: 1 1 100%; }
   .msync-issues li { grid-template-columns: 1fr; gap: 3px; }
+  .statistics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statistics-grid { grid-template-columns: 1fr; }
+  .guidance-card { grid-column: auto; }
+  .guidance-list { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 390px) {
+@media (min-width: 621px) and (max-width: 900px) {
+  .statistics-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 420px) {
   .brand-copy strong { font-size: 1rem; }
   .status-card, .calibration-card { flex-direction: column; }
   .status-card .outline-button, .calibration-card .outline-button { width: 100%; }
@@ -426,6 +476,8 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
   .editor-footer > div, .editor-footer button { flex: 1; }
   .calibration-coordinate-grid { grid-template-columns: 1fr; }
   .playlist-create form, .playlist-add, .playlist-actions { flex-direction: column; }
+  .statistics-period { display: grid; width: 100%; }
+  .statistics-period button { min-width: 0; padding-inline: 7px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
