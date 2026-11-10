@@ -10,7 +10,7 @@ The project combines Nova Trainer's robot control, calibration, physics, visual 
 
 ## Current status
 
-This branch advances the JewelFlow 0.1 Foundation with local sessions, recovery, persistent custom drills, and visual program editing:
+This branch advances the JewelFlow 0.1 Foundation with local sessions, recovery, persistent custom drills, visual program editing, and guided calibration:
 
 - Native JavaScript ES-module project structure
 - Canonical domain schemas and validation
@@ -24,6 +24,9 @@ This branch advances the JewelFlow 0.1 Foundation with local sessions, recovery,
 - Atomic versioned custom-drill JSON import and export, with a 100-drill limit per group
 - Visual Levels 1–3 editor with up to 20 ordered steps, multiple balls per step, enable/scatter controls, and random or sequential playback
 - Uncalibrated table preview for speed, spin, type, height, direction, tempo, and repetitions
+- Standard and Complete guided calibration with manual landing observations, Undo, local profiles, import/export, and Quick Check
+- Calibrated placement offsets applied to visual drill previews without enabling robot commands
+- Dedicated phone, tablet portrait, tablet landscape, and desktop layouts from one static bundle
 - Application drawer for Data, About, Diagnostics, and Roadmap
 - Persistent simulation history that never claims physical ball dispatch
 - Versioned JSON backup with complete pre-restore validation
@@ -52,7 +55,7 @@ Reps and Time are simulation-only in this increment. They exercise the same cano
 
 Browser data is scoped to the complete origin. Keep the same protocol, hostname, port, and path, and export a backup before changing a hosted or device-local address.
 
-The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
+The approved interface direction is recorded in [`docs/UI_DIRECTION.md`](docs/UI_DIRECTION.md), guided calibration in [`docs/CALIBRATION.md`](docs/CALIBRATION.md), built-in drill provenance in [`docs/DRILL_CATALOG.md`](docs/DRILL_CATALOG.md), and custom-drill behavior in [`docs/CUSTOM_DRILLS.md`](docs/CUSTOM_DRILLS.md). Unimplemented controls remain visibly disabled and are not counted as integrated features.
 
 Nova Prime supports two complete runtime modes:
 

@@ -55,7 +55,9 @@ Browser persistence is origin-scoped. Mobile installations must therefore use a 
 
 The 0.1 local-sessions increment creates all target stores at database version 1. Session simulation records are persisted in `sessionRecords`, and custom drills are persisted in `drills`. Custom-drill import validates the complete file before atomically replacing that collection. The visual editor clones a drill into an in-memory draft, validates the whole draft, and writes it once only when Save is selected; closing the editor discards the draft. If IndexedDB cannot be opened, the UI explicitly warns that the current visit is using volatile memory. Backup restore validates the complete document before replacing its included collections in one read-write transaction.
 
-The table preview is a domain-only, deterministic adaptation of Nova Trainer's uncalibrated start-value physics. It has no transport dependency and cannot emit robot commands. Its result is presentation guidance until a future calibration profile supplies measured parameters.
+The table preview is a domain-only, deterministic adaptation of Nova Trainer's uncalibrated start-value physics. It has no transport dependency and cannot emit robot commands. An active calibration adds measured lateral and depth offsets to successful landing estimates while retaining the profile accuracy label.
+
+Calibration runs as a transport-free wizard. Standard uses five top, no-spin, backspin, and serve observations; Complete repeats those observations to estimate scatter. The user supplies physical ball delivery independently, selects the observed landing or Net/Long/Wide/Not seen, and may undo any observation. Saving requires at least three landed observations and performs one validated local write. Quick Check stores a dated error summary and suggestions without refitting the profile.
 
 ## Dual deployment and mobile packaging
 
@@ -83,7 +85,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 ## Deployment and rollback
 
 - `main` contains stable releases.
-- `jewelflow/0.1-visual-drill-editor` contains the draft-based visual-editor increment.
+- `jewelflow/0.1-guided-calibration` contains guided calibration, Quick Check, and calibrated visual estimates.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

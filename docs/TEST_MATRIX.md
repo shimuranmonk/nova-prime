@@ -31,8 +31,12 @@
 - Visual editor atomic save and invalid-save rollback
 - 20-step program limit, ordered steps, multiple ball variants, and Levels 1–3 persistence
 - Deterministic uncalibrated physics preview with bounded table markers
+- Standard and Complete calibration plan coverage
+- Calibration offset, accuracy, scatter, validation, atomic import/export, and Quick Check calculations
+- Calibrated offsets applied only to successful visual landing estimates
 - Phone-sized create, rename, duplicate, group move, reorder, selection, simulated completion, history naming, export, and fresh-tab persistence smoke test
 - Phone/tablet visual-editor create, reorder, parameter edit, level copy, save, cancel, and reopen smoke test
+- Phone portrait guided calibration, five observations, save, Quick Check suggestions, and calibrated-editor smoke test
 
 ## Future integration checks
 
@@ -61,6 +65,7 @@
 - Compatible Chromium browser on Android
 - Bluefy on supported iPhone and iPad workflows
 - Phone, tablet, and desktop layouts in portrait and landscape
+- Tablet portrait at 768 × 1024 and tablet landscape at 1024 × 768
 
 ## Mobile HTTP-server checks
 

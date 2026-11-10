@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createBall } from "../src/domain/drills/schema.js";
-import { previewBall, previewPosition } from "../src/domain/drills/preview.js";
+import { applyCalibration, previewBall, previewPosition } from "../src/domain/drills/preview.js";
 
 test("uncalibrated preview returns deterministic bounded table coordinates", () => {
   const ball = createBall();
@@ -23,4 +23,12 @@ test("robot position changes the lateral estimate", () => {
 
 test("out-of-bounds estimates are clamped to the visible table", () => {
   assert.deepEqual(previewPosition({ outcome: "side", xCm: -1000, yCm: 1000 }), { x: 2, y: 98 });
+});
+
+test("saved calibration offsets adjust successful landing estimates", () => {
+  const result = { ok: true, outcome: "in", xCm: 10, yCm: 40 };
+  const adjusted = applyCalibration(result, { id: "cal_1", modelParameters: { xOffsetCm: -3, yOffsetCm: 5 } });
+  assert.equal(adjusted.xCm, 7);
+  assert.equal(adjusted.yCm, 45);
+  assert.equal(adjusted.calibrated, true);
 });

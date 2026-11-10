@@ -1,4 +1,5 @@
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
+import { CalibrationService } from "../application/calibration/calibration-service.js";
 import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
 import { LocalSessionController } from "../application/sessions/session-controller.js";
 import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
@@ -7,6 +8,7 @@ import { SESSION_STATES } from "../domain/sessions/state-machine.js";
 import { IndexedDbStore } from "../infrastructure/storage/indexed-db-store.js";
 import { MemoryStore } from "../infrastructure/storage/memory-store.js";
 import { detectCapabilities } from "./capabilities.js";
+import { createCalibrationWizard } from "./calibration-wizard.js";
 import { createDrillEditor } from "./drill-editor.js";
 import { FEATURE_FLAGS } from "./feature-flags.js";
 import { createRouter } from "./router.js";
@@ -21,11 +23,15 @@ const drillForm = document.querySelector("#drill-form");
 const drillDialogResult = document.querySelector("#drill-dialog-result");
 const editorDialog = document.querySelector("#editor-dialog");
 const editorRoot = document.querySelector("#editor-root");
+const calibrationDialog = document.querySelector("#calibration-dialog");
+const calibrationRoot = document.querySelector("#calibration-root");
 let activeRoute = "train";
 let storageNotice = "";
 let dataMessage = "";
 let customMessage = "";
 let customCache = [];
+let calibrationProfile = null;
+let calibrationMessage = "";
 
 const uiState = {
   mode: "reps",
@@ -44,10 +50,12 @@ const store = await IndexedDbStore.open().catch(() => {
   return new MemoryStore();
 });
 const customDrillService = new CustomDrillService(store);
+const calibrationService = new CalibrationService(store);
 const drillEditor = createDrillEditor({
   dialog: editorDialog,
   root: editorRoot,
   service: customDrillService,
+  getCalibration: () => calibrationService.active(),
   onSaved: async (saved) => {
     uiState.drillId = saved.id;
     uiState.group = saved.group;
@@ -56,9 +64,23 @@ const drillEditor = createDrillEditor({
     if (activeRoute === "train") await render("train");
   },
 });
+const calibrationWizard = createCalibrationWizard({
+  dialog: calibrationDialog,
+  root: calibrationRoot,
+  service: calibrationService,
+  onSaved: async (saved, quick) => {
+    calibrationProfile = saved;
+    calibrationMessage = quick ? "Quick Check saved." : "Calibration saved and visual previews updated.";
+    if (activeRoute === "train") await render("train");
+  },
+});
 
 async function refreshCustomCache() {
   customCache = await customDrillService.list();
+}
+
+async function refreshCalibrationProfile() {
+  calibrationProfile = await calibrationService.active();
 }
 
 function resolveDrill(id) {
@@ -93,10 +115,12 @@ function connectionCard() {
 }
 
 function calibrationCard() {
+  const profile = calibrationProfile;
+  const quick = profile?.quickCheck;
   return `
     <section class="app-card calibration-card" aria-labelledby="calibration-title">
-      <div><h2 id="calibration-title">Calibration</h2><p>Not calibrated · canonical profile ready</p><details><summary>More</summary><p>Guided calibration, Quick Check, and physical placement arrive with the robot safety layer.</p></details></div>
-      <button class="outline-button" type="button" disabled>Coming next</button>
+      <div><h2 id="calibration-title">Calibration</h2><p>${profile ? `${escapeHtml(profile.name)} · accuracy ±${profile.accuracy} cm` : "Not calibrated · guided setup ready"}</p><details><summary>More</summary><p>${profile ? `Mode: ${escapeHtml(profile.mode)} · ${profile.observations.length} observations${profile.scatterEstimate == null ? "" : ` · scatter ${profile.scatterEstimate} cm`}${quick ? ` · Quick Check ${quick.meanErrorCm} cm` : ""}.` : "Record observed landings without enabling Bluetooth or robot commands."}</p><div class="calibration-file-actions">${profile ? `<button type="button" data-calibration-export>Export</button>` : ""}<label>Import<input data-calibration-import type="file" accept="application/json,.json"></label></div></details>${calibrationMessage ? `<span class="calibration-message" role="status">${escapeHtml(calibrationMessage)}</span>` : ""}</div>
+      <div class="calibration-card-actions">${profile ? `<button class="outline-button" type="button" data-calibration-quick>Quick Check</button>` : ""}<button class="outline-button" type="button" data-calibration-open>${profile ? "Recalibrate" : "Calibrate"}</button></div>
     </section>`;
 }
 
@@ -223,7 +247,7 @@ function customDrills(session) {
 }
 
 async function trainView() {
-  await refreshCustomCache();
+  await Promise.all([refreshCustomCache(), refreshCalibrationProfile()]);
   const session = controller.snapshot();
   return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
 }
@@ -244,7 +268,7 @@ async function dataView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and an estimated table preview.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Guided calibration</strong><p>Turn estimated placement into a profile tuned to the table, balls, and robot position.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -291,6 +315,18 @@ function openDrillDialog(drill = null) {
 
 function bindRouteActions(route) {
   if (route === "train") {
+    document.querySelector("[data-calibration-open]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, false));
+    document.querySelector("[data-calibration-quick]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, true));
+    document.querySelector("[data-calibration-export]")?.addEventListener("click", async () => downloadJson(await calibrationService.export(), `nova-prime-calibration-${new Date().toISOString().slice(0, 10)}.json`));
+    document.querySelector("[data-calibration-import]")?.addEventListener("change", async (event) => {
+      try {
+        const file = event.target.files?.[0]; if (!file) return;
+        const result = await calibrationService.import(JSON.parse(await file.text()));
+        calibrationProfile = result.profiles[0] ?? null;
+        calibrationMessage = `Imported ${result.imported} calibration profile${result.imported === 1 ? "" : "s"}.`;
+      } catch (error) { calibrationMessage = `Import blocked: ${error.message}`; }
+      await render("train");
+    });
     document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
     document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.mode = button.dataset.uiMode; uiState.amount = uiState.mode === "time" ? 60 : 10; void render("train"); }));
     document.querySelectorAll("[data-category]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; uiState.drillId = getBuiltinDrills(uiState.category)[0].id; void render("train"); }));
@@ -467,7 +503,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 });
 
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.1.0-editor.0";
+document.querySelector("#build-version").textContent = "v0.1.0-calibration.0";
 await refreshFooter();
 
 setInterval(() => {
