@@ -199,6 +199,64 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 .editor-footer .primary-button { border-color: var(--teal); background: var(--teal); color: white; }
 .editor-dialog button:disabled { opacity: .45; cursor: not-allowed; }
 
+.calibration-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.calibration-card-actions .outline-button { min-width: 104px; }
+.calibration-message { display: block; margin-top: 8px; color: var(--teal-dark); font-size: .72rem; font-weight: 800; }
+.calibration-file-actions { display: flex; gap: 7px; margin-top: 9px; }
+.calibration-file-actions button, .calibration-file-actions label { position: relative; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: white; color: var(--teal-dark); font-size: .68rem; font-weight: 800; cursor: pointer; }
+.calibration-file-actions input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.calibration-shell { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; overflow: hidden; }
+.calibration-setup, .calibration-observation, .calibration-review { min-height: 0; padding: 18px; overflow-y: auto; }
+.calibration-setup { display: grid; align-content: start; gap: 15px; max-width: 850px; width: 100%; margin-inline: auto; }
+.calibration-intro, .calibration-safety, .calibration-ball-card, .calibration-suggestions { padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: white; }
+.calibration-intro p, .calibration-safety span, .calibration-ball-card p { display: block; margin: 5px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+.calibration-safety { border-color: #e5bb6a; background: #fff5e8; color: #79531b; }
+.calibration-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.calibration-form-grid label, .calibration-coordinate-grid label { display: grid; gap: 5px; color: var(--muted); font-size: .68rem; font-weight: 900; text-transform: uppercase; }
+.calibration-form-grid input, .calibration-form-grid select, .calibration-coordinate-grid input { min-height: 44px; width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: white; color: var(--ink); font: inherit; }
+.calibration-notes { grid-column: 1 / -1; }
+.calibration-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.calibration-mode-grid button { display: grid; gap: 5px; min-height: 86px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: white; color: var(--ink); text-align: left; cursor: pointer; }
+.calibration-mode-grid button.selected { border-color: var(--teal); background: var(--teal-soft); box-shadow: inset 0 0 0 1px var(--teal); }
+.calibration-mode-grid span { color: var(--muted); font-size: .72rem; line-height: 1.35; }
+.calibration-progress { height: 5px; background: var(--line); }
+.calibration-progress span { display: block; height: 100%; background: var(--teal); transition: width 180ms ease; }
+.calibration-observation { display: grid; grid-template-columns: minmax(240px, .7fr) minmax(320px, 1fr); grid-template-rows: auto auto 1fr; align-content: start; gap: 12px; }
+.calibration-ball-card { grid-column: 1; grid-row: 1; }
+.calibration-ball-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.calibration-ball-values span { padding: 8px; border-radius: 8px; background: var(--surface-soft); color: var(--muted); font-size: .65rem; text-transform: uppercase; }
+.calibration-ball-values b { display: block; color: var(--ink); font-size: 1rem; }
+.calibration-landing { grid-column: 2; grid-row: 1 / span 3; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: white; }
+.calibration-table { position: relative; width: min(100%, 410px); aspect-ratio: 1.525 / 1.37; margin-inline: auto; overflow: hidden; border: 7px solid #e9f1f4; border-radius: 8px; background: linear-gradient(to right, transparent calc(50% - 1px), rgba(255,255,255,.76) calc(50% - 1px), rgba(255,255,255,.76) calc(50% + 1px), transparent calc(50% + 1px)), repeating-linear-gradient(to bottom, transparent 0, transparent calc(21.9% - 1px), rgba(255,255,255,.25) 21.9%, transparent calc(21.9% + 1px)), #188d94; box-shadow: inset 0 0 0 2px rgba(255,255,255,.78); }
+.calibration-table.interactive { cursor: crosshair; touch-action: none; }
+.calibration-net, .calibration-player { position: absolute; left: 8px; z-index: 1; color: rgba(255,255,255,.86); font-size: .62rem; font-weight: 900; text-transform: uppercase; }
+.calibration-net { top: 6px; }
+.calibration-player { bottom: 6px; }
+.calibration-target, .calibration-actual { position: absolute; z-index: 2; width: 24px; height: 24px; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none; }
+.calibration-target { border: 3px solid #f6b93b; background: rgba(246,185,59,.18); }
+.calibration-target::before, .calibration-target::after { content: ""; position: absolute; top: 50%; left: 50%; background: #f6b93b; transform: translate(-50%, -50%); }
+.calibration-target::before { width: 10px; height: 2px; }
+.calibration-target::after { width: 2px; height: 10px; }
+.calibration-actual { border: 3px solid white; background: #ea5a30; box-shadow: 0 2px 7px rgba(10,26,36,.35); }
+.calibration-coordinate-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 11px; }
+.calibration-outcomes { grid-column: 1; grid-row: 2; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+.calibration-outcomes > span { color: var(--muted); font-size: .7rem; font-weight: 800; }
+.calibration-outcomes > div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.calibration-outcomes button { min-height: 38px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); color: var(--muted); font-weight: 800; cursor: pointer; }
+.calibration-outcomes button.selected { border-color: var(--ink); background: var(--ink); color: white; }
+.calibration-observation > .dialog-result { grid-column: 1; grid-row: 3; margin: 0; }
+.calibration-legend { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: .65rem; }
+.calibration-legend i { width: 9px; height: 9px; border: 2px solid #f6b93b; border-radius: 50%; }
+.calibration-legend i:last-of-type { margin-left: 4px; border-color: #ea5a30; background: #ea5a30; }
+.calibration-review { display: grid; align-content: start; gap: 13px; max-width: 850px; width: 100%; margin-inline: auto; }
+.calibration-review-grid { display: grid; gap: 7px; }
+.calibration-review-grid article { display: grid; grid-template-columns: 30px 1fr; align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.calibration-review-grid article > span { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--teal-soft); color: var(--teal-dark); font-weight: 900; }
+.calibration-review-grid strong, .calibration-review-grid small { display: block; }
+.calibration-review-grid small { margin-top: 2px; color: var(--muted); }
+.calibration-suggestions h3 { margin: 0 0 8px; }
+.calibration-suggestions p { margin: 6px 0; color: var(--muted); }
+
 .app-footer { display: flex; justify-content: space-between; gap: 12px; padding: 18px 2px 0; color: var(--muted); font-size: 0.72rem; }
 .menu-scrim { position: fixed; inset: 0; z-index: 9; border: 0; background: rgba(10, 26, 36, 0.42); }
 .app-menu { position: fixed; top: 0; right: 0; z-index: 10; display: flex; flex-direction: column; width: min(360px, 88vw); height: 100dvh; padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom)); background: white; box-shadow: -16px 0 40px rgba(18, 42, 57, 0.2); transform: translateX(105%); transition: transform 180ms ease; }
@@ -236,6 +294,34 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 .unavailable { color: var(--muted); }
 .release-number { color: var(--teal); font-size: 1.5rem; font-weight: 900; }
 
+@media (min-width: 900px) {
+  .app-shell { width: min(1080px, 100%); padding-inline: 24px; }
+  .training-screen { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .training-screen > .setup-card, .training-screen > .session-console { grid-column: 1 / -1; }
+  .training-screen > .library-card { height: 100%; }
+  .drill-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 621px) and (max-width: 900px) {
+  .editor-workspace { grid-template-columns: minmax(230px, .78fr) minmax(330px, 1.22fr); align-items: start; overflow-y: auto; }
+  .preview-panel { grid-column: 1; grid-row: 1; overflow: visible; }
+  .step-panel { grid-column: 1; grid-row: 2; overflow: visible; }
+  .ball-panel { grid-column: 2; grid-row: 1 / span 2; overflow: visible; }
+  .table-preview { min-height: 0; }
+}
+
+@media (orientation: landscape) and (max-height: 650px) {
+  .editor-dialog { width: calc(100vw - 8px); height: calc(100dvh - 8px); border-radius: 12px; }
+  .editor-header, .editor-toolbar, .editor-footer { padding-block: 8px; }
+  .editor-header p { display: none; }
+  .editor-level-actions { padding-top: 5px; }
+  .editor-workspace { padding-top: 6px; }
+  .table-preview { min-height: 240px; }
+  .calibration-setup, .calibration-observation, .calibration-review { padding-block: 10px; }
+  .calibration-table { width: min(100%, 330px); }
+  .calibration-mode-grid button { min-height: 68px; }
+}
+
 @media (max-width: 620px) {
   .app-shell { padding-inline: 10px; }
   .status-card, .calibration-card { align-items: flex-start; }
@@ -251,6 +337,14 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
   .editor-header, .editor-toolbar, .editor-footer { padding-inline: 12px; }
   .editor-level-actions, .editor-workspace, .editor-shell > .dialog-result { padding-inline: 12px; }
   .editor-footer { position: sticky; bottom: 0; }
+  .calibration-card { flex-direction: column; }
+  .calibration-card-actions, .calibration-card-actions .outline-button { width: 100%; }
+  .calibration-setup, .calibration-observation, .calibration-review { padding: 12px; }
+  .calibration-form-grid, .calibration-mode-grid, .calibration-observation { grid-template-columns: 1fr; }
+  .calibration-notes { grid-column: auto; }
+  .calibration-ball-card, .calibration-landing, .calibration-outcomes, .calibration-observation > .dialog-result { grid-column: 1; grid-row: auto; }
+  .calibration-landing { order: 2; }
+  .calibration-outcomes { order: 3; }
 }
 
 @media (max-width: 390px) {
@@ -266,6 +360,7 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
   .editor-header p { display: none; }
   .editor-footer > span { display: none; }
   .editor-footer > div, .editor-footer button { flex: 1; }
+  .calibration-coordinate-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

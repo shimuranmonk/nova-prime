@@ -110,3 +110,10 @@ export function previewPosition(result) {
   const y = Number.isFinite(result.yCm) ? (result.yCm / TABLE_DIMENSIONS.lengthCm) * 100 : result.outcome === "net" ? 50 : 2;
   return Object.freeze({ x: Math.min(98, Math.max(2, x)), y: Math.min(98, Math.max(2, y)) });
 }
+
+export function applyCalibration(result, profile) {
+  if (!result?.ok || !profile || !Number.isFinite(result.xCm) || !Number.isFinite(result.yCm)) return result;
+  const xOffsetCm = Number(profile.modelParameters?.xOffsetCm) || 0;
+  const yOffsetCm = Number(profile.modelParameters?.yOffsetCm) || 0;
+  return Object.freeze({ ...result, xCm: result.xCm + xOffsetCm, yCm: result.yCm + yOffsetCm, calibrated: true, calibrationProfileId: profile.id });
+}

@@ -25,11 +25,11 @@ The custom-drill file is distinct from the complete application backup. A drill 
 
 ## Table preview
 
-The table preview adapts Nova Trainer's uncalibrated start-value physics by nova_fan. It is a visual estimate, not a promise of physical placement. Guided calibration will later adjust the model for an actual table, balls, setup, and robot.
+The table preview adapts Nova Trainer's uncalibrated start-value physics by nova_fan. It is a visual estimate, not a promise of physical placement. When an active calibration exists, its measured left/right and depth offsets adjust the markers and the preview reports the profile's estimated accuracy.
 
 ## Current boundary
 
-Library management, visual editing, and simulation are complete for this increment. Calibration and live Bluetooth execution remain disabled. Custom sessions use the existing safety lifecycle, send no robot commands, and record zero physically dispatched balls.
+Library management, visual editing, guided manual calibration, and simulation are complete for this increment. Live Bluetooth execution remains disabled. Custom sessions use the existing safety lifecycle, send no robot commands, and record zero physically dispatched balls.
 
 ## Source alignment
 

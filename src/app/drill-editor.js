@@ -1,5 +1,5 @@
 import { createBall, createStep, DRILL_STEP_LIMIT } from "../domain/drills/schema.js";
-import { previewBall, previewPosition } from "../domain/drills/preview.js";
+import { applyCalibration, previewBall, previewPosition } from "../domain/drills/preview.js";
 import { validateDrill } from "../domain/drills/validation.js";
 import { createId } from "../domain/shared/id.js";
 
@@ -46,13 +46,15 @@ function rangeControl(label, field, value, minimum, maximum, step = 1, suffix = 
     </label>`;
 }
 
-export function createDrillEditor({ dialog, root, service, onSaved }) {
+export function createDrillEditor({ dialog, root, service, getCalibration = async () => null, onSaved }) {
   let stored = null;
   let draft = null;
   let level = 1;
   let activeStepId = null;
   let activeVariant = 0;
   let dirty = false;
+  let calibration = null;
+  const ballPreview = (ball) => applyCalibration(previewBall(ball, draft.robotPosition), calibration);
 
   const currentProgram = () => draft?.programs?.[level] ?? null;
   const currentStep = () => currentProgram()?.steps.find((step) => step.id === activeStepId) ?? currentProgram()?.steps[0] ?? null;
@@ -71,7 +73,7 @@ export function createDrillEditor({ dialog, root, service, onSaved }) {
     const markers = [];
     for (const [stepIndex, step] of program.steps.entries()) {
       for (const [variantIndex, ball] of step.variants.entries()) {
-        const result = previewBall(ball, draft.robotPosition);
+        const result = ballPreview(ball);
         const position = previewPosition(result);
         const selected = step.id === selectedStep?.id && variantIndex === selectedVariant;
         markers.push(`<button type="button" class="preview-marker ${ball.type === "back" ? "back" : "top"} ${step.enabled ? "" : "disabled"} ${selected ? "selected" : ""} ${result.ok ? "" : "warning"}" style="left:${position.x}%;top:${position.y}%" data-preview-step="${escapeHtml(step.id)}" data-preview-variant="${variantIndex}" aria-label="Edit step ${stepIndex + 1}, ball ${variantIndex + 1}: ${escapeHtml(outcomeLabel(result))}">${stepIndex + 1}</button>`);
@@ -79,9 +81,9 @@ export function createDrillEditor({ dialog, root, service, onSaved }) {
     }
     return `
       <section class="preview-panel" aria-labelledby="preview-title">
-        <div class="editor-section-heading"><div><span class="eyebrow">UNCALIBRATED ESTIMATE</span><h3 id="preview-title">Table preview</h3></div><span class="preview-key"><i></i> Top <i class="back"></i> Back</span></div>
+        <div class="editor-section-heading"><div><span class="eyebrow">${calibration ? "CALIBRATED ESTIMATE" : "UNCALIBRATED ESTIMATE"}</span><h3 id="preview-title">Table preview</h3></div><span class="preview-key"><i></i> Top <i class="back"></i> Back</span></div>
         <div class="table-preview" role="img" aria-label="Estimated ball landing positions"><span class="table-net"></span><span class="table-label player">Player</span><span class="table-label robot">Robot</span>${markers.join("")}</div>
-        <p class="helper-text">The marker is an estimate from Nova Trainer’s start-value physics. Calibration will refine it later.</p>
+        <p class="helper-text">${calibration ? `Adjusted with ${escapeHtml(calibration.name)} · accuracy ±${calibration.accuracy} cm.` : "The marker is an estimate from Nova Trainer’s start-value physics. Calibration will refine it later."}</p>
       </section>`;
   }
 
@@ -101,7 +103,7 @@ export function createDrillEditor({ dialog, root, service, onSaved }) {
     const stepIndex = program.steps.findIndex((entry) => entry.id === step.id);
     activeVariant = Math.min(activeVariant, step.variants.length - 1);
     const ball = step.variants[activeVariant];
-    const result = previewBall(ball, draft.robotPosition);
+    const result = ballPreview(ball);
     const scatterMaximum = Math.max(0, 10 - Math.abs(Number(ball.drop)));
     return `
       <section class="ball-panel" aria-labelledby="ball-title">
@@ -241,6 +243,7 @@ export function createDrillEditor({ dialog, root, service, onSaved }) {
       stored = await service.get(id);
       if (!stored) throw new Error("Custom drill was not found");
       draft = clone(stored);
+      calibration = await getCalibration();
       level = initialLevel;
       dirty = false;
       setActiveFromProgram();

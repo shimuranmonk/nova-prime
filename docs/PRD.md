@@ -47,13 +47,15 @@ Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova
 - Support sequential/random operation, variants, scatter, and bulk adjustments.
 - Provide visual table editing, predictions, rulers, grid, reordering, and safe testing.
 
-Implementation status: the 34 built-ins, Groups A/B/C library management, immutable custom identities, ordering, import/export, selection, and safe simulation are complete. Ball parameter and visual table editing remain pending.
+Implementation status: the 34 built-ins, Groups A/B/C library management, immutable custom identities, ordering, import/export, selection, safe simulation, ball parameters, and visual table editing are complete.
 
 ### Calibration and feedback — NU-FR-025 to NU-FR-032
 
 - Support Standard and Complete guided calibration.
 - Model top, no-spin, backspin, and serve behavior.
 - Support Undo, multiple-ball observations, Quick Check, import/export, corner placement, and Net/Out suggestions.
+
+Implementation status: Standard and Complete manual observation plans, Undo, repeated observations, local profile import/export, Quick Check, and Net/Long/Wide guidance are complete. Automated ball dispatch and physical corner testing remain behind the live-robot safety boundary.
 
 ### Sessions — NU-FR-033 to NU-FR-041
 
@@ -129,3 +131,5 @@ The stable foundation provides the modular shell, canonical schemas, validators,
 The app-shell increment makes Training the default experience and adopts the approved Nova Trainer-first card hierarchy with Nova Plus level, mode, amount, and pause controls. It does not mark the drill library, editor, calibration, Music, MSYNC, or robot connection complete merely because their future locations are visible.
 
 The drill-library increment integrates the complete 34-entry Nova Trainer catalogue with three canonical programs per drill, source provenance, stable IDs, category selection, level selection, and local session/history linkage. The following visual-editor increment enables draft-based custom programs for Levels 1–3, with a 20-step limit, multiple ball variants, ordering, random/sequential playback, and an explicitly uncalibrated table estimate. Physical robot execution remains outside this increment.
+
+The guided-calibration increment records user-observed landings for Standard or Complete plans, derives bounded lateral and depth offsets, reports accuracy and scatter, supports atomic import/export, and runs Quick Check without refitting the saved profile. Calibrated corrections affect visual previews only. Phone, tablet portrait, tablet landscape, and desktop layouts are independently verified.
