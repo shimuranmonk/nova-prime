@@ -654,7 +654,7 @@ function capabilityView() {
 }
 
 function roadmap() {
-  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing and stable, optional voice commands"], ["0.6", "Robot", "Safety executor and hardware verification before live control"], ["0.7", "Migration", "Previewed and atomic Nova Plus custom-drill migration"]];
+  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing and stable, optional voice commands"], ["0.6", "Robot", "Safety executor and hardware verification before live control"], ["0.7", "Migration", "Previewed and atomic Nova Plus custom-drill migration"], ["0.8", "Themes", "Auto, Light, Dark, and Court appearance choices"], ["0.9", "Placement", "Interactive drag, tap, and keyboard ball targeting"]];
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
@@ -1209,7 +1209,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.8.0-themes.0";
+document.querySelector("#build-version").textContent = "v0.9.0-placement.0";
 await refreshFooter();
 
 setInterval(() => {
