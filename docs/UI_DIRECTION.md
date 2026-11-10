@@ -1,6 +1,6 @@
 # Nova Prime Interface Direction
 
-> `0.7.0-migration.0` adds a responsive Nova Plus migration card and a separate read-only preview. The tested robot foundation remains explicitly gated pending physical verification.
+> `0.8.0-themes.0` completes Auto, Light, Dark, and Court appearance choices while retaining the responsive migration preview and explicit robot gate.
 
 ## Approved visual hierarchy
 
