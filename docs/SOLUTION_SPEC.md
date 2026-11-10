@@ -1,8 +1,8 @@
-# Nova Ultimate Solution Specification
+# Nova Prime Solution Specification
 
 ## Architecture
 
-Nova Ultimate is a static, local-first ES-module application with two equal runtime environments: a hosted HTTPS web deployment and a device-local loopback HTTP server for use without internet or Wi-Fi. It will use one robot transport, one protocol layer, one execution queue, one session controller, and mode adapters for Reps, Time, Music, and MSYNC.
+Nova Prime is a static, local-first ES-module application with two equal runtime environments: a hosted HTTPS web deployment and a device-local loopback HTTP server for use without internet or Wi-Fi. It will use one robot transport, one protocol layer, one execution queue, one session controller, and mode adapters for Reps, Time, Music, and MSYNC.
 
 ```text
 UI
@@ -49,7 +49,7 @@ The built-in catalogue is bundled as immutable canonical data with deterministic
 
 ## Persistence
 
-The target IndexedDB database is `nova_ultimate`, with stores for metadata, settings, drills, calibrations, tracks, playlists, MSYNC attachments, session records, migration receipts, and backups. localStorage is limited to small bootstrap preferences and tab coordination.
+The deployed IndexedDB database remains `nova_ultimate` as a compatibility key across the Nova Prime rename, with stores for metadata, settings, drills, calibrations, tracks, playlists, MSYNC attachments, session records, migration receipts, and backups. Changing this internal identity would hide existing browser data, so it remains stable while all user-facing branding and newly exported formats use Nova Prime. localStorage is limited to small bootstrap preferences and tab coordination.
 
 Browser persistence is origin-scoped. Mobile installations must therefore use a stable protocol, hostname, port, and application path. A change from `localhost` to `127.0.0.1`, or from one port to another, may expose a different storage origin and requires export/import recovery.
 
