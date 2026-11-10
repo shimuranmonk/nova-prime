@@ -1,6 +1,6 @@
 {
   "name": "nova-prime",
-  "version": "0.1.0-prime.0",
+  "version": "0.1.0-editor.0",
   "private": true,
   "type": "module",
   "scripts": {

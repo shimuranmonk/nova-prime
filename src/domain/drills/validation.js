@@ -1,6 +1,7 @@
 import {
   BALL_LIMITS,
   BALL_TYPES,
+  DRILL_STEP_LIMIT,
   DRILL_GROUPS,
   DRILL_SCHEMA_VERSION,
   DRILL_SOURCES,
@@ -67,6 +68,7 @@ export function validateDrill(drill) {
       if (!Array.isArray(program.steps) || program.steps.length === 0) {
         issues.push(issue("DRILL_STEPS_REQUIRED", "Program requires at least one step", `programs.${level}.steps`));
       } else {
+        if (program.steps.length > DRILL_STEP_LIMIT) issues.push(issue("DRILL_STEP_LIMIT", `Program cannot exceed ${DRILL_STEP_LIMIT} steps`, `programs.${level}.steps`));
         program.steps.forEach((step, index) => issues.push(...validateStep(step, `programs.${level}.steps[${index}]`).issues));
       }
     }

@@ -110,6 +110,19 @@ export class CustomDrillService {
     return updated;
   }
 
+  async saveEditor(id, { programs, random }) {
+    const drill = await this.get(id);
+    if (!drill) throw new Error("Custom drill was not found");
+    const updated = {
+      ...drill,
+      programs: clone(programs),
+      random: Boolean(random),
+      updatedAt: this.now(),
+    };
+    await this.#put(updated);
+    return updated;
+  }
+
   async duplicate(id, targetGroup = null) {
     const source = await this.get(id);
     if (!source) throw new Error("Custom drill was not found");
