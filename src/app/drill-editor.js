@@ -94,11 +94,13 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     return `
       <section class="preview-panel" aria-labelledby="preview-title">
         <div class="editor-section-heading"><div><span class="eyebrow">${calibration ? "CALIBRATED PLACEMENT" : "ESTIMATED PLACEMENT"}</span><h3 id="preview-title">Aim on the table</h3></div><span class="preview-key"><i></i> Top <i class="back"></i> Back</span></div>
-        <div class="table-preview" data-placement-table role="group" aria-label="Interactive table. Drag the selected ball or tap the player half to choose a landing target.">
-          <span class="table-landing-zone"><small>Tap or drag here</small></span><span class="table-net"></span><span class="table-label player">Player</span><span class="table-label robot">Robot</span>
-          <svg class="placement-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="3" x2="${requested.x}" y2="${requested.y}" data-placement-line></line></svg>
-          <span class="placement-target ${placementTarget ? "requested" : ""}" style="left:${requested.x}%;top:${requested.y}%" data-placement-target aria-hidden="true"></span>
-          ${markers.join("")}
+        <div class="table-stage">
+          <div class="table-preview" data-placement-table role="group" aria-label="Interactive table. Drag the selected ball or tap the player half to choose a landing target.">
+            <span class="table-landing-zone"><small>Tap or drag here</small></span><span class="table-net"></span><span class="table-label player">Player</span><span class="table-label robot">Robot</span>
+            <svg class="placement-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="3" x2="${requested.x}" y2="${requested.y}" data-placement-line></line></svg>
+            <span class="placement-target ${placementTarget ? "requested" : ""}" style="left:${requested.x}%;top:${requested.y}%" data-placement-target aria-hidden="true"></span>
+            ${markers.join("")}
+          </div>
         </div>
         <div class="placement-readout"><strong>${depth} · ${side}</strong><span>${Math.abs(point.xCm).toFixed(0)} cm ${point.xCm < -1 ? "left" : point.xCm > 1 ? "right" : "centre"} · ${point.yCm.toFixed(0)} cm from player end</span></div>
         <p class="helper-text">${escapeHtml(placementMessage || (calibration ? `Adjusted with ${calibration.name} · accuracy ±${calibration.accuracy} cm. Dragging changes Speed and Direction only.` : "Drag the selected ball or tap a target. Height, spin, tempo, repeats, and scatter stay unchanged."))}</p>
@@ -108,7 +110,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   function renderStepList(program, selectedStep) {
     return `
       <section class="step-panel" aria-labelledby="steps-title">
-        <div class="editor-section-heading"><div><span class="eyebrow">PROGRAM ORDER</span><h3 id="steps-title">Steps</h3></div><span class="step-count">${program.steps.length}/${DRILL_STEP_LIMIT}</span></div>
+        <div class="editor-section-heading program-heading"><div><span class="eyebrow">PROGRAM ORDER</span><h3 id="steps-title">Steps</h3></div><div class="program-options"><label class="editor-switch"><input type="checkbox" data-editor-random ${draft.random ? "checked" : ""}><span>${draft.random ? "Random" : "Sequential"}</span></label><span class="step-count">${program.steps.length}/${DRILL_STEP_LIMIT}</span></div></div>
         <div class="step-list">${program.steps.map((step, index) => {
           const ball = step.variants[0];
           return `<button type="button" class="step-row ${step.id === selectedStep?.id ? "selected" : ""} ${step.enabled ? "" : "disabled"}" data-editor-step="${escapeHtml(step.id)}" aria-pressed="${step.id === selectedStep?.id}"><span class="step-number">${index + 1}</span><span><strong>${ball.type === "back" ? "Backspin" : "Topspin"}</strong><small>${step.variants.length} ball${step.variants.length === 1 ? "" : "s"} · ${ball.bpm} BPM</small></span></button>`;
@@ -125,7 +127,8 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     const scatterMaximum = Math.max(0, 10 - Math.abs(Number(ball.drop)));
     return `
       <section class="ball-panel" aria-labelledby="ball-title">
-        <div class="editor-section-heading"><div><span class="eyebrow">STEP ${stepIndex + 1}</span><h3 id="ball-title">Ball parameters</h3></div><label class="editor-switch"><input type="checkbox" data-step-enabled ${step.enabled ? "checked" : ""}><span>Enabled</span></label></div>
+        <div class="editor-section-heading ball-panel-heading"><div><span class="eyebrow">STEP ${stepIndex + 1}</span><h3 id="ball-title">Ball parameters</h3></div><div class="ball-heading-controls"><div class="level-selector editor-levels" role="group" aria-label="Program level">${[1, 2, 3].map((entry) => `<button type="button" data-editor-level="${entry}" class="level-button ${entry === level ? "selected" : ""}" aria-pressed="${entry === level}">${entry}${draft.programs[entry] ? "" : "·"}</button>`).join("")}</div><label class="editor-switch"><input type="checkbox" data-step-enabled ${step.enabled ? "checked" : ""}><span>Enabled</span></label></div></div>
+        ${level !== 1 ? `<div class="editor-level-actions"><button type="button" data-editor-copy-level="1">Copy Level 1</button><button type="button" class="danger-button" data-editor-clear-level>Clear Level ${level}</button></div>` : ""}
         <div class="step-actions">
           <button type="button" data-step-move="-1" ${stepIndex === 0 ? "disabled" : ""}>↑ Up</button>
           <button type="button" data-step-move="1" ${stepIndex === program.steps.length - 1 ? "disabled" : ""}>↓ Down</button>
@@ -158,13 +161,8 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     const sourceLevel = populatedLevels[0] ?? 1;
     root.innerHTML = `
       <div class="editor-shell">
-        <header class="editor-header"><div><span class="eyebrow">VISUAL DRILL EDITOR</span><h2>${escapeHtml(draft.name)}</h2><p>Simulation only · no robot commands</p></div><button class="icon-button" type="button" data-editor-close aria-label="Close visual drill editor">×</button></header>
-        <div class="editor-toolbar">
-          <div class="level-selector editor-levels" role="group" aria-label="Program level">${[1, 2, 3].map((entry) => `<button type="button" data-editor-level="${entry}" class="level-button ${entry === level ? "selected" : ""}" aria-pressed="${entry === level}">${entry}${draft.programs[entry] ? "" : "·"}</button>`).join("")}</div>
-          <label class="editor-switch"><input type="checkbox" data-editor-random ${draft.random ? "checked" : ""}><span>${draft.random ? "Random" : "Sequential"}</span></label>
-        </div>
+        <header class="editor-header"><div class="editor-title-line"><span class="eyebrow">VISUAL DRILL EDITOR</span><h2>${escapeHtml(draft.name)}</h2></div><button class="icon-button" type="button" data-editor-close aria-label="Close visual drill editor">×</button></header>
         ${program ? `
-          <div class="editor-level-actions">${level !== 1 ? `<button type="button" data-editor-copy-level="1">Copy Level 1</button><button type="button" class="danger-button" data-editor-clear-level>Clear Level ${level}</button>` : ""}</div>
           <div class="editor-workspace">${renderTable(program, step, activeVariant)}${renderStepList(program, step)}${renderBallControls(program, step)}</div>
         ` : `<section class="editor-empty"><span class="editor-empty-icon">${level}</span><h3>Level ${level} has no program yet</h3><p>Start from Level ${sourceLevel}, then adjust its steps and ball parameters.</p><button class="primary-button" type="button" data-editor-create-level="${sourceLevel}">Create from Level ${sourceLevel}</button></section>`}
         <p class="dialog-result" role="alert">${validation.valid ? "" : escapeHtml(validation.issues[0]?.message ?? "Program is invalid")}</p>

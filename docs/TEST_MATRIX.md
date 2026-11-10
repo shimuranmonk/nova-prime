@@ -96,6 +96,7 @@
 - Bluefy on supported iPhone and iPad workflows
 - Phone, tablet, and desktop layouts in portrait and landscape
 - Tablet portrait at 768 × 1024 and tablet landscape at 1024 × 768
+- Visual editor retains an outer margin, complete table, Height control, and horizontal-overflow-free layout at desktop, tablet, phone, and low-height landscape breakpoints
 
 ## Mobile HTTP-server checks
 
