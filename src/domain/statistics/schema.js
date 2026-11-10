@@ -16,6 +16,9 @@ export function createSessionRecord(overrides = {}) {
     netCount: 0,
     outCount: 0,
     drillId: null,
+    level: null,
+    targetAmount: null,
+    pauseSeconds: 0,
     errorCode: null,
     ...overrides,
   });
@@ -28,6 +31,10 @@ export function validateSessionRecord(record) {
   if (!SESSION_OUTCOMES.includes(record.outcome)) issues.push(issue("STAT_OUTCOME", "Unsupported session outcome", "outcome"));
   for (const field of ["ballsPlanned", "ballsDispatched", "completedCycles", "durationSeconds", "netCount", "outCount"]) {
     if (!Number.isFinite(record[field]) || record[field] < 0) issues.push(issue("STAT_NUMBER", `${field} must be non-negative`, field));
+  }
+  if (record.level != null && ![1, 2, 3].includes(record.level)) issues.push(issue("STAT_LEVEL", "level must be 1, 2, 3, or empty", "level"));
+  for (const field of ["targetAmount", "pauseSeconds"]) {
+    if (record[field] != null && (!Number.isFinite(record[field]) || record[field] < 0)) issues.push(issue("STAT_NUMBER", `${field} must be non-negative when present`, field));
   }
   return validationResult(issues, record);
 }

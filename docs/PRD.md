@@ -1,6 +1,6 @@
 # Nova Prime Product Requirements
 
-> Implementation status: Foundation, Music, and the MSYNC v1 validation/simulation scope are implemented in `0.3.0-msync.0`. Live robot execution remains excluded.
+> Implementation status: Foundation, Music, MSYNC v1 validation/simulation, and local Statistics are implemented through `0.4.0-statistics.0`. Live robot execution remains excluded.
 
 ## Vision
 
@@ -24,7 +24,8 @@ Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova
 | 0.1 Foundation | Trainer parity, canonical models, migration framework, Reps and Time |
 | 0.2 Music | Stored audio, playlists, Quick Music, unified Music sessions |
 | 0.3 MSYNC | Validation, simulation, safe live synchronization |
-| 0.4 Connected | Versioned sharing and stable voice control |
+| 0.4 Insights | Local statistics and explainable adaptive plan guidance |
+| 0.5 Connected | Versioned sharing and stable voice control |
 | 1.0 Stable | Verified unified product with migration and documentation |
 
 ## Requirement groups
@@ -86,6 +87,8 @@ Implementation status: local SHA-256 deduplication, validated track storage, pla
 - Record cumulative totals, outcomes, modes, duration, and optional Net/Out counts.
 - Support manual baselines and user-controlled export.
 
+Implementation status: 7-day, 30-day, and all-time local summaries, completion rate, active days, streak, activity trend, mode mix, drill ranking, and transparent rule-based plan guidance are complete. Statistics explicitly do not claim skill measurement or physical robot execution. Backup export remains user-controlled in Data and Recovery; manual physical baselines remain future work.
+
 ### Data and migration — NU-FR-069 to NU-FR-078
 
 - Version persistent data.
@@ -139,3 +142,5 @@ The drill-library increment integrates the complete 34-entry Nova Trainer catalo
 The guided-calibration increment records user-observed landings for Standard or Complete plans, derives bounded lateral and depth offsets, reports accuracy and scatter, supports atomic import/export, and runs Quick Check without refitting the saved profile. Calibrated corrections affect visual previews only. Phone, tablet portrait, tablet landscape, and desktop layouts are independently verified.
 
 The Music increment stores playable user audio locally with content-identity deduplication, supports reusable ordered playlists and Quick Music, and coordinates local playback with the canonical session lifecycle. Playable audio is included in validated backup/restore. Music sends no robot commands and records zero dispatched balls.
+
+The Insights increment derives immutable statistics from local session records, accepts legacy records without newer optional planning fields, and presents deterministic guidance with its reason and action. It performs no network request, writes no analytics data, and does not treat simulation completion as proof of physical performance.

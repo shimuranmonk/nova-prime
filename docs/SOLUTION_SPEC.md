@@ -1,6 +1,6 @@
 # Nova Prime Solution Specification
 
-> Implementation status: the MSYNC `Parser → Validator → Resolver → Timeline → Simulator → Session adapter` path is implemented in `0.3.0-msync.0`; transport remains deliberately absent.
+> Implementation status: the MSYNC simulation path and local Statistics aggregation/guidance path are implemented through `0.4.0-statistics.0`; transport remains deliberately absent.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ Features outside the robot executor may not write Bluetooth commands directly.
 
 ## Application interface
 
-The default route is the operational Training dashboard, not a product or development landing page. Its information hierarchy follows Nova Trainer: header, connection, calibration, training setup, built-in drills, custom drills, and totals. Nova Plus contributes difficulty selection, Reps/Time/Music/MSYNC modes, count or duration, and pause controls. Secondary Data, About, Diagnostics, and Roadmap screens live in a drawer. Controls whose backing capability is not implemented remain disabled and explicitly labelled.
+The default route is the operational Training dashboard, not a product or development landing page. Its information hierarchy follows Nova Trainer: header, connection, calibration, training setup, built-in drills, custom drills, and totals. Nova Plus contributes difficulty selection, Reps/Time/Music/MSYNC modes, count or duration, and pause controls. Secondary Statistics, Data, About, Diagnostics, and Roadmap screens live in a drawer. Controls whose backing capability is not implemented remain disabled and explicitly labelled.
 
 ## Canonical session lifecycle
 
@@ -45,7 +45,7 @@ Every command returns `EXECUTED`, `IGNORED`, `BLOCKED`, or `FAILED`. Repeated St
 - Session specifications select mode, drill, level, amount, pause, media, and calibration.
 - Tracks use SHA-256 content identity. Playlists reference Track IDs.
 - MSYNC attachments retain authoritative source text and a validation receipt.
-- Session records distinguish planned and dispatched balls, outcomes, mode, and duration.
+- Session records distinguish planned and dispatched balls, outcomes, mode, duration, and optional level, target, and pause planning fields.
 
 The built-in catalogue is bundled as immutable canonical data with deterministic drill and step IDs. Its source repository, branch, file paths, and Git blob identities are embedded in the module. Built-ins are not duplicated into mutable browser storage. User-created and imported drills occupy the `drills` store and use a dedicated application service for identity, naming, group capacity, ordering, duplication, deletion, and atomic import/export.
 
@@ -64,6 +64,8 @@ Calibration runs as a transport-free wizard. Standard uses five top, no-spin, ba
 Music is split between a storage-facing library service and a browser-facing audio player. Import calculates a SHA-256 digest before writing, skips exact duplicates, reads duration from browser metadata, and stores the original Blob in `tracks`. Playlists contain contiguous ordered Track IDs. Quick Music retains an in-memory ordered selection of Track IDs. Selection resolution verifies that every Blob is present before the session starts.
 
 `AudioPlayer` owns temporary object URLs, current-track progress, automatic advancement, Pause, Resume, Stop, completion, and recoverable playback errors. `LocalSessionController` accepts Music specifications and remains authoritative for lifecycle, elapsed time, Stop priority, failure state, and session records. Music starts without a delayed countdown so browser playback remains connected to the user's activation gesture. Backup export base64-encodes playable audio and validated restore reconstructs its Blob.
+
+Statistics use a pure domain aggregator over `sessionRecords`. It accepts a period and active calibration profile, filters invalid or future timestamps, and returns immutable summaries, daily activity, mode mix, drill ranking, and at most three rule-based suggestions. The UI renders these results with dependency-free CSS and states that activity completion is neither skill scoring nor evidence of physical ball delivery. No analytics request leaves the device.
 
 ## Dual deployment and mobile packaging
 
@@ -92,6 +94,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 
 - `main` contains stable releases.
 - `jewelflow/0.2-music` contains local tracks, playlists, Quick Music, unified Music sessions, and playable-audio recovery.
+- `jewelflow/0.4-statistics` contains local activity summaries and explainable plan guidance.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.
