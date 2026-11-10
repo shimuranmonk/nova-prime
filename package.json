@@ -1,6 +1,6 @@
 {
   "name": "nova-prime",
-  "version": "0.5.0-voice.0",
+  "version": "0.6.0-robot-foundation.0",
   "private": true,
   "type": "module",
   "scripts": {

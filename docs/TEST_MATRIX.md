@@ -9,8 +9,8 @@
 - Explicit Pause and Resume
 - Mode-specific session validation
 - Calibration, Track, Playlist, MSYNC, and statistics schemas
-- Foundation feature flags remain disabled
-- Build output contains no live Bluetooth request
+- Robot feature flag remains disabled
+- Build allows `requestDevice` only inside the unimported gated transport
 - Reps and Time dry-run countdown, completion, Pause, Resume, and priority Stop
 - Simulation records always report zero physically dispatched balls
 - Memory-store isolation and persistent-store browser smoke test
@@ -59,14 +59,17 @@
 - Non-mutating incoming preview and atomic import failure with existing data preserved
 - Explicit native-share adapter invocation with exactly one generated JSON file
 - Phone, tablet portrait, tablet landscape, and desktop Sharing layout smoke tests
+- RFC MD5 vectors, verified handshake response, motor conversion, drill header, and completion marker
+- Fake Web Bluetooth profile discovery, notifications, serialized writes, and disconnect
+- Fake authenticated login success and timeout failure
+- Executor stale-queue cancellation, priority Stop ordering, and bounded idempotent Stop retry
 
 ## Future integration checks
 
-- Fake Bluetooth login, writes, notifications, failures, and disconnects
 - Fake monotonic timers and visibility changes
 - Browser-specific codec and quota failure fixtures
 - Fake IndexedDB transactions and quota failures
-- Long-running cue drift and future live-executor queue boundaries
+- Long-running cue drift across live-executor queue boundaries
 - Legacy Trainer and Plus migration fixtures
 
 ## Required physical robot checks before live release

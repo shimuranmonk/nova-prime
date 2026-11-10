@@ -1,6 +1,6 @@
 # Nova Prime Interface Direction
 
-> `0.5.0-voice.0` adds a compact responsive Voice card to Training, keeping it off by default and preserving every touch control.
+> `0.6.0-robot-foundation.0` makes the robot gate explicit: the tested transport/executor foundation is reported honestly while Connect remains disabled pending physical verification.
 
 ## Approved visual hierarchy
 
@@ -9,7 +9,7 @@ Nova Prime uses Nova Trainer as its primary interaction model: a compact applica
 ## Implemented app shell
 
 - Training is the default route; the development-style landing hero is removed.
-- Connection and calibration appear first. Calibration is operational through manual observations; robot connection remains disabled until its safety milestone is complete.
+- Connection and calibration appear first. Calibration is operational through manual observations; robot connection states that simulated executor checks pass but remains disabled until the physical release gate is complete.
 - Reps and Time controls operate the existing local dry-run controller. Music uses that same lifecycle while owning local audio playback.
 - Music is operational through a dedicated library, playlists, Quick Music, and training progress. MSYNC is operational for strict validation and simulation while live transport remains disabled.
 - The built-in drill area contains the verified 34-drill Nova Trainer catalogue with its 6 Basic, 12 Combined, and 16 Complex entries.

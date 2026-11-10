@@ -1,6 +1,6 @@
 # Nova Prime Solution Specification
 
-> Implementation status: MSYNC simulation, local Statistics, versioned custom-drill sharing, and optional stable voice commands are implemented through `0.5.0-voice.0`; robot transport remains deliberately absent.
+> Implementation status: `0.6.0-robot-foundation.0` packages the protocol, Web Bluetooth transport, authenticated connection, and priority-Stop executor. Production bootstrap and the robot feature flag keep this stack inactive until physical verification passes.
 
 ## Architecture
 
@@ -19,6 +19,8 @@ Bluetooth transport and persistent storage
 ```
 
 Features outside the robot executor may not write Bluetooth commands directly.
+
+The robot boundary has three layers. `WebBluetoothTransport` exclusively owns device selection, GATT discovery, notifications, bounded writes, serialization, and disconnect. `NovaRobotConnection` exclusively owns the four-stage authenticated handshake and completion notifications. `RobotExecutor` exclusively owns command epochs, stale-queue cancellation, safe start/replace, Pause/Resume, priority Stop, and bounded retry of only the idempotent Stop packet. Protocol encoding is pure and separately tested. No production module imports these layers while `FEATURE_FLAGS.robot` is `false`.
 
 Voice is an input adapter, not a session controller. It converts a confidence-checked exact phrase into a canonical session intent. Pause, Resume, and Stop enter the same application command path as touch. Start can only create a pending confirmation and requires a separate touch before the existing form submits. Recognition is one-shot, disabled by default, and never persists audio or transcripts.
 
@@ -86,7 +88,7 @@ Sharing uses a dedicated `nova-prime-share` version 1 envelope for selected cust
 
 ## Safety boundary
 
-Live robot support is not part of this initial generated solution. A later robot executor must own command epochs, queue cancellation, safe replacement, priority Stop, and single-ball tests before the robot feature flag can be enabled.
+The live-control stack is packaged but not activated. Fake-device tests prove protocol shapes, authenticated state progression, serialized writes, timeout/disconnect handling, command epochs, queue cancellation, and priority Stop ordering. They do not prove physical ball delivery. The flag stays off until conservative single-ball, drill, queued-load Stop, screen-lock, calibration, Music, MSYNC, and target-device checks pass on a real Nova S Pro.
 
 Reps and Time dry runs use the canonical lifecycle and priority Stop behavior, but never receive a transport reference and always record zero dispatched balls. They verify local orchestration and recovery without representing hardware execution.
 
@@ -101,6 +103,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 - `jewelflow/0.4-statistics` contains local activity summaries and explainable plan guidance.
 - `jewelflow/0.5-sharing` contains versioned custom-drill packs, explicit device sharing, preview, and confirmed import.
 - `jewelflow/0.5-voice` contains capability-gated one-shot speech recognition, strict commands, privacy disclosure, and touch-confirmed Start.
+- `jewelflow/0.6-robot-foundation` contains the gated transport, authentication, protocol encoder, executor, provenance, and physical release checklist.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.
