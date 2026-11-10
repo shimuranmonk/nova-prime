@@ -7,6 +7,7 @@ import { SESSION_STATES } from "../domain/sessions/state-machine.js";
 import { IndexedDbStore } from "../infrastructure/storage/indexed-db-store.js";
 import { MemoryStore } from "../infrastructure/storage/memory-store.js";
 import { detectCapabilities } from "./capabilities.js";
+import { createDrillEditor } from "./drill-editor.js";
 import { FEATURE_FLAGS } from "./feature-flags.js";
 import { createRouter } from "./router.js";
 
@@ -18,6 +19,8 @@ const menuToggle = document.querySelector("#menu-toggle");
 const drillDialog = document.querySelector("#drill-dialog");
 const drillForm = document.querySelector("#drill-form");
 const drillDialogResult = document.querySelector("#drill-dialog-result");
+const editorDialog = document.querySelector("#editor-dialog");
+const editorRoot = document.querySelector("#editor-root");
 let activeRoute = "train";
 let storageNotice = "";
 let dataMessage = "";
@@ -41,6 +44,18 @@ const store = await IndexedDbStore.open().catch(() => {
   return new MemoryStore();
 });
 const customDrillService = new CustomDrillService(store);
+const drillEditor = createDrillEditor({
+  dialog: editorDialog,
+  root: editorRoot,
+  service: customDrillService,
+  onSaved: async (saved) => {
+    uiState.drillId = saved.id;
+    uiState.group = saved.group;
+    customMessage = "Ball program saved.";
+    await refreshCustomCache();
+    if (activeRoute === "train") await render("train");
+  },
+});
 
 async function refreshCustomCache() {
   customCache = await customDrillService.list();
@@ -229,7 +244,7 @@ async function dataView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill library</strong><p>Groups A/B/C, naming, duplication, ordering, import/export, selection, and simulated sessions are available.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Visual ball editor</strong><p>Edit ball placement and parameters, then add guided calibration.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and an estimated table preview.</p></article><article class="app-card"><h2>Next</h2><strong class="large-value">Guided calibration</strong><p>Turn estimated placement into a profile tuned to the table, balls, and robot position.</p></article><article class="app-card"><h2>Safety</h2><strong class="large-value">Bluetooth off</strong><p>Live commands remain blocked until the executor and physical tests pass.</p></article></div>`;
 }
 
 function capabilityView() {
@@ -391,6 +406,16 @@ menuScrim.addEventListener("click", closeMenu);
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });
 document.querySelector("#drill-dialog-close").addEventListener("click", () => drillDialog.close());
 document.querySelector("#drill-cancel").addEventListener("click", () => drillDialog.close());
+document.querySelector("#drill-edit-balls").addEventListener("click", async () => {
+  const id = drillForm.elements.id.value;
+  drillDialog.close();
+  try {
+    await drillEditor.open(id, uiState.level);
+  } catch (error) {
+    drillDialogResult.textContent = error.message;
+    drillDialog.showModal();
+  }
+});
 drillForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   drillDialogResult.textContent = "";
@@ -442,7 +467,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 });
 
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.1.0-prime.0";
+document.querySelector("#build-version").textContent = "v0.1.0-editor.0";
 await refreshFooter();
 
 setInterval(() => {

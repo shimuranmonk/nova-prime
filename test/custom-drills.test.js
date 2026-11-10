@@ -70,6 +70,37 @@ test("custom drill export and atomic import preserve valid programs", async () =
   assert.equal((await legacyTarget.import(legacyPayload)).added, 1);
 });
 
+test("visual editor saves all levels atomically and preserves drill identity", async () => {
+  const service = makeService();
+  const source = await service.create({ name: "Editor pattern" });
+  const programs = structuredClone(source.programs);
+  programs[1].steps.push({
+    id: "step_editor_two",
+    enabled: true,
+    scatter: 1,
+    variants: [{ speed: 6, spin: 4, type: "back", height: 45, drop: -2, bpm: 55, repetitions: 2 }],
+  });
+  programs[2] = structuredClone(programs[1]);
+  programs[2].steps = programs[2].steps.map((step, index) => ({ ...step, id: `step_level_two_${index}` }));
+
+  const saved = await service.saveEditor(source.id, { programs, random: true });
+  assert.equal(saved.id, source.id);
+  assert.equal(saved.random, true);
+  assert.equal(saved.programs[1].steps.length, 2);
+  assert.equal(saved.programs[2].steps[1].variants[0].type, "back");
+});
+
+test("invalid editor saves do not mutate the stored drill", async () => {
+  const service = makeService();
+  const source = await service.create({ name: "Atomic editor" });
+  const programs = structuredClone(source.programs);
+  programs[1].steps[0].variants[0].speed = 99;
+  await assert.rejects(() => service.saveEditor(source.id, { programs, random: true }), /speed is outside/);
+  const unchanged = await service.get(source.id);
+  assert.equal(unchanged.random, false);
+  assert.equal(unchanged.programs[1].steps[0].variants[0].speed, 5);
+});
+
 test("custom groups enforce the Trainer 100-drill capacity", async () => {
   const service = makeService();
   for (let index = 0; index < MAX_CUSTOM_DRILLS_PER_GROUP; index += 1) {

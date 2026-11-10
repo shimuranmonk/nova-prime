@@ -50,15 +50,20 @@
           <label><span>Group</span><select id="drill-group" name="group"><option>A</option><option>B</option><option>C</option></select></label>
           <label><span>Robot position</span><select id="drill-position" name="robotPosition"><option value="middle">Middle</option><option value="left">Left</option><option value="right">Right</option></select></label>
         </div>
-        <p class="helper-text">New drills begin with one canonical ball. Ball and table editing arrive in the visual-editor increment.</p>
+        <p class="helper-text">New drills begin with one canonical ball. Use Edit balls to build and preview Levels 1–3.</p>
         <p id="drill-dialog-result" class="dialog-result" role="alert"></p>
         <div id="drill-edit-actions" class="dialog-secondary-actions" hidden>
+          <button id="drill-edit-balls" class="primary-button" type="button">Edit balls</button>
           <button id="drill-duplicate" type="button">Duplicate</button>
           <button id="drill-export-one" type="button">Export</button>
           <button id="drill-delete" class="danger-button" type="button">Delete</button>
         </div>
         <div class="dialog-actions"><button id="drill-cancel" type="button">Cancel</button><button class="primary-button" type="submit">Save drill</button></div>
       </form>
+    </dialog>
+
+    <dialog id="editor-dialog" class="editor-dialog" aria-label="Visual drill editor">
+      <div id="editor-root"></div>
     </dialog>
 
     <script type="module" src="./src/app/bootstrap.js"></script>

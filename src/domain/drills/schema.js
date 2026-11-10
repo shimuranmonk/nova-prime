@@ -5,6 +5,7 @@ export const DRILL_SOURCES = Object.freeze(["builtin", "custom", "imported"]);
 export const DRILL_GROUPS = Object.freeze(["builtin", "basic", "combined", "complex", "A", "B", "C"]);
 export const ROBOT_POSITIONS = Object.freeze(["left", "middle", "right"]);
 export const BALL_TYPES = Object.freeze(["top", "back"]);
+export const DRILL_STEP_LIMIT = 20;
 
 export const BALL_LIMITS = Object.freeze({
   speed: [0, 10],
@@ -59,4 +60,3 @@ export function createDrill(overrides = {}) {
     ...overrides,
   });
 }
-

@@ -53,7 +53,9 @@ The deployed IndexedDB database remains `nova_ultimate` as a compatibility key a
 
 Browser persistence is origin-scoped. Mobile installations must therefore use a stable protocol, hostname, port, and application path. A change from `localhost` to `127.0.0.1`, or from one port to another, may expose a different storage origin and requires export/import recovery.
 
-The 0.1 local-sessions increment creates all target stores at database version 1. Session simulation records are persisted in `sessionRecords`, and custom drills are persisted in `drills`. Custom-drill import validates the complete file before atomically replacing that collection. If IndexedDB cannot be opened, the UI explicitly warns that the current visit is using volatile memory. Backup restore validates the complete document before replacing its included collections in one read-write transaction.
+The 0.1 local-sessions increment creates all target stores at database version 1. Session simulation records are persisted in `sessionRecords`, and custom drills are persisted in `drills`. Custom-drill import validates the complete file before atomically replacing that collection. The visual editor clones a drill into an in-memory draft, validates the whole draft, and writes it once only when Save is selected; closing the editor discards the draft. If IndexedDB cannot be opened, the UI explicitly warns that the current visit is using volatile memory. Backup restore validates the complete document before replacing its included collections in one read-write transaction.
+
+The table preview is a domain-only, deterministic adaptation of Nova Trainer's uncalibrated start-value physics. It has no transport dependency and cannot emit robot commands. Its result is presentation guidance until a future calibration profile supplies measured parameters.
 
 ## Dual deployment and mobile packaging
 
@@ -81,7 +83,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 ## Deployment and rollback
 
 - `main` contains stable releases.
-- `jewelflow/0.1-custom-drills` contains the persistent custom-library increment.
+- `jewelflow/0.1-visual-drill-editor` contains the draft-based visual-editor increment.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

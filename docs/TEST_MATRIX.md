@@ -28,7 +28,11 @@
 - Reorder and post-delete order compaction
 - Atomic custom-drill import rejection and versioned JSON round trip
 - 100-drill capacity enforcement for every custom group
+- Visual editor atomic save and invalid-save rollback
+- 20-step program limit, ordered steps, multiple ball variants, and Levels 1–3 persistence
+- Deterministic uncalibrated physics preview with bounded table markers
 - Phone-sized create, rename, duplicate, group move, reorder, selection, simulated completion, history naming, export, and fresh-tab persistence smoke test
+- Phone/tablet visual-editor create, reorder, parameter edit, level copy, save, cancel, and reopen smoke test
 
 ## Future integration checks
 

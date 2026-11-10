@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createBall, createDrill, createStep } from "../src/domain/drills/schema.js";
+import { createBall, createDrill, createStep, DRILL_STEP_LIMIT } from "../src/domain/drills/schema.js";
 import { validateBall, validateDrill, validateStep } from "../src/domain/drills/validation.js";
 
 test("new drills satisfy the canonical schema", () => {
@@ -29,4 +29,12 @@ test("drills require at least one populated program", () => {
   const result = validateDrill(drill);
   assert.equal(result.valid, false);
   assert.ok(result.issues.some((entry) => entry.code === "DRILL_PROGRAM_REQUIRED"));
+});
+
+test("programs are capped at the editor's 20-step safety limit", () => {
+  const steps = Array.from({ length: DRILL_STEP_LIMIT + 1 }, (_, index) => createStep({ id: `step_${index}` }));
+  const drill = createDrill({ programs: { 1: { steps, metadata: {} }, 2: null, 3: null } });
+  const result = validateDrill(drill);
+  assert.equal(result.valid, false);
+  assert.ok(result.issues.some((entry) => entry.code === "DRILL_STEP_LIMIT"));
 });

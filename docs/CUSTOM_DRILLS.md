@@ -6,6 +6,10 @@ Nova Prime stores custom drills in Groups A, B, and C. Users can create, rename,
 
 New drills receive immutable drill and step identities and begin with one valid canonical ball program. Names are trimmed, restricted to 40 characters, cleaned of Trainer-incompatible separators, and made unique within their group.
 
+The visual editor builds independent programs for Levels 1–3. Each program supports up to 20 ordered steps, per-step enable and scatter controls, and multiple ball variants. Each ball exposes speed, spin, topspin/backspin type, height, direction, tempo, and repetitions. Programs can run sequentially or randomly.
+
+Editor changes remain an in-memory draft until **Save program**. Cancelling or closing leaves the stored drill unchanged; saving validates the complete drill before one storage write.
+
 ## File format
 
 Custom drill files are JSON envelopes with:
@@ -19,9 +23,13 @@ Import validates the entire envelope and every drill before atomically replacing
 
 The custom-drill file is distinct from the complete application backup. A drill file is intended for sharing drills; a backup also contains settings, calibrations, tracks, playlists, MSYNC attachments, session history, migration receipts, and backup metadata.
 
+## Table preview
+
+The table preview adapts Nova Trainer's uncalibrated start-value physics by nova_fan. It is a visual estimate, not a promise of physical placement. Guided calibration will later adjust the model for an actual table, balls, setup, and robot.
+
 ## Current boundary
 
-Library management and simulation are complete for this increment. The visual ball/table editor is not yet included, so newly created drills retain their default canonical ball. Calibration and live Bluetooth execution also remain disabled. Custom sessions use the existing safety lifecycle, send no robot commands, and record zero physically dispatched balls.
+Library management, visual editing, and simulation are complete for this increment. Calibration and live Bluetooth execution remain disabled. Custom sessions use the existing safety lifecycle, send no robot commands, and record zero physically dispatched balls.
 
 ## Source alignment
 
