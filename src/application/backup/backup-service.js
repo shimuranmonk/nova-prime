@@ -5,7 +5,8 @@ import { validateMsyncAttachment } from "../../domain/msync/schema.js";
 import { validatePlaylist, validateTrack } from "../../domain/music/schema.js";
 import { validateSessionRecord } from "../../domain/statistics/schema.js";
 
-export const BACKUP_FORMAT = "nova-ultimate-backup";
+export const BACKUP_FORMAT = "nova-prime-backup";
+export const LEGACY_BACKUP_FORMATS = Object.freeze(["nova-ultimate-backup"]);
 export const BACKUP_VERSION = 1;
 export const BACKUP_STORES = Object.freeze(STORE_NAMES.filter((name) => name !== "backups"));
 
@@ -39,7 +40,7 @@ export async function createBackup(store, { now = () => new Date().toISOString()
 
 export function validateBackup(backup) {
   if (!backup || typeof backup !== "object") throw new Error("Backup must be a JSON object");
-  if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION) throw new Error("Unsupported Nova Ultimate backup format");
+  if (![BACKUP_FORMAT, ...LEGACY_BACKUP_FORMATS].includes(backup.format) || backup.version !== BACKUP_VERSION) throw new Error("Unsupported Nova Prime backup format");
   if (!backup.collections || typeof backup.collections !== "object" || Array.isArray(backup.collections)) throw new Error("Backup collections are missing");
 
   for (const name of Object.keys(backup.collections)) {
@@ -65,4 +66,3 @@ export async function restoreBackup(store, backup) {
   const counts = Object.fromEntries(Object.entries(collections).map(([name, values]) => [name, values.length]));
   return Object.freeze({ restored: Object.values(counts).reduce((total, count) => total + count, 0), counts });
 }
-
