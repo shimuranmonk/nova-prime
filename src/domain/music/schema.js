@@ -18,7 +18,7 @@ export function createTrack(overrides = {}) {
   });
 }
 
-export function validateTrack(track, { requireBlob = true } = {}) {
+export function validateTrack(track, { requireBlob = true, requireHash = false } = {}) {
   const issues = [];
   if (!track || typeof track !== "object") return validationResult([issue("AUDIO_TRACK_REQUIRED", "Track is required", "track")]);
   if (typeof track.id !== "string" || !track.id) issues.push(issue("AUDIO_TRACK_ID", "Track requires an identity", "id"));
@@ -26,6 +26,7 @@ export function validateTrack(track, { requireBlob = true } = {}) {
   if (!Number.isFinite(track.byteSize) || track.byteSize < 0) issues.push(issue("AUDIO_TRACK_SIZE", "Track size is invalid", "byteSize"));
   if (!Number.isFinite(track.durationMs) || track.durationMs <= 0) issues.push(issue("AUDIO_TRACK_DURATION", "Track duration must be positive", "durationMs"));
   if (track.sha256 != null && !/^[a-f0-9]{64}$/i.test(track.sha256)) issues.push(issue("AUDIO_TRACK_HASH", "Track SHA-256 is invalid", "sha256"));
+  if (requireHash && !track.sha256) issues.push(issue("AUDIO_TRACK_HASH_REQUIRED", "Track content identity is required", "sha256"));
   if (requireBlob && !track.audioBlob) issues.push(issue("AUDIO_TRACK_BLOB", "Track audio is unavailable", "audioBlob"));
   return validationResult(issues, track);
 }
@@ -45,5 +46,10 @@ export function validatePlaylist(playlist) {
     if (!item?.trackId) issues.push(issue("PLAYLIST_TRACK", "Playlist item requires a Track ID", `items[${index}].trackId`));
     if (!Number.isInteger(item?.order) || item.order < 0) issues.push(issue("PLAYLIST_ORDER", "Playlist order must be a non-negative integer", `items[${index}].order`));
   });
+  if (Array.isArray(playlist.items)) {
+    const orders = playlist.items.map((item) => item?.order);
+    if (new Set(orders).size !== orders.length) issues.push(issue("PLAYLIST_ORDER_DUPLICATE", "Playlist item order must be unique", "items"));
+    if (orders.some((order, index) => order !== index)) issues.push(issue("PLAYLIST_ORDER_GAP", "Playlist item order must be contiguous", "items"));
+  }
   return validationResult(issues, playlist);
 }

@@ -3,6 +3,7 @@ import test from "node:test";
 import { BACKUP_FORMAT, createBackup, restoreBackup, validateBackup } from "../src/application/backup/backup-service.js";
 import { createSessionRecord } from "../src/domain/statistics/schema.js";
 import { MemoryStore } from "../src/infrastructure/storage/memory-store.js";
+import { createTrack } from "../src/domain/music/schema.js";
 
 test("memory storage isolates written and returned records", async () => {
   const store = new MemoryStore();
@@ -28,6 +29,16 @@ test("backup round trip restores all validated collections", async () => {
   assert.equal(result.counts.sessionRecords, 1);
   assert.equal((await target.getAll("sessionRecords"))[0].id, "record_1");
   assert.equal((await target.get("settings", "theme")).value, "dark");
+});
+
+test("backup round trip preserves playable audio blobs", async () => {
+  const track = createTrack({ displayName: "Warmup", byteSize: 5, durationMs: 1000, sha256: "a".repeat(64), audioBlob: new Blob(["audio"], { type: "audio/mpeg" }) });
+  const backup = await createBackup(new MemoryStore({ tracks: [track] }));
+  assert.equal(backup.collections.tracks[0].audioEncoding, "base64");
+  const target = new MemoryStore();
+  await restoreBackup(target, JSON.parse(JSON.stringify(backup)));
+  const restored = await target.get("tracks", track.id);
+  assert.equal(await restored.audioBlob.text(), "audio");
 });
 
 test("pre-rename Nova Ultimate backups remain restorable", async () => {

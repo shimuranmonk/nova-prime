@@ -59,6 +59,10 @@ The table preview is a domain-only, deterministic adaptation of Nova Trainer's u
 
 Calibration runs as a transport-free wizard. Standard uses five top, no-spin, backspin, and serve observations; Complete repeats those observations to estimate scatter. The user supplies physical ball delivery independently, selects the observed landing or Net/Long/Wide/Not seen, and may undo any observation. Saving requires at least three landed observations and performs one validated local write. Quick Check stores a dated error summary and suggestions without refitting the profile.
 
+Music is split between a storage-facing library service and a browser-facing audio player. Import calculates a SHA-256 digest before writing, skips exact duplicates, reads duration from browser metadata, and stores the original Blob in `tracks`. Playlists contain contiguous ordered Track IDs. Quick Music retains an in-memory ordered selection of Track IDs. Selection resolution verifies that every Blob is present before the session starts.
+
+`AudioPlayer` owns temporary object URLs, current-track progress, automatic advancement, Pause, Resume, Stop, completion, and recoverable playback errors. `LocalSessionController` accepts Music specifications and remains authoritative for lifecycle, elapsed time, Stop priority, failure state, and session records. Music starts without a delayed countdown so browser playback remains connected to the user's activation gesture. Backup export base64-encodes playable audio and validated restore reconstructs its Blob.
+
 ## Dual deployment and mobile packaging
 
 - `npm run build` produces the complete static `dist/` directory.
@@ -85,7 +89,7 @@ MSYNC will follow `Parser → Validator → Resolver → Timeline → Scheduler 
 ## Deployment and rollback
 
 - `main` contains stable releases.
-- `jewelflow/0.1-guided-calibration` contains guided calibration, Quick Check, and calibrated visual estimates.
+- `jewelflow/0.2-music` contains local tracks, playlists, Quick Music, unified Music sessions, and playable-audio recovery.
 - CI runs tests, build, and verification.
 - GitHub Pages deploys only verified `main` builds.
 - The initial release has no service worker, simplifying cache rollback.

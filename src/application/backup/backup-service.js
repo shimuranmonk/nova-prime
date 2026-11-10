@@ -23,13 +23,41 @@ function assertRecord(record, storeName) {
   if (!record || typeof record !== "object" || Array.isArray(record) || typeof record.id !== "string" || !record.id) {
     throw new Error(`Invalid record in ${storeName}`);
   }
-  const validation = RECORD_VALIDATORS[storeName]?.(record);
+  const validation = storeName === "tracks"
+    ? validateTrack(record, { requireBlob: false, requireHash: true })
+    : RECORD_VALIDATORS[storeName]?.(record);
   if (validation && !validation.valid) throw new Error(`Invalid ${storeName} record ${record.id}: ${validation.issues[0]?.message ?? "schema validation failed"}`);
+  if (storeName === "tracks" && (record.audioEncoding !== "base64" || typeof record.audioBase64 !== "string" || !record.audioBase64)) {
+    throw new Error(`Invalid tracks record ${record.id}: playable audio is missing`);
+  }
+}
+
+async function serializeTrack(track) {
+  assertRecord({ ...track, audioBlob: null, audioEncoding: "base64", audioBase64: "pending" }, "tracks");
+  if (!track.audioBlob?.arrayBuffer) throw new Error(`Track ${track.id} has no playable audio`);
+  const bytes = new Uint8Array(await track.audioBlob.arrayBuffer());
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return Object.freeze({ ...track, audioBlob: null, audioEncoding: "base64", audioBase64: btoa(binary) });
+}
+
+function restoreTrack(track) {
+  const binary = atob(track.audioBase64);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const restored = { ...track, audioBlob: new Blob([bytes], { type: track.mimeType }) };
+  delete restored.audioEncoding;
+  delete restored.audioBase64;
+  return restored;
 }
 
 export async function createBackup(store, { now = () => new Date().toISOString() } = {}) {
   const collections = {};
-  for (const name of BACKUP_STORES) collections[name] = await store.getAll(name);
+  for (const name of BACKUP_STORES) {
+    const values = await store.getAll(name);
+    collections[name] = name === "tracks" ? await Promise.all(values.map(serializeTrack)) : values;
+  }
   return Object.freeze({
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -62,6 +90,7 @@ export function validateBackup(backup) {
 
 export async function restoreBackup(store, backup) {
   const collections = validateBackup(backup);
+  collections.tracks = collections.tracks.map(restoreTrack);
   await store.replaceAll(collections);
   const counts = Object.fromEntries(Object.entries(collections).map(([name, values]) => [name, values.length]));
   return Object.freeze({ restored: Object.values(counts).reduce((total, count) => total + count, 0), counts });

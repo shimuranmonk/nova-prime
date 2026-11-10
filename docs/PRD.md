@@ -68,6 +68,8 @@ Implementation status: Standard and Complete manual observation plans, Undo, rep
 - Store and deduplicate audio locally.
 - Support playlists, Quick Music, progress, automatic completion, and recoverable missing-audio errors.
 
+Implementation status: local SHA-256 deduplication, validated track storage, playlist management and ordering, Quick Music, playback progress, automatic completion, recoverable audio errors, and unified Music session history are complete. Audio codec support and available storage remain browser-dependent.
+
 ### MSYNC — NU-FR-051 to NU-FR-062
 
 - Support approved MSYNC v1 behavior.
@@ -133,3 +135,5 @@ The app-shell increment makes Training the default experience and adopts the app
 The drill-library increment integrates the complete 34-entry Nova Trainer catalogue with three canonical programs per drill, source provenance, stable IDs, category selection, level selection, and local session/history linkage. The following visual-editor increment enables draft-based custom programs for Levels 1–3, with a 20-step limit, multiple ball variants, ordering, random/sequential playback, and an explicitly uncalibrated table estimate. Physical robot execution remains outside this increment.
 
 The guided-calibration increment records user-observed landings for Standard or Complete plans, derives bounded lateral and depth offsets, reports accuracy and scatter, supports atomic import/export, and runs Quick Check without refitting the saved profile. Calibrated corrections affect visual previews only. Phone, tablet portrait, tablet landscape, and desktop layouts are independently verified.
+
+The Music increment stores playable user audio locally with content-identity deduplication, supports reusable ordered playlists and Quick Music, and coordinates local playback with the canonical session lifecycle. Playable audio is included in validated backup/restore. Music sends no robot commands and records zero dispatched balls.

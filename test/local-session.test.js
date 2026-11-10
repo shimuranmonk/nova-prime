@@ -37,6 +37,7 @@ test("time dry run pauses explicitly and resumes without advancing while paused"
   assert.equal(controller.state, SESSION_STATES.COMPLETED);
 });
 
+
 test("priority Stop returns a local session to idle and records a stopped outcome", () => {
   const records = [];
   const controller = new LocalSessionController({ onRecord: (record) => records.push(record) });
@@ -77,3 +78,18 @@ test("time dry run honors rest while total duration continues", () => {
   assert.equal(controller.state, SESSION_STATES.COMPLETED);
 });
 
+test("Music uses the canonical lifecycle and completes when audio finishes", () => {
+  const records = [];
+  const controller = new LocalSessionController({ now: () => "2026-11-10T00:00:00.000Z", onRecord: (record) => records.push(record) });
+  const result = controller.start(createSessionSpec({ mode: "music", drillId: "music-drill", quickTrackIds: ["track_1"] }), { countdownSeconds: 0 });
+  assert.equal(result.status, COMMAND_RESULTS.EXECUTED);
+  controller.tick(2);
+  assert.equal(controller.snapshot().elapsedSeconds, 2);
+  assert.equal(controller.pause().status, COMMAND_RESULTS.EXECUTED);
+  assert.equal(controller.resume().status, COMMAND_RESULTS.EXECUTED);
+  assert.equal(controller.complete({ completedCycles: 1 }).status, COMMAND_RESULTS.EXECUTED);
+  assert.equal(controller.state, SESSION_STATES.COMPLETED);
+  assert.equal(records[0].mode, "music");
+  assert.equal(records[0].completedCycles, 1);
+  assert.equal(records[0].ballsDispatched, 0);
+});
