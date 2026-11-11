@@ -83,9 +83,10 @@ test("visual editor saves all levels atomically and preserves drill identity", a
   programs[2] = structuredClone(programs[1]);
   programs[2].steps = programs[2].steps.map((step, index) => ({ ...step, id: `step_level_two_${index}` }));
 
-  const saved = await service.saveEditor(source.id, { programs, random: true });
+  const saved = await service.saveEditor(source.id, { programs, random: true, robotPosition: "right" });
   assert.equal(saved.id, source.id);
   assert.equal(saved.random, true);
+  assert.equal(saved.robotPosition, "right");
   assert.equal(saved.programs[1].steps.length, 2);
   assert.equal(saved.programs[2].steps[1].variants[0].type, "back");
 });

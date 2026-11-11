@@ -58,9 +58,9 @@ function parseCsv(text) {
         speed: parseNumber(parts[3], "Speed", { minimum: 0, maximum: 10 }),
         spin: parseNumber(parts[4], "Spin", { minimum: 0, maximum: 10 }),
         type: parts[5].trim().toLowerCase(),
-        height: parseNumber(parts[6], "Height", { minimum: 0, maximum: 100, integer: true }),
+        height: parseNumber(parts[6], "Height", { minimum: -50, maximum: 100, integer: true }),
         drop: parseNumber(parts[7], "Drop", { minimum: -10, maximum: 10 }),
-        bpm: parseNumber(parts[8], "BPM", { minimum: 1, maximum: 120, integer: true }),
+        bpm: parseNumber(parts[8], "BPM", { minimum: 30, maximum: 90, integer: true }),
         repetitions: parseNumber(parts[9], "Reps", { minimum: 1, maximum: 100, integer: true }),
       };
       if (!["top", "back"].includes(ball.type)) throw new Error("Type must be top or back");

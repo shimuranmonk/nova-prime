@@ -6,7 +6,7 @@ Nova Prime stores custom drills in Groups A, B, and C. Users can create, rename,
 
 New drills receive immutable drill and step identities and begin with one valid canonical ball program. Names are trimmed, restricted to 40 characters, cleaned of Trainer-incompatible separators, and made unique within their group.
 
-The visual editor builds independent programs for Levels 1–3. Each program supports up to 20 ordered steps, per-step enable and scatter controls, and multiple ball variants. Each ball exposes speed, spin, topspin/backspin type, height, direction, tempo, and repetitions. Programs can run sequentially or randomly. The complete table supports drag, tap, and keyboard targeting; direct placement fits Speed and Direction while preserving every other ball parameter.
+The visual editor builds independent programs for Levels 1–3. Each program supports up to 20 ordered steps, per-step enable and scatter controls, and multiple ball variants. Each ball exposes the Nova Plus controls: Speed 0–10, speed-dependent Spin, Top/Back, Height −50–100, Drop −10–10, BPM 30–90, and Reps 1–100. Programs can run sequentially or randomly. The graduated complete table supports drag, tap, and keyboard targeting; direct placement fits Speed and Drop while preserving every other ball parameter. Robot Left/Middle/Right position and the vertical Height adjuster remain visible beside the table.
 
 Editor changes remain an in-memory draft until **Save program**. Cancelling or closing leaves the stored drill unchanged; saving validates the complete drill before one storage write.
 
@@ -25,7 +25,7 @@ The custom-drill file is distinct from the complete application backup. A drill 
 
 ## Table preview
 
-The table preview adapts Nova Trainer's uncalibrated start-value physics by nova_fan. It is a visual estimate, not a promise of physical placement. When an active calibration exists, its measured left/right and depth offsets adjust the markers and the preview reports the profile's estimated accuracy. A requested target and calculated landing remain visibly separate when the current Height, Spin, type, Scatter, and safe Speed/Direction envelope cannot produce an exact fit.
+The table preview adapts Nova Trainer's uncalibrated start-value physics by nova_fan. It is a visual estimate, not a promise of physical placement. When an active calibration exists, its learned Drop/lateral, Speed/depth, Height, and signed Spin responses adjust the estimate and the preview reports the profile's accuracy. The draggable marker and target ring stay aligned; any remaining calculated error is reported as text instead of a misleading second marker.
 
 ## Current boundary
 

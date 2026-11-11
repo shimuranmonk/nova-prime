@@ -25,8 +25,9 @@ This branch advances Nova Prime through the JewelFlow 0.7 migration increment, r
 - Interactive Levels 1–3 editor with a complete table, drag/tap/keyboard targeting, up to 20 ordered steps, multiple balls per step, enable/scatter controls, and random or sequential playback
 - Uncalibrated table preview for speed, spin, type, height, direction, tempo, and repetitions
 - Standard and Complete guided calibration with manual landing observations, Undo, local profiles, import/export, and Quick Check
-- Calibrated placement offsets applied to visual drill previews without enabling robot commands
-- Closest-safe Speed and Direction fitting that preserves Height, Spin, type, Tempo, Repeats, and Scatter
+- Calibrated parameter-response corrections applied to visual drill previews without enabling robot commands
+- Closest-safe Speed and Drop fitting that preserves Height, Spin, type, BPM, Reps, and Scatter
+- Nova Plus parameter truth: Speed 0–10, dynamic Spin limit, Height −50–100, Drop −10–10, BPM 30–90, and Reps 1–100
 - Local audio import with SHA-256 duplicate detection, rename/delete, duration, and size details
 - Reusable playlists with ordered tracks plus ad-hoc Quick Music queues
 - Music sessions with playback progress, automatic completion, Pause, Resume, Stop, recoverable errors, and history

@@ -13,7 +13,7 @@ Nova Prime never connects to the robot or sends a calibration ball in this incre
 
 ## Calculated profile
 
-At least three landed observations are required. Saving calculates bounded average lateral and depth offsets, residual accuracy, and—when repeated observations exist—scatter. The validated profile is written once to the local `calibrations` store. Its offsets adjust successful visual drill-preview landings; they do not alter stored drill parameters or create robot commands.
+At least three landed observations are required. Saving fits a regularized response model for Drop/lateral placement and Speed, Height, and signed Top/Back Spin depth behavior. It also retains backward-compatible average offsets, calculates residual accuracy, and—when repeated observations exist—scatter. The validated profile is written once to the local `calibrations` store. Its corrections adjust successful visual drill-preview landings; they do not alter stored drill parameters or create robot commands. Because robot position is part of each profile, Left, Middle, and Right setups can be calibrated independently.
 
 Profiles use the versioned `nova-prime-calibrations` JSON format for atomic import and export. Complete application backup also includes calibration profiles.
 

@@ -1,6 +1,6 @@
 {
   "name": "nova-prime",
-  "version": "0.9.1-layout.0",
+  "version": "0.10.0-parameter-calibration.0",
   "private": true,
   "type": "module",
   "scripts": {

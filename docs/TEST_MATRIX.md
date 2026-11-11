@@ -30,13 +30,13 @@
 - 100-drill capacity enforcement for every custom group
 - Visual editor atomic save and invalid-save rollback
 - Player-half coordinate orientation and reversible percent/centimetre mapping
-- Direct placement preservation of Height, Spin, type, Tempo, and Repeats
-- Speed/Direction fitting, scatter-constrained Direction, closest-target feedback, pointer drag/tap, and keyboard placement
+- Direct placement preservation of Height, Spin, type, BPM, and Reps
+- Speed/Drop fitting, scatter-constrained Drop, dynamic Speed/Spin limits, closest-target feedback, pointer drag/tap, and keyboard placement
 - 20-step program limit, ordered steps, multiple ball variants, and Levels 1–3 persistence
 - Deterministic uncalibrated physics preview with bounded table markers
 - Standard and Complete calibration plan coverage
-- Calibration offset, accuracy, scatter, validation, atomic import/export, and Quick Check calculations
-- Calibrated offsets applied only to successful visual landing estimates
+- Calibration response model, backward-compatible offsets, accuracy, scatter, validation, atomic import/export, and Quick Check calculations
+- Calibrated parameter responses applied only to successful visual landing estimates
 - Phone-sized create, rename, duplicate, group move, reorder, selection, simulated completion, history naming, export, and fresh-tab persistence smoke test
 - Phone/tablet visual-editor create, reorder, parameter edit, level copy, save, cancel, and reopen smoke test
 - Phone portrait guided calibration, five observations, save, Quick Check suggestions, and calibrated-editor smoke test

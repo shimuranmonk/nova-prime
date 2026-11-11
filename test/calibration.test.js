@@ -30,7 +30,20 @@ test("calibration derives bounded offsets and accuracy from landed observations"
   assert.ok(result.modelParameters.xOffsetCm >= 4 && result.modelParameters.xOffsetCm <= 5);
   assert.ok(result.modelParameters.yOffsetCm >= -6 && result.modelParameters.yOffsetCm <= -4);
   assert.ok(result.accuracy >= 6);
+  assert.ok(Number.isFinite(result.modelParameters.xModel.drop));
+  assert.ok(Number.isFinite(result.modelParameters.yModel.height));
   assert.equal(result.landedCount, 5);
+});
+
+test("calibration learns parameter response instead of only a global offset", () => {
+  const samples = observations(10).map((entry) => {
+    const dropEffect = (entry.ball.drop / 10) * 12;
+    const speedEffect = ((entry.ball.speed - 5) / 5) * 15;
+    return { ...entry, actual: { xCm: entry.predicted.xCm + 3 + dropEffect, yCm: entry.predicted.yCm - 2 + speedEffect } };
+  });
+  const result = calculateCalibration(samples);
+  assert.ok(result.modelParameters.xModel.drop > 5);
+  assert.ok(result.modelParameters.yModel.speed > 5);
 });
 
 test("calibration requires at least three landed observations", () => {

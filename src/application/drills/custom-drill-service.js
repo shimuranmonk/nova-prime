@@ -110,13 +110,14 @@ export class CustomDrillService {
     return updated;
   }
 
-  async saveEditor(id, { programs, random }) {
+  async saveEditor(id, { programs, random, robotPosition }) {
     const drill = await this.get(id);
     if (!drill) throw new Error("Custom drill was not found");
     const updated = {
       ...drill,
       programs: clone(programs),
       random: Boolean(random),
+      robotPosition: robotPosition ?? drill.robotPosition,
       updatedAt: this.now(),
     };
     await this.#put(updated);

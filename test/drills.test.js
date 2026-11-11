@@ -17,6 +17,14 @@ test("invalid ball parameters are reported with stable paths", () => {
   assert.ok(result.issues.some((entry) => entry.path.endsWith("type")));
 });
 
+test("Nova Plus height, BPM, and speed-dependent spin limits are authoritative", () => {
+  assert.equal(validateBall(createBall({ height: -50, bpm: 30, speed: 4, spin: 10 })).valid, true);
+  assert.equal(validateBall(createBall({ height: 100, bpm: 90, speed: 4.5, spin: 10 })).valid, true);
+  assert.ok(validateBall(createBall({ height: -51 })).issues.some((entry) => entry.path.endsWith("height")));
+  assert.ok(validateBall(createBall({ bpm: 91 })).issues.some((entry) => entry.path.endsWith("bpm")));
+  assert.ok(validateBall(createBall({ speed: 10, spin: 1 })).issues.some((entry) => entry.code === "DRILL_SPIN_SPEED_LIMIT"));
+});
+
 test("drop plus scatter cannot exceed the robot envelope", () => {
   const step = createStep({ scatter: 4, variants: [createBall({ drop: 7 })] });
   const result = validateStep(step);

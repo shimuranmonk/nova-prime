@@ -6,6 +6,7 @@ import {
   DRILL_SCHEMA_VERSION,
   DRILL_SOURCES,
   ROBOT_POSITIONS,
+  spinLimitForSpeed,
 } from "./schema.js";
 import { issue, validationResult } from "../shared/errors.js";
 
@@ -19,6 +20,10 @@ export function validateBall(ball, path = "ball") {
     if (!inRange(ball[field], BALL_LIMITS[field])) {
       issues.push(issue("DRILL_BALL_RANGE", `${field} is outside the supported range`, `${path}.${field}`));
     }
+  }
+
+  if (Number.isFinite(ball.speed) && Number.isFinite(ball.spin) && ball.spin > spinLimitForSpeed(ball.speed)) {
+    issues.push(issue("DRILL_SPIN_SPEED_LIMIT", "Spin exceeds the Nova Plus limit for this speed", `${path}.spin`));
   }
 
   if (!BALL_TYPES.includes(ball.type)) issues.push(issue("DRILL_BALL_TYPE", "Ball type is unsupported", `${path}.type`));
