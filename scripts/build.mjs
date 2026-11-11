@@ -14,6 +14,8 @@ const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(path.join(root, "index.html"), path.join(output, "index.html"));
+await cp(path.join(root, "LICENSE"), path.join(output, "LICENSE"));
+await cp(path.join(root, "THIRD_PARTY_NOTICES.md"), path.join(output, "THIRD_PARTY_NOTICES.md"));
 await cp(path.join(root, "src"), path.join(output, "src"), { recursive: true });
 await writeFile(path.join(output, ".nojekyll"), "", "utf8");
 await writeFile(

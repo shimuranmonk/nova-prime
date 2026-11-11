@@ -91,6 +91,7 @@ Nova Plus migration is an application adapter over explicit CSV file selection. 
 - A private-LAN address over plain HTTP is not treated as an equivalent deployment because it may not provide the secure context required by Web Bluetooth.
 - The loopback deployment requires no upstream network because the browser and HTTP server run on the same device.
 - GitHub Pages provides the supported hosted-web deployment and distributes the downloadable local-server bundle.
+- Every release bundle includes the complete `AGPL-3.0-or-later` license text and third-party notices. The About screen links users of the hosted application to its corresponding source repository.
 
 ## Safety boundary
 

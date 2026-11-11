@@ -15,6 +15,9 @@ if (/(?:src|href)=["']\/(?!\/)/i.test(html)) throw new Error("Root-relative asse
 await access(path.join(dist, "src", "app", "bootstrap.js"));
 await access(path.join(dist, "src", "styles", "app.css"));
 await access(path.join(dist, "build-meta.json"));
+const license = await readFile(path.join(dist, "LICENSE"), "utf8");
+if (!license.includes("GNU AFFERO GENERAL PUBLIC LICENSE") || !license.includes("Version 3, 19 November 2007")) throw new Error("Release bundle is missing the AGPL v3 license text");
+await access(path.join(dist, "THIRD_PARTY_NOTICES.md"));
 
 async function listFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -44,5 +47,6 @@ const flags = await readFile(path.join(dist, "src", "app", "feature-flags.js"), 
 if (!/robot:\s*false/.test(flags)) throw new Error("Robot feature flag must remain disabled until physical verification passes");
 const bootstrap = await readFile(path.join(dist, "src", "app", "bootstrap.js"), "utf8");
 if (/application\/robot|infrastructure\/robot/.test(bootstrap)) throw new Error("Production bootstrap must not activate the unverified robot stack");
+if (!bootstrap.includes("AGPL-3.0-or-later") || !bootstrap.includes("github.com/shimuranmonk/nova-prime")) throw new Error("Application About screen must expose source and license information");
 
 console.log(`Verified ${files.length} built files and relative module graph; robot transport is packaged but feature-gated off.`);

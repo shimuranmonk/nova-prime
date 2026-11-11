@@ -1,6 +1,7 @@
 {
   "name": "nova-prime",
-  "version": "0.15.0-audio-resilience.0",
+  "version": "0.16.0-agpl-license.0",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "scripts": {
