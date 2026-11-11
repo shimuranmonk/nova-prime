@@ -94,7 +94,7 @@ Nova Plus migration is an application adapter over explicit CSV file selection. 
 
 ## Safety boundary
 
-The live-control stack is packaged but not activated. Fake-device tests prove protocol shapes, authenticated state progression, serialized writes, timeout/disconnect handling, command epochs, queue cancellation, and priority Stop ordering. They do not prove physical ball delivery. The flag stays off until conservative single-ball, drill, queued-load Stop, screen-lock, calibration, Music, MSYNC, and target-device checks pass on a real Nova S Pro.
+The live-control stack is packaged but not activated. Fake-device tests prove protocol shapes, authenticated state progression, serialized writes, timeout/disconnect handling, command epochs, queue cancellation, priority Stop ordering, bounded diagnostic capture, and deduplicated background/page-hide Stop. Foreground return never automatically resumes. These tests do not prove physical ball delivery. The flag stays off until conservative single-ball, drill, queued-load Stop, screen-lock, calibration, Music, MSYNC, and target-device checks pass on a real Nova S Pro.
 
 Reps and Time dry runs use the canonical lifecycle and priority Stop behavior, but never receive a transport reference and always record zero dispatched balls. They verify local orchestration and recovery without representing hardware execution.
 

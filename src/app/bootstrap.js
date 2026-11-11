@@ -1209,7 +1209,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.11.0-active-serve.0";
+document.querySelector("#build-version").textContent = "v0.12.0-robot-readiness.0";
 await refreshFooter();
 
 setInterval(() => {
