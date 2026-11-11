@@ -48,6 +48,7 @@
 - Playlist create, rename, ordering, add/remove, delete protection, and resolution
 - Quick Music selection and canonical Music session lifecycle
 - Fake audio Pause, Resume, automatic advancement, completion, error, and Stop
+- Unsupported codec, blocked playback, interrupted load, object-URL allocation failure, error-state recovery, and URL cleanup
 - Playable audio Blob backup and validated restore
 - Phone, tablet portrait, and tablet landscape Music-library and Music-session smoke tests
 - Frozen MSYNC v1 parsing and exact audio filename, SHA-256, and duration validation
@@ -77,7 +78,7 @@
 ## Future integration checks
 
 - Fake monotonic timers and visibility changes
-- Browser-specific codec and quota failure fixtures
+- Target-device codec compatibility matrix for user-selected audio files
 - Long-running cue drift across live-executor queue boundaries
 - Legacy Trainer and remaining Nova Plus settings, statistics, and media migration fixtures
 

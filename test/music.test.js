@@ -73,3 +73,29 @@ test("audio player pauses, resumes, advances, and completes", async () => {
   assert.equal(player.snapshot().completedTracks, 2);
   assert.ok(revoked.length >= 2);
 });
+
+test("audio player reports unsupported codecs and releases the object URL", async () => {
+  const audio = new FakeAudio();
+  audio.play = async () => { throw new DOMException("unsupported", "NotSupportedError"); };
+  const revoked = [];
+  const player = new AudioPlayer({
+    audio,
+    urlObject: { createObjectURL: () => "blob:unsupported", revokeObjectURL: (url) => revoked.push(url) },
+  });
+  await assert.rejects(() => player.start([{ id: "bad", audioBlob: new Blob(["bad"]) }]));
+  assert.equal(player.snapshot().state, "error");
+  assert.match(player.snapshot().error, /not supported by this browser or device/i);
+  assert.deepEqual(revoked, ["blob:unsupported"]);
+});
+
+test("audio player converts object URL failure into a recoverable error state", async () => {
+  const audio = new FakeAudio();
+  const player = new AudioPlayer({
+    audio,
+    urlObject: { createObjectURL: () => { throw new Error("URL allocation failed"); }, revokeObjectURL() {} },
+  });
+  await assert.rejects(() => player.start([{ id: "broken", audioBlob: new Blob(["broken"]) }]));
+  assert.equal(player.snapshot().state, "error");
+  assert.equal(player.snapshot().error, "URL allocation failed");
+  assert.equal(audio.paused, true);
+});

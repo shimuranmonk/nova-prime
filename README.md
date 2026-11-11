@@ -33,6 +33,7 @@ This branch advances Nova Prime through the JewelFlow 0.7 migration increment, r
 - Local audio import with SHA-256 duplicate detection, rename/delete, duration, and size details
 - Reusable playlists with ordered tracks plus ad-hoc Quick Music queues
 - Music sessions with playback progress, automatic completion, Pause, Resume, Stop, recoverable errors, and history
+- Explicit unsupported-codec, browser-policy, interrupted-load, and object-URL failure recovery with guaranteed URL cleanup
 - Frozen MSYNC v1 parser and strict validation with stable line, section, and error details
 - Atomic MSYNC-to-audio attachment with SHA-256 identity, duration, and drill-resolution checks
 - Pre-start revalidation plus synchronized DRILL, INLINE, FLAVOR, REST, IDLE, and STOP simulation
