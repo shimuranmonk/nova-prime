@@ -9,7 +9,7 @@ const xPercent = (x) => clamp(((x + 76.25) / 152.5) * 100, 2, 98);
 const yPercent = (y) => clamp(((137 - y) / 137) * 100, 2, 98);
 
 function predictedPoint(test, robotPosition, profile = null) {
-  const result = applyCalibration(previewBall(test.ball, robotPosition), profile);
+  const result = applyCalibration(previewBall(test.ball, robotPosition), profile, test.ball);
   if (result.ok && Number.isFinite(result.xCm) && Number.isFinite(result.yCm)) return { xCm: result.xCm, yCm: result.yCm };
   return clone(test.target);
 }
@@ -73,7 +73,7 @@ export function createCalibrationWizard({ dialog, root, service, onSaved }) {
       <header class="editor-header"><div><span class="eyebrow">${quick ? "QUICK CHECK" : `${mode.toUpperCase()} CALIBRATION`}</span><h2>${escapeHtml(test.name)}</h2><p>Observation ${index + 1} of ${tests.length} · no robot commands</p></div><button class="icon-button" type="button" data-cal-close aria-label="Close calibration">×</button></header>
       <div class="calibration-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${tests.length}" aria-valuenow="${index}"><span style="width:${Math.round(index / tests.length * 100)}%"></span></div>
       <main class="calibration-observation">
-        <section class="calibration-ball-card"><span class="eyebrow">SET THIS BALL MANUALLY</span><div class="calibration-ball-values"><span><b>${ball.speed}</b> Speed</span><span><b>${ball.spin}</b> ${ball.type === "back" ? "Backspin" : "Topspin"}</span><span><b>${ball.height}</b> Height</span><span><b>${ball.drop}</b> Direction</span></div><p>Send one ball only. Then record the first bounce on your half.</p></section>
+        <section class="calibration-ball-card"><span class="eyebrow">SET THIS BALL MANUALLY</span><div class="calibration-ball-values"><span><b>${ball.speed}</b> Speed</span><span><b>${ball.spin}</b> ${ball.type === "back" ? "Backspin" : "Topspin"}</span><span><b>${ball.height}</b> Height</span><span><b>${ball.drop}</b> Drop</span><span><b>${ball.bpm}</b> BPM</span></div><p>Send one ball only. Then record the first bounce on your half.</p></section>
         <section class="calibration-landing"><div class="editor-section-heading"><div><span class="eyebrow">OBSERVED LANDING</span><h3>Tap where it landed</h3></div><span class="calibration-legend"><i></i> Predicted <i></i> Observed</span></div>${tableHtml(predicted, actual)}
           <div class="calibration-coordinate-grid"><label><span>From centre (cm)</span><input data-cal-x type="number" min="-76" max="76" step="1" value="${actual?.xCm ?? ""}" placeholder="−76 to 76"></label><label><span>From your end line (cm)</span><input data-cal-y type="number" min="0" max="137" step="1" value="${actual?.yCm ?? ""}" placeholder="0 to 137"></label></div>
         </section>

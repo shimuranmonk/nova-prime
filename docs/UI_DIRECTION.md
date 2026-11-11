@@ -1,6 +1,6 @@
 # Nova Prime Interface Direction
 
-> `0.9.1-layout.0` makes the complete table the primary drill-editing surface with direct placement, a compact full-window control layout, all four themes, and the explicit robot gate.
+> `0.10.0-parameter-calibration.0` makes the graduated complete table the primary drill-editing surface with aligned direct placement, a synchronized Height adjuster, Nova Plus parameter controls, all four themes, and the explicit robot gate.
 
 ## Approved visual hierarchy
 

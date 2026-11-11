@@ -54,7 +54,8 @@ Implementation status: verified GATT discovery, bounded authenticated login, not
 - Support sequential/random operation, variants, scatter, and bulk adjustments.
 - Provide visual table editing, predictions, rulers, grid, reordering, and safe testing.
 - Show the complete table and support direct pointer and keyboard landing placement.
-- Preserve Height, Spin, type, Tempo, Repeats, and Scatter when direct placement fits Speed and Direction.
+- Preserve Height, Spin, type, BPM, Reps, and Scatter when direct placement fits Speed and Drop.
+- Use Nova Plus parameter limits and dynamic Speed/Spin compatibility across editing, migration, validation, and robot encoding.
 - Report unreachable targets as closest safe estimates without claiming physical accuracy.
 
 Implementation status: the 34 built-ins, Groups A/B/C library management, immutable custom identities, ordering, import/export, selection, safe simulation, ball parameters, complete-table editing, and bounded direct-placement fitting are complete.
@@ -152,7 +153,7 @@ The app-shell increment makes Training the default experience and adopts the app
 
 The drill-library increment integrates the complete 34-entry Nova Trainer catalogue with three canonical programs per drill, source provenance, stable IDs, category selection, level selection, and local session/history linkage. The following visual-editor increment enables draft-based custom programs for Levels 1–3, with a 20-step limit, multiple ball variants, ordering, random/sequential playback, and an explicitly uncalibrated table estimate. Physical robot execution remains outside this increment.
 
-The guided-calibration increment records user-observed landings for Standard or Complete plans, derives bounded lateral and depth offsets, reports accuracy and scatter, supports atomic import/export, and runs Quick Check without refitting the saved profile. Calibrated corrections affect visual previews only. Phone, tablet portrait, tablet landscape, and desktop layouts are independently verified.
+The guided-calibration increment records user-observed landings for Standard or Complete plans, learns Drop/lateral and Speed/Height/Spin depth responses, reports accuracy and scatter, supports atomic import/export, and runs Quick Check without refitting the saved profile. Calibrated corrections affect visual previews only. Phone, tablet portrait, tablet landscape, and desktop layouts are independently verified.
 
 The Music increment stores playable user audio locally with content-identity deduplication, supports reusable ordered playlists and Quick Music, and coordinates local playback with the canonical session lifecycle. Playable audio is included in validated backup/restore. Music sends no robot commands and records zero dispatched balls.
 

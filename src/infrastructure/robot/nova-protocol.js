@@ -58,7 +58,7 @@ export function encodeBall(ball) {
   const bottomRpm = clamp(Math.round(970 + 630.5 * speed - 342 * signedSpin), 400, 7500);
   const height = (clamp(ball.height, -50, 100) + 50) / 150 * 50 - 20;
   const drop = (clamp(ball.drop, -10, 10) + 10) / 20 * 44 - 22;
-  const frequency = clamp(ball.bpm, 0, 100) / 100 + 0.5;
+  const frequency = clamp(ball.bpm, 30, 90) / 60;
   const repetitions = Math.max(1, Math.floor(clamp(ball.repetitions, 1, 100)));
   const buffer = new ArrayBuffer(24);
   const view = new DataView(buffer);

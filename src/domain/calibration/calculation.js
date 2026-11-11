@@ -19,6 +19,39 @@ export function calibrationPlan(mode = "standard") {
 const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 const rounded = (value, precision = 1) => Math.round(value * (10 ** precision)) / (10 ** precision);
 
+function ridgeRegression(rows, values, lambda = 0.35) {
+  const size = rows[0].length;
+  const matrix = Array.from({ length: size }, (_, row) => Array.from({ length: size + 1 }, (_, column) => {
+    if (column === size) return rows.reduce((sum, features, index) => sum + features[row] * values[index], 0);
+    const regularization = row === column && row > 0 ? lambda : 0;
+    return rows.reduce((sum, features) => sum + features[row] * features[column], regularization);
+  }));
+  for (let pivot = 0; pivot < size; pivot += 1) {
+    let best = pivot;
+    for (let row = pivot + 1; row < size; row += 1) if (Math.abs(matrix[row][pivot]) > Math.abs(matrix[best][pivot])) best = row;
+    [matrix[pivot], matrix[best]] = [matrix[best], matrix[pivot]];
+    const divisor = matrix[pivot][pivot];
+    if (Math.abs(divisor) < 1e-9) return [average(values), ...Array(size - 1).fill(0)];
+    for (let column = pivot; column <= size; column += 1) matrix[pivot][column] /= divisor;
+    for (let row = 0; row < size; row += 1) {
+      if (row === pivot) continue;
+      const factor = matrix[row][pivot];
+      for (let column = pivot; column <= size; column += 1) matrix[row][column] -= factor * matrix[pivot][column];
+    }
+  }
+  return matrix.map((row) => row[size]);
+}
+
+const ballFeatures = (entry) => {
+  const ball = entry.ball ?? {};
+  return Object.freeze({
+    drop: (Number(ball.drop) || 0) / 10,
+    speed: ((Number(ball.speed) || 5) - 5) / 5,
+    height: ((Number(ball.height) || 25) - 25) / 75,
+    spin: ((Number(ball.spin) || 0) * (ball.type === "back" ? -1 : 1)) / 10,
+  });
+};
+
 export function calculateCalibration(observations) {
   const landed = observations.filter((entry) => entry.outcome === "landed" && entry.actual && entry.predicted);
   if (landed.length < 3) throw new Error("Record at least three landed balls before saving calibration");
@@ -26,7 +59,15 @@ export function calculateCalibration(observations) {
   const dy = landed.map((entry) => entry.actual.yCm - entry.predicted.yCm);
   const xOffsetCm = average(dx);
   const yOffsetCm = average(dy);
-  const residuals = landed.map((entry) => Math.hypot((entry.actual.xCm - entry.predicted.xCm) - xOffsetCm, (entry.actual.yCm - entry.predicted.yCm) - yOffsetCm));
+  const features = landed.map(ballFeatures);
+  const [xIntercept, xDrop] = ridgeRegression(features.map((entry) => [1, entry.drop]), dx);
+  const [yIntercept, ySpeed, yHeight, ySpin] = ridgeRegression(features.map((entry) => [1, entry.speed, entry.height, entry.spin]), dy);
+  const residuals = landed.map((entry, index) => {
+    const feature = features[index];
+    const modeledX = xIntercept + xDrop * feature.drop;
+    const modeledY = yIntercept + ySpeed * feature.speed + yHeight * feature.height + ySpin * feature.spin;
+    return Math.hypot((entry.actual.xCm - entry.predicted.xCm) - modeledX, (entry.actual.yCm - entry.predicted.yCm) - modeledY);
+  });
   const rawErrors = landed.map((entry) => Math.hypot(entry.actual.xCm - entry.predicted.xCm, entry.actual.yCm - entry.predicted.yCm));
   const accuracy = Math.max(6, Math.round(Math.sqrt(average(residuals.map((value) => value ** 2)))));
 
@@ -44,7 +85,12 @@ export function calculateCalibration(observations) {
     spreads.push(...points.map((point) => Math.hypot(point.xCm - cx, point.yCm - cy)));
   }
   return Object.freeze({
-    modelParameters: Object.freeze({ xOffsetCm: rounded(xOffsetCm), yOffsetCm: rounded(yOffsetCm) }),
+    modelParameters: Object.freeze({
+      xOffsetCm: rounded(xOffsetCm),
+      yOffsetCm: rounded(yOffsetCm),
+      xModel: Object.freeze({ intercept: rounded(xIntercept), drop: rounded(xDrop) }),
+      yModel: Object.freeze({ intercept: rounded(yIntercept), speed: rounded(ySpeed), height: rounded(yHeight), spin: rounded(ySpin) }),
+    }),
     accuracy,
     rawMeanErrorCm: rounded(average(rawErrors)),
     scatterEstimate: spreads.length ? rounded(average(spreads)) : null,

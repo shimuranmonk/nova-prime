@@ -57,3 +57,11 @@ test("saved calibration offsets adjust successful landing estimates", () => {
   assert.equal(adjusted.yCm, 45);
   assert.equal(adjusted.calibrated, true);
 });
+
+test("response calibration adjusts placement according to ball controls", () => {
+  const result = { ok: true, outcome: "in", xCm: 10, yCm: 40 };
+  const profile = { id: "cal_response", modelParameters: { xOffsetCm: 0, yOffsetCm: 0, xModel: { intercept: 1, drop: 10 }, yModel: { intercept: 2, speed: 5, height: 6, spin: 4 } } };
+  const adjusted = applyCalibration(result, profile, createBall({ speed: 10, spin: 5, type: "back", height: 100, drop: 5 }));
+  assert.equal(adjusted.xCm, 16);
+  assert.equal(adjusted.yCm, 51);
+});

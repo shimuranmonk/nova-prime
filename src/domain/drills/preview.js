@@ -1,5 +1,7 @@
 // Adapted from Nova Trainer's uncalibrated physics preview by nova_fan.
 // This is a visual estimate only; live execution remains disabled.
+import { spinLimitForSpeed } from "./schema.js";
+
 export const TABLE_DIMENSIONS = Object.freeze({ lengthCm: 274, widthCm: 152.5 });
 
 const TABLE = Object.freeze({ L: 2.74, W: 1.525, NET_U: 1.37, NET_H: 0.1525, R: 0.02 });
@@ -138,7 +140,8 @@ export function fitBallToTarget(ball, target, robotPosition = "middle", { scatte
 
   const consider = (speed, drop) => {
     const candidate = { ...ball, speed: Math.min(10, Math.max(0, speed)), drop: Math.min(maximumDrop, Math.max(-maximumDrop, drop)) };
-    const result = applyCalibration(previewBall(candidate, robotPosition), calibration);
+    if (candidate.spin > spinLimitForSpeed(candidate.speed)) return;
+    const result = applyCalibration(previewBall(candidate, robotPosition), calibration, candidate);
     const score = placementScore(result, boundedTarget);
     if (!best || score < best.score) best = { candidate, result, score };
   };
@@ -152,16 +155,27 @@ export function fitBallToTarget(ball, target, robotPosition = "middle", { scatte
   }
 
   const fitted = Object.freeze({ ...ball, speed: Number(best.candidate.speed.toFixed(1)), drop: Number(best.candidate.drop.toFixed(1)) });
-  const result = applyCalibration(previewBall(fitted, robotPosition), calibration);
+  const result = applyCalibration(previewBall(fitted, robotPosition), calibration, fitted);
   const errorCm = Number.isFinite(result.xCm) && Number.isFinite(result.yCm)
     ? Math.hypot(result.xCm - boundedTarget.xCm, result.yCm - boundedTarget.yCm)
     : Number.POSITIVE_INFINITY;
   return Object.freeze({ ball: fitted, target: boundedTarget, result, errorCm, reachable: Boolean(result.ok && errorCm <= 15) });
 }
 
-export function applyCalibration(result, profile) {
+export function applyCalibration(result, profile, ball = null) {
   if (!result?.ok || !profile || !Number.isFinite(result.xCm) || !Number.isFinite(result.yCm)) return result;
-  const xOffsetCm = Number(profile.modelParameters?.xOffsetCm) || 0;
-  const yOffsetCm = Number(profile.modelParameters?.yOffsetCm) || 0;
-  return Object.freeze({ ...result, xCm: result.xCm + xOffsetCm, yCm: result.yCm + yOffsetCm, calibrated: true, calibrationProfileId: profile.id });
+  const parameters = profile.modelParameters ?? {};
+  const xModel = parameters.xModel;
+  const yModel = parameters.yModel;
+  const normalizedDrop = (Number(ball?.drop) || 0) / 10;
+  const normalizedSpeed = ((Number(ball?.speed) || 5) - 5) / 5;
+  const normalizedHeight = ((Number(ball?.height) || 25) - 25) / 75;
+  const signedSpin = ((Number(ball?.spin) || 0) * (ball?.type === "back" ? -1 : 1)) / 10;
+  const xCorrection = xModel
+    ? Number(xModel.intercept || 0) + Number(xModel.drop || 0) * normalizedDrop
+    : Number(parameters.xOffsetCm) || 0;
+  const yCorrection = yModel
+    ? Number(yModel.intercept || 0) + Number(yModel.speed || 0) * normalizedSpeed + Number(yModel.height || 0) * normalizedHeight + Number(yModel.spin || 0) * signedSpin
+    : Number(parameters.yOffsetCm) || 0;
+  return Object.freeze({ ...result, xCm: result.xCm + xCorrection, yCm: result.yCm + yCorrection, calibrated: true, calibrationProfileId: profile.id });
 }

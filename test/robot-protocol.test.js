@@ -27,6 +27,7 @@ test("canonical backspin ball converts to verified motor and payload values", ()
   const view = new DataView(packet.buffer);
   assert.equal(view.getUint32(0, true), 1547);
   assert.equal(view.getUint32(4, true), 2915);
+  assert.ok(Math.abs(view.getFloat32(16, true) - 0.6) < 1e-6);
   assert.equal(view.getUint32(20, true), 1);
   assert.equal(packet.length, 24);
 });

@@ -38,6 +38,11 @@ export function validateCalibrationProfile(profile) {
   for (const field of ["xOffsetCm", "yOffsetCm"]) {
     if (!Number.isFinite(profile.modelParameters?.[field]) || Math.abs(profile.modelParameters[field]) > 100) issues.push(issue("CALIBRATION_OFFSET", `${field} is outside the supported range`, `modelParameters.${field}`));
   }
+  for (const [modelName, fields] of [["xModel", ["intercept", "drop"]], ["yModel", ["intercept", "speed", "height", "spin"]]]) {
+    const model = profile.modelParameters?.[modelName];
+    if (model == null) continue;
+    for (const field of fields) if (!Number.isFinite(model[field]) || Math.abs(model[field]) > 200) issues.push(issue("CALIBRATION_MODEL", `${modelName}.${field} is outside the supported range`, `modelParameters.${modelName}.${field}`));
+  }
   if (!Array.isArray(profile.observations)) issues.push(issue("CALIBRATION_OBSERVATIONS", "Observations must be an array", "observations"));
   else profile.observations.forEach((observation, index) => {
     const path = `observations[${index}]`;
