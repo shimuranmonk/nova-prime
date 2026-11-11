@@ -113,4 +113,8 @@ Nova Prime is an unofficial community project and is not affiliated with or endo
 
 ## License
 
-A public software license has not yet been selected. Until one is added, no license is granted beyond rights separately provided by the relevant copyright holders.
+Copyright © 2026 shimuranmonk and Nova Prime contributors.
+
+Nova Prime is free software licensed under the **GNU Affero General Public License, version 3 or (at your option) any later version** (`AGPL-3.0-or-later`). You may use, study, modify, and redistribute it under those terms. Modified versions offered to users over a network must also offer their corresponding source as required by the license. See [`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Nova Prime is provided without warranty. The license does not grant rights to the PONGBOT or Nova trademarks, and it does not override rights in third-party material.
