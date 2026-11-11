@@ -11,6 +11,8 @@
 - Calibration, Track, Playlist, MSYNC, and statistics schemas
 - Robot feature flag remains disabled
 - Build allows `requestDevice` only inside the unimported gated transport
+- Static bundle rejects root-relative assets and missing/non-relative module imports
+- Device-local subdirectory server redirect, path isolation, traversal containment, JavaScript/JSON MIME types, and `nosniff` behavior
 - Reps and Time dry-run countdown, completion, Pause, Resume, and priority Stop
 - Simulation records always report zero physically dispatched balls
 - Memory-store isolation and persistent-store browser smoke test
