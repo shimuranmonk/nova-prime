@@ -10,6 +10,7 @@ const html = await readFile(path.join(dist, "index.html"), "utf8");
 if (!html.includes('type="module" src="./src/app/bootstrap.js"')) throw new Error("Built index is missing the application module");
 if (!html.includes('href="./src/styles/app.css"')) throw new Error("Built index is missing the stylesheet");
 if (/https?:\/\/(?!www\.w3\.org)/i.test(html)) throw new Error("Unexpected remote runtime dependency in index.html");
+if (/(?:src|href)=["']\/(?!\/)/i.test(html)) throw new Error("Root-relative assets break mobile-server subdirectory hosting");
 
 await access(path.join(dist, "src", "app", "bootstrap.js"));
 await access(path.join(dist, "src", "styles", "app.css"));
@@ -32,10 +33,16 @@ for (const file of sourceFiles) {
   if (/requestDevice\s*\(/.test(source) && path.normalize(file) !== path.normalize(allowedTransport)) {
     throw new Error(`Bluetooth device request escaped the gated transport: ${file}`);
   }
+  const imports = source.matchAll(/(?:^|\n)\s*(?:import|export)\s+(?:[^"'\n]*?\sfrom\s*)?["']([^"']+)["']/g);
+  for (const match of imports) {
+    const specifier = match[1];
+    if (!specifier.startsWith(".")) throw new Error(`Built module has a non-relative runtime import: ${file} -> ${specifier}`);
+    await access(path.resolve(path.dirname(file), specifier));
+  }
 }
 const flags = await readFile(path.join(dist, "src", "app", "feature-flags.js"), "utf8");
 if (!/robot:\s*false/.test(flags)) throw new Error("Robot feature flag must remain disabled until physical verification passes");
 const bootstrap = await readFile(path.join(dist, "src", "app", "bootstrap.js"), "utf8");
 if (/application\/robot|infrastructure\/robot/.test(bootstrap)) throw new Error("Production bootstrap must not activate the unverified robot stack");
 
-console.log(`Verified ${files.length} built files; robot transport is packaged but feature-gated off.`);
+console.log(`Verified ${files.length} built files and relative module graph; robot transport is packaged but feature-gated off.`);

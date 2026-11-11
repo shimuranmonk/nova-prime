@@ -83,10 +83,10 @@ Nova Plus migration is an application adapter over explicit CSV file selection. 
 
 - `npm run build` produces the complete static `dist/` directory.
 - Releases will publish that directory as a downloadable archive.
-- The same build runs from the hosted HTTPS deployment and the device-local server.
-- All HTML, CSS, JavaScript, JSON, and media references use relative URLs.
+- The same build runs from the hosted HTTPS deployment and the device-local server, including a server subdirectory.
+- All HTML, CSS, JavaScript, JSON, and media references use relative URLs. Verification rejects root-relative assets, non-relative runtime imports, and missing module targets.
 - Navigation uses URL hashes and requires no rewrite or fallback configuration.
-- The installed server must provide correct MIME types, especially JavaScript for `.js` modules.
+- The installed server must provide correct MIME types, especially JavaScript for `.js` modules. The development server and automated fixture also apply `X-Content-Type-Options: nosniff`.
 - The recommended address is `http://localhost:<fixed-port>/` or `http://127.0.0.1:<fixed-port>/`.
 - A private-LAN address over plain HTTP is not treated as an equivalent deployment because it may not provide the secure context required by Web Bluetooth.
 - The loopback deployment requires no upstream network because the browser and HTTP server run on the same device.
