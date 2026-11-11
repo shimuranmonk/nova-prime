@@ -1,4 +1,5 @@
 import { NOVA_PACKETS } from "../../infrastructure/robot/nova-protocol.js";
+import { recordRobotDiagnostic } from "./robot-diagnostics.js";
 
 export class RobotExecutor {
   #epoch = 0;
@@ -6,10 +7,11 @@ export class RobotExecutor {
   #state = "idle";
   #priorityPromise = null;
 
-  constructor({ connection, stopAttempts = 2 } = {}) {
+  constructor({ connection, stopAttempts = 2, diagnostics } = {}) {
     if (!connection) throw new Error("ROBOT_CONNECTION_REQUIRED");
     this.connection = connection;
     this.stopAttempts = Math.max(1, Math.floor(stopAttempts));
+    this.diagnostics = diagnostics;
   }
 
   get state() { return this.#state; }
@@ -22,6 +24,7 @@ export class RobotExecutor {
     this.#tail = Promise.resolve();
     this.#priorityPromise = null;
     this.#state = "running";
+    recordRobotDiagnostic(this.diagnostics, "executor.started", { epoch: this.#epoch });
     return this.#enqueue(packet, this.#epoch);
   }
 
@@ -64,10 +67,12 @@ export class RobotExecutor {
       if (epoch !== this.#epoch || this.#state !== "running") return Object.freeze({ status: "CANCELLED", epoch });
       await this.connection.write(payload);
       if (epoch !== this.#epoch) return Object.freeze({ status: "CANCELLED", epoch });
+      recordRobotDiagnostic(this.diagnostics, "executor.packet_sent", { epoch, byteLength: payload.byteLength });
       return Object.freeze({ status: "SENT", epoch });
     });
     this.#tail = task.catch((error) => {
       if (epoch === this.#epoch) this.#state = "error";
+      recordRobotDiagnostic(this.diagnostics, "executor.write_failed", { epoch, code: error?.message ?? "UNKNOWN" });
       throw error;
     }).catch(() => {});
     return task;
@@ -81,12 +86,15 @@ export class RobotExecutor {
       let lastError;
       for (let attempt = 0; attempt < this.stopAttempts; attempt += 1) {
         try {
+          recordRobotDiagnostic(this.diagnostics, "executor.stop_attempt", { epoch, attempt: attempt + 1, finalState });
           await this.connection.write(NOVA_PACKETS.stop);
           this.#state = finalState;
+          recordRobotDiagnostic(this.diagnostics, "executor.stop_sent", { epoch, attempts: attempt + 1, finalState });
           return Object.freeze({ status: "SENT", epoch, attempts: attempt + 1 });
         } catch (error) { lastError = error; }
       }
       this.#state = "error";
+      recordRobotDiagnostic(this.diagnostics, "executor.stop_failed", { epoch, code: lastError?.message ?? "UNKNOWN" });
       throw lastError;
     })();
     return this.#priorityPromise;

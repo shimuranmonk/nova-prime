@@ -40,6 +40,7 @@ This branch advances Nova Prime through the JewelFlow 0.7 migration increment, r
 - Mandatory touch confirmation after every spoken Start; voice remains off by default
 - Verified Nova S Pro GATT profile, authenticated handshake, drill packet encoding, and completion notifications
 - Serialized command executor with epochs, stale-queue cancellation, and priority Stop with bounded retry
+- Bounded timestamped robot diagnostics plus visibility/page-hide safety monitoring that requests priority Stop and never auto-resumes
 - Device-local 7-day, 30-day, and all-time activity summaries
 - Responsive activity trend, mode mix, most-used drills, and deterministic adaptive plan guidance
 - Explicit analytics boundary: simulation history is not skill scoring or proof of physical ball delivery
@@ -56,7 +57,7 @@ This branch advances Nova Prime through the JewelFlow 0.7 migration increment, r
 - Automated unit tests and CI scaffolding
 - Approved PRD, solution specification, migration plan, and test matrix
 
-Live Bluetooth robot control is deliberately not enabled in this milestone. The transport and executor are packaged and verified against deterministic fake devices, but production does not import them and the robot feature flag remains off. Connection unlocks only after the physical Nova S Pro checklist passes.
+Live Bluetooth robot control is deliberately not enabled in this milestone. The transport, executor, diagnostics, and lifecycle safety monitor are packaged and verified against deterministic fake devices, but production does not import them and the robot feature flag remains off. Connection unlocks only after the physical Nova S Pro checklist passes.
 
 ## Development
 

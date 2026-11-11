@@ -44,7 +44,7 @@ Nova Prime is the unified community application for the PONGBOT Nova S Pro. Nova
 - Avoid duplicate balls after visibility changes.
 - Request wake support where available.
 
-Implementation status: verified GATT discovery, bounded authenticated login, notification handling, drill and Stop packet encoding, serialized writes, command epochs, stale-queue cancellation, idempotent Stop retry, and disconnect behavior pass fake-device tests. Production does not import the robot modules and the feature flag remains off until the physical checklist passes. Timestamped diagnostics, wake handling, visibility recovery, and physical behavior remain open.
+Implementation status: verified GATT discovery, bounded authenticated login, notification handling, drill and Stop packet encoding, serialized writes, command epochs, stale-queue cancellation, idempotent Stop retry, disconnect behavior, bounded timestamped diagnostics, and visibility/page-hide priority Stop pass fake-device tests. Foreground return never automatically resumes. Production does not import the robot modules and the feature flag remains off until the physical checklist passes. Device-specific wake handling and physical behavior remain open.
 
 ### Drills and editor — NU-FR-010 to NU-FR-024
 

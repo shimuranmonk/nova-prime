@@ -1,4 +1,5 @@
 import { containsDoneSignal, createAuthResponse, NOVA_PACKETS } from "../../infrastructure/robot/nova-protocol.js";
+import { recordRobotDiagnostic } from "./robot-diagnostics.js";
 
 const CONNECTION_STATES = Object.freeze(["disconnected", "connecting", "handshake", "auth_1", "auth_2", "auth_3", "ready", "error"]);
 
@@ -9,11 +10,12 @@ export class NovaRobotConnection {
   #readyReject = null;
   #readyPromise = null;
 
-  constructor({ transport, handshakeTimeoutMs = 8000, digest } = {}) {
+  constructor({ transport, handshakeTimeoutMs = 8000, digest, diagnostics } = {}) {
     if (!transport) throw new Error("NOVA_TRANSPORT_REQUIRED");
     this.transport = transport;
     this.handshakeTimeoutMs = handshakeTimeoutMs;
     this.digest = digest;
+    this.diagnostics = diagnostics;
   }
 
   get state() { return this.#state; }
@@ -69,7 +71,10 @@ export class NovaRobotConnection {
 
   async #onNotification(bytes) {
     try {
-      if (containsDoneSignal(bytes)) this.#emit({ type: "done", bytes: Uint8Array.from(bytes) });
+      if (containsDoneSignal(bytes)) {
+        recordRobotDiagnostic(this.diagnostics, "connection.done", { state: this.#state });
+        this.#emit({ type: "done", bytes: Uint8Array.from(bytes) });
+      }
       if (this.#state === "handshake") {
         const response = createAuthResponse(bytes, this.digest);
         this.#setState("auth_1");
@@ -94,11 +99,13 @@ export class NovaRobotConnection {
 
   #handleDisconnect() {
     const error = new Error("NOVA_DISCONNECTED");
+    recordRobotDiagnostic(this.diagnostics, "connection.disconnected", { state: this.#state });
     this.#setState("disconnected");
     this.#readyReject?.(error);
   }
 
   #fail(error) {
+    recordRobotDiagnostic(this.diagnostics, "connection.error", { state: this.#state, code: error?.message ?? "UNKNOWN" });
     this.#setState("error");
     this.#emit({ type: "error", error });
   }
@@ -106,6 +113,7 @@ export class NovaRobotConnection {
   #setState(state) {
     if (!CONNECTION_STATES.includes(state)) throw new Error("NOVA_CONNECTION_STATE_INVALID");
     this.#state = state;
+    recordRobotDiagnostic(this.diagnostics, "connection.state", { state });
     this.#emit({ type: "state", snapshot: this.snapshot() });
   }
 
