@@ -55,7 +55,7 @@ The built-in catalogue is bundled as immutable canonical data with deterministic
 
 ## Persistence
 
-The deployed IndexedDB database remains `nova_ultimate` as a compatibility key across the Nova Prime rename, with stores for metadata, settings, drills, calibrations, tracks, playlists, MSYNC attachments, session records, migration receipts, and backups. Changing this internal identity would hide existing browser data, so it remains stable while all user-facing branding and newly exported formats use Nova Prime. localStorage is limited to small bootstrap preferences and tab coordination.
+The deployed IndexedDB database remains `nova_ultimate` as a compatibility key across the Nova Prime rename, with stores for metadata, settings, drills, calibrations, tracks, playlists, MSYNC attachments, session records, migration receipts, and backups. Changing this internal identity would hide existing browser data, so it remains stable while all user-facing branding and newly exported formats use Nova Prime. localStorage is limited to small bootstrap preferences and tab coordination. Every write attaches completion/abort handling before mutation begins. Synchronous setup or quota failure explicitly aborts the transaction, and stable error codes distinguish full storage, blocked upgrade, inactive transaction, read failure, and general abort without silently switching persistent stores mid-session.
 
 Browser persistence is origin-scoped. Mobile installations must therefore use a stable protocol, hostname, port, and application path. A change from `localhost` to `127.0.0.1`, or from one port to another, may expose a different storage origin and requires export/import recovery.
 

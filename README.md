@@ -16,6 +16,7 @@ This branch advances Nova Prime through the JewelFlow 0.7 migration increment, r
 - Canonical domain schemas and validation
 - Canonical session state machine
 - IndexedDB persistence with a clearly reported in-memory fallback
+- Atomic IndexedDB writes with stable quota, blocked-upgrade, inactive-transaction, and abort errors; failed multi-store replacement cannot partially commit
 - Reps and Time dry-run sessions with countdown, Pause, Resume, Stop, and completion
 - Trainer-first application dashboard with selected Nova Plus training controls
 - Compact connection, calibration, session, built-in drill, and custom drill cards
