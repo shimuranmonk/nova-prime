@@ -15,6 +15,7 @@
 - Simulation records always report zero physically dispatched balls
 - Memory-store isolation and persistent-store browser smoke test
 - Versioned backup round trip and rejection of invalid, missing, or unknown collections
+- IndexedDB blocked upgrade, synchronous and asynchronous quota failure, explicit abort, no partial multi-store replacement, and completion-before-success behavior
 - Trainer-first dashboard loads as the default route
 - Drawer exposes secondary screens and becomes inert when closed
 - Mode, level, amount, countdown, and pause controls remain locked during active sessions
@@ -75,7 +76,6 @@
 
 - Fake monotonic timers and visibility changes
 - Browser-specific codec and quota failure fixtures
-- Fake IndexedDB transactions and quota failures
 - Long-running cue drift across live-executor queue boundaries
 - Legacy Trainer and remaining Nova Plus settings, statistics, and media migration fixtures
 

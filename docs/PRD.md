@@ -106,7 +106,7 @@ Implementation status: 7-day, 30-day, and all-time local summaries, completion r
 - Support file migration across origins.
 - Provide scoped reset, quota warnings, backup, and validated restore.
 
-Implementation status: Nova Plus CSV exports can be selected explicitly in Data and Recovery. Groups A–C are transformed in memory, validated against the canonical drill schema, previewed with warnings and errors, and imported only after confirmation. Built-in rows are excluded because Prime supplies the verified catalogue. Drills and a content-fingerprint receipt are committed atomically; an identical file cannot be migrated twice. The legacy file and application are never modified. Settings, statistics, music, playlists, MSYNC, and Nova Trainer records remain later migration work.
+Implementation status: Nova Plus CSV exports can be selected explicitly in Data and Recovery. Groups A–C are transformed in memory, validated against the canonical drill schema, previewed with warnings and errors, and imported only after confirmation. Built-in rows are excluded because Prime supplies the verified catalogue. Drills and a content-fingerprint receipt are committed atomically; an identical file cannot be migrated twice. IndexedDB write setup is guarded so synchronous quota or transaction failures abort before a partial multi-store commit, and asynchronous aborts retain stable user-facing error codes. The legacy file and application are never modified. Settings, statistics, music, playlists, MSYNC, and Nova Trainer records remain later migration work.
 
 ### Interface — NU-FR-079 to NU-FR-085
 

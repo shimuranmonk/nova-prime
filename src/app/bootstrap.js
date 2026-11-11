@@ -82,8 +82,8 @@ const uiState = {
   voicePendingStart: false,
 };
 
-const store = await IndexedDbStore.open().catch(() => {
-  storageNotice = "Persistent browser storage is unavailable. This visit uses temporary memory only.";
+const store = await IndexedDbStore.open().catch((error) => {
+  storageNotice = `${error?.message || "Persistent browser storage is unavailable."} This visit uses temporary memory only.`;
   return new MemoryStore();
 });
 const customDrillService = new CustomDrillService(store);
@@ -1209,7 +1209,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.12.0-robot-readiness.0";
+document.querySelector("#build-version").textContent = "v0.13.0-storage-hardening.0";
 await refreshFooter();
 
 setInterval(() => {
