@@ -7,7 +7,7 @@
 3. **Intent Analysis** — Audio must remain local, tolerate phone and tablet storage limits, deduplicate exact content, start from a user gesture, report unsupported or missing files, survive offline HTTP-server operation, and never delay the safety controls. Browser format support remains device-dependent.
 4. **Product Requirements** — NU-FR-033–050 require one session lifecycle, coordinated mode-owned audio, local deduplicated storage, playlists, Quick Music, progress, automatic completion, and recoverable missing-audio errors.
 5. **Solution Specification** — Tracks use SHA-256 content identity and store their playable Blob in IndexedDB. Playlists store ordered Track IDs. `MusicLibraryService` validates and resolves local selections; `AudioPlayer` owns object URLs and browser playback; `LocalSessionController` remains authoritative for lifecycle, elapsed time, history, Stop, and failure recovery.
-6. **Generated Solution** — Release 0.2 enables the Music route and training mode, audio import and rename/delete, playlist create/rename/reorder/add/remove/delete, Quick Music, playback progress, automatic completion, Pause/Resume/Stop, session history, and playable-audio backup/restore.
+6. **Generated Solution** — Release 0.2 enables the Music route and training mode, audio import and rename/delete, playlist create/rename/reorder/add/remove/delete, Quick Music, playback progress, automatic completion, Pause/Resume/Stop, session history, and playable-audio backup/restore. Version `0.15.0-audio-resilience.0` adds explicit unsupported-codec, blocked-playback, interrupted-load, and object-URL allocation recovery while guaranteeing temporary URL cleanup.
 
 ## Operating behavior
 

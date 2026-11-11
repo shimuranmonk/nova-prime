@@ -1,5 +1,12 @@
 function frozen(value) { return Object.freeze({ ...value }); }
 
+function playbackErrorMessage(error, fallback) {
+  if (error?.name === "NotSupportedError" || Number(error?.code) === 4) return "This audio format is not supported by this browser or device.";
+  if (error?.name === "NotAllowedError") return "The browser blocked audio playback. Tap Start again to allow sound.";
+  if (error?.name === "AbortError") return "Audio loading was interrupted before playback could start.";
+  return error?.message || fallback;
+}
+
 export class AudioPlayer {
   #audio;
   #urlObject;
@@ -17,7 +24,9 @@ export class AudioPlayer {
     audio.addEventListener("timeupdate", () => this.#notify());
     audio.addEventListener("ended", () => { void this.#advance(); });
     audio.addEventListener("error", () => {
-      if (["loading", "playing", "paused"].includes(this.#state)) this.#setError("Audio playback failed. The file may be missing or unsupported.");
+      if (["loading", "playing", "paused"].includes(this.#state)) {
+        this.#setError(playbackErrorMessage(audio.error, "Audio playback failed. The file may be missing or unsupported."));
+      }
     });
   }
 
@@ -74,7 +83,7 @@ export class AudioPlayer {
       this.#notify();
       return true;
     } catch (error) {
-      this.#setError(error?.message || "Audio playback could not resume");
+      this.#setError(playbackErrorMessage(error, "Audio playback could not resume"));
       return false;
     }
   }
@@ -98,15 +107,15 @@ export class AudioPlayer {
     if (!track?.audioBlob) return this.#setError("The next audio file is missing from local storage");
     this.#state = "loading";
     this.#notify();
-    this.#currentUrl = this.#urlObject.createObjectURL(track.audioBlob);
-    this.#audio.src = this.#currentUrl;
-    this.#audio.load?.();
     try {
+      this.#currentUrl = this.#urlObject.createObjectURL(track.audioBlob);
+      this.#audio.src = this.#currentUrl;
+      this.#audio.load?.();
       await this.#audio.play();
       this.#state = "playing";
       this.#notify();
     } catch (error) {
-      this.#setError(error?.message || "Audio playback could not start");
+      this.#setError(playbackErrorMessage(error, "Audio playback could not start"));
       throw error;
     }
   }
