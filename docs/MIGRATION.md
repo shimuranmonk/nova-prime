@@ -8,7 +8,7 @@
 - **Intent:** make migration deliberate, understandable, repeatable, and safe across hosted and device-local origins.
 - **Intent analysis:** browsers cannot read another origin's storage; therefore the first reliable bridge is an explicit file. Duplicate built-ins, invalid parameters, capacity, identity, partial writes, and repeated imports are treated as blocking or reported conditions.
 - **Product requirement:** preview before mutation, validate every drill, never overwrite silently, commit drills and receipt together, and leave the source untouched.
-- **Solution specification:** parse the ten-column Nova Plus CSV, fingerprint it with SHA-256, transform Groups A–C in memory, reproduce programs at Levels 1–3, validate canonical records, and use one IndexedDB transaction.
+- **Solution specification:** parse the required ten Nova Plus columns plus optional Scatter, Active, Random, and Position columns, fingerprint the file with SHA-256, transform Groups A–C in memory, reproduce programs at Levels 1–3, validate canonical records, and use one IndexedDB transaction. Negative Height is preserved as Nova Trainer Serve state.
 - **Generated solution:** Data and Recovery now provides file selection, read-only inventory, warnings/errors, confirmation, atomic import, conflict-safe naming, and an idempotent receipt.
 
 ## Supported sources

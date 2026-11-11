@@ -1,10 +1,14 @@
 import { md5Hex } from "./md5.js";
+import { isServeBall } from "../../domain/drills/schema.js";
 
 export const NOVA_PROTOCOL_SOURCE = Object.freeze({
   repository: "olanga/nova",
   commit: "913f044d664b81dcb77c9e9d6e9ae5b33103f3ca",
   files: Object.freeze(["js/constants.js", "js/bluetooth.js", "js/runner.js"]),
   communityReference: "olanga/nova Wiki: General information",
+  trainerRepository: "shimuranmonk/nova-advance",
+  trainerCommit: "1877ea6ca37944313758d6744b817719298dc9c7",
+  trainerFiles: Object.freeze(["js/model/ball.js", "js/core/protocol.js", "js/run/session.js", "js/ui/editor.js"]),
 });
 
 export const NOVA_BLE_PROFILE = Object.freeze({
@@ -71,9 +75,9 @@ export function encodeBall(ball) {
   return new Uint8Array(buffer);
 }
 
-export function selectProgramBalls(program, { random = Math.random } = {}) {
+export function selectProgramBalls(program, { random = Math.random, randomOrder = false } = {}) {
   if (!program?.steps?.length) throw new Error("NOVA_PROGRAM_EMPTY");
-  return program.steps.filter((step) => step.enabled).map((step) => {
+  const balls = program.steps.filter((step) => step.enabled).map((step) => {
     if (!step.variants?.length) throw new Error("NOVA_STEP_VARIANTS_EMPTY");
     const index = Math.min(step.variants.length - 1, Math.floor(random() * step.variants.length));
     const selected = { ...step.variants[index] };
@@ -83,11 +87,22 @@ export function selectProgramBalls(program, { random = Math.random } = {}) {
     }
     return selected;
   });
+  if (!randomOrder) return balls;
+  const movableIndexes = balls.map((ball, index) => isServeBall(ball) ? -1 : index).filter((index) => index >= 0);
+  const shuffled = movableIndexes.map((index) => balls[index]);
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
+  }
+  const ordered = [...balls];
+  movableIndexes.forEach((position, index) => { ordered[position] = shuffled[index]; });
+  return ordered;
 }
 
 export function encodeDrillPacket(program, { mode = "combos", amount = 1, mirror = false, randomOrder = false, random = Math.random } = {}) {
   if (!(mode in MODE_BYTES)) throw new Error("NOVA_MODE_INVALID");
-  const balls = selectProgramBalls(program, { random }).map(encodeBall);
+  const selected = selectProgramBalls(program, { random, randomOrder });
+  const balls = selected.map(encodeBall);
   if (!balls.length || balls.length > 20) throw new Error("NOVA_BALL_COUNT_INVALID");
   const packet = new Uint8Array(7 + balls.length * 24);
   const view = new DataView(packet.buffer);
@@ -96,7 +111,7 @@ export function encodeDrillPacket(program, { mode = "combos", amount = 1, mirror
   view.setUint8(3, MODE_BYTES[mode]);
   view.setUint8(4, Math.floor(clamp(amount, 0, 255)));
   view.setUint8(5, mirror ? 1 : 0);
-  view.setUint8(6, randomOrder ? 1 : 0);
+  view.setUint8(6, randomOrder && !selected.some(isServeBall) ? 1 : 0);
   balls.forEach((ball, index) => packet.set(ball, 7 + index * 24));
   return packet;
 }

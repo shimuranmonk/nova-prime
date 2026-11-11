@@ -1,4 +1,4 @@
-import { createBall, createStep, DRILL_STEP_LIMIT, spinLimitForSpeed } from "../domain/drills/schema.js";
+import { createBall, createStep, DRILL_STEP_LIMIT, isServeBall, spinLimitForSpeed } from "../domain/drills/schema.js";
 import { applyCalibration, fitBallToTarget, previewBall, previewPosition, tablePointFromPosition } from "../domain/drills/preview.js";
 import { validateDrill } from "../domain/drills/validation.js";
 import { createId } from "../domain/shared/id.js";
@@ -35,7 +35,7 @@ function programCopy(program) {
 
 function outcomeLabel(result) {
   if (result.ok) return result.secondBounce ? "Short · second bounce on table" : "In · single bounce";
-  return ({ net: "Net", long: "Long", side: "Wide", short: "Short" })[result.outcome] ?? "Outside preview";
+  return ({ net: "Net", long: "Long", side: "Wide", short: "Short", noserve: "Not a serve · lower Height or Speed" })[result.outcome] ?? "Outside preview";
 }
 
 function rangeControl(label, field, value, minimum, maximum, step = 1, suffix = "") {
@@ -76,6 +76,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   function renderTable(program, selectedStep, selectedVariant) {
     const markers = [];
     let selectedPosition = { x: 50, y: 75 };
+    let selectedServePosition = null;
     const activeRequested = placementTarget?.stepId === selectedStep?.id && placementTarget?.variant === selectedVariant
       ? placementTarget.position
       : null;
@@ -85,8 +86,11 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         const position = previewPosition(result);
         const selected = step.id === selectedStep?.id && variantIndex === selectedVariant;
         const markerPosition = selected && activeRequested ? activeRequested : position;
-        if (selected) selectedPosition = markerPosition;
-        markers.push(`<button type="button" class="preview-marker ${ball.type === "back" ? "back" : "top"} ${step.enabled ? "" : "disabled"} ${selected ? "selected" : ""} ${result.ok ? "" : "warning"}" style="left:${markerPosition.x}%;top:${markerPosition.y}%" data-preview-step="${escapeHtml(step.id)}" data-preview-variant="${variantIndex}" aria-label="Edit step ${stepIndex + 1}, ball ${variantIndex + 1}: ${escapeHtml(outcomeLabel(result))}">${stepIndex + 1}</button>`);
+        if (selected) {
+          selectedPosition = markerPosition;
+          selectedServePosition = result.serveBounce ? previewPosition({ ok: true, ...result.serveBounce }) : null;
+        }
+        markers.push(`<button type="button" class="preview-marker ${ball.type === "back" ? "back" : "top"} ${isServeBall(ball) ? "serve" : ""} ${step.enabled ? "" : "disabled"} ${selected ? "selected" : ""} ${result.ok ? "" : "warning"}" style="left:${markerPosition.x}%;top:${markerPosition.y}%" data-preview-step="${escapeHtml(step.id)}" data-preview-variant="${variantIndex}" aria-label="Edit step ${stepIndex + 1}, ball ${variantIndex + 1}: ${escapeHtml(outcomeLabel(result))}">${stepIndex + 1}${isServeBall(ball) ? "S" : ""}</button>`);
       }
     }
     const requested = placementTarget?.stepId === selectedStep?.id && placementTarget?.variant === selectedVariant
@@ -105,6 +109,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
             <span class="table-landing-zone"><small>Tap or drag here</small></span><span class="table-net"></span><span class="table-label player">Player</span><span class="table-label robot">Robot</span>
             <svg class="placement-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="3" x2="${requested.x}" y2="${requested.y}" data-placement-line></line></svg>
             <span class="placement-target ${placementTarget ? "requested" : ""}" style="left:${requested.x}%;top:${requested.y}%" data-placement-target aria-hidden="true"></span>
+            ${selectedServePosition ? `<span class="serve-bounce" style="left:${selectedServePosition.x}%;top:${selectedServePosition.y}%" aria-label="Estimated first serve bounce"></span>` : ""}
             ${markers.join("")}
           </div>
           <div class="table-ruler-x" aria-hidden="true"><span>−60</span><span>−30</span><span>0</span><span>30</span><span>60</span></div>
@@ -118,10 +123,11 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   function renderStepList(program, selectedStep) {
     return `
       <section class="step-panel" aria-labelledby="steps-title">
-        <div class="editor-section-heading program-heading"><div><span class="eyebrow">PROGRAM ORDER</span><h3 id="steps-title">Steps</h3></div><div class="program-options"><label class="editor-switch"><input type="checkbox" data-editor-random ${draft.random ? "checked" : ""}><span>${draft.random ? "Random" : "Sequential"}</span></label><span class="step-count">${program.steps.length}/${DRILL_STEP_LIMIT}</span></div></div>
+        <div class="editor-section-heading program-heading"><div><span class="eyebrow">PROGRAM ORDER</span><h3 id="steps-title">Steps</h3></div><div class="program-options"><label class="editor-switch"><input type="checkbox" data-editor-random ${draft.random ? "checked" : ""}><span>${draft.random ? "Random · serves fixed" : "Sequential"}</span></label><span class="step-count">${program.steps.length}/${DRILL_STEP_LIMIT}</span></div></div>
         <div class="step-list">${program.steps.map((step, index) => {
           const ball = step.variants[0];
-          return `<button type="button" class="step-row ${step.id === selectedStep?.id ? "selected" : ""} ${step.enabled ? "" : "disabled"}" data-editor-step="${escapeHtml(step.id)}" aria-pressed="${step.id === selectedStep?.id}"><span class="step-number">${index + 1}</span><span><strong>${ball.type === "back" ? "Backspin" : "Topspin"}</strong><small>${step.variants.length} ball${step.variants.length === 1 ? "" : "s"} · ${ball.bpm} BPM</small></span></button>`;
+          const serve = step.variants.every(isServeBall);
+          return `<button type="button" class="step-row ${step.id === selectedStep?.id ? "selected" : ""} ${step.enabled ? "" : "disabled"} ${serve ? "serve" : ""}" data-editor-step="${escapeHtml(step.id)}" aria-pressed="${step.id === selectedStep?.id}"><span class="step-number">${index + 1}${serve ? "S" : ""}</span><span><strong>${serve ? "Serve · " : ""}${ball.type === "back" ? "Backspin" : "Topspin"}</strong><small>${step.enabled ? "Active" : "Inactive"} · ${step.variants.length} ball${step.variants.length === 1 ? "" : "s"} · ${ball.bpm} BPM</small></span></button>`;
         }).join("")}</div>
         <button class="editor-add-button" type="button" data-editor-add-step ${program.steps.length >= DRILL_STEP_LIMIT ? "disabled" : ""}>＋ Add step</button>
       </section>`;
@@ -136,7 +142,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     const spinMaximum = spinLimitForSpeed(ball.speed);
     return `
       <section class="ball-panel" aria-labelledby="ball-title">
-        <div class="editor-section-heading ball-panel-heading"><div><span class="eyebrow">STEP ${stepIndex + 1}</span><h3 id="ball-title">Ball parameters</h3></div><div class="ball-heading-controls"><div class="level-selector editor-levels" role="group" aria-label="Program level">${[1, 2, 3].map((entry) => `<button type="button" data-editor-level="${entry}" class="level-button ${entry === level ? "selected" : ""}" aria-pressed="${entry === level}">${entry}${draft.programs[entry] ? "" : "·"}</button>`).join("")}</div><label class="editor-switch"><input type="checkbox" data-step-enabled ${step.enabled ? "checked" : ""}><span>Enabled</span></label></div></div>
+        <div class="editor-section-heading ball-panel-heading"><div><span class="eyebrow">STEP ${stepIndex + 1}</span><h3 id="ball-title">Ball parameters</h3></div><div class="ball-heading-controls"><div class="level-selector editor-levels" role="group" aria-label="Program level">${[1, 2, 3].map((entry) => `<button type="button" data-editor-level="${entry}" class="level-button ${entry === level ? "selected" : ""}" aria-pressed="${entry === level}">${entry}${draft.programs[entry] ? "" : "·"}</button>`).join("")}</div></div></div>
         ${level !== 1 ? `<div class="editor-level-actions"><button type="button" data-editor-copy-level="1">Copy Level 1</button><button type="button" class="danger-button" data-editor-clear-level>Clear Level ${level}</button></div>` : ""}
         <div class="step-actions">
           <button type="button" data-step-move="-1" ${stepIndex === 0 ? "disabled" : ""}>↑ Up</button>
@@ -154,6 +160,10 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
           ${rangeControl("Drop", "drop", ball.drop, -10, 10, 0.5)}
           ${rangeControl("BPM", "bpm", ball.bpm, 30, 90, 1)}
           ${rangeControl("Reps", "repetitions", ball.repetitions, 1, 100, 1)}
+        </div>
+        <div class="ball-flags">
+          <label class="editor-switch"><input type="checkbox" data-step-enabled ${step.enabled ? "checked" : ""}><span>Active</span></label>
+          <label class="editor-switch"><input type="checkbox" data-ball-serve ${isServeBall(ball) ? "checked" : ""}><span>Serve <small>first bounce on robot side</small></span></label>
         </div>
         <div class="ball-actions"><button type="button" disabled title="Connect the robot to test this ball">▶ Test</button><button type="button" data-variant-duplicate>＋ Variant</button><button type="button" class="danger-button" data-variant-delete ${step.variants.length === 1 ? "disabled" : ""}>Delete</button></div>
         <p class="preview-outcome ${result.ok ? "ok" : "warning"}"><strong>${escapeHtml(outcomeLabel(result))}</strong>${Number.isFinite(result.netClearanceCm) ? ` · net ${result.netClearanceCm.toFixed(1)} cm` : ""}</p>
@@ -289,6 +299,11 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
       program.steps.push(step); activeStepId = step.id; activeVariant = 0; markDirty(); render();
     });
     root.querySelector("[data-step-enabled]")?.addEventListener("change", (event) => { currentStep().enabled = event.target.checked; markDirty(); render(); });
+    root.querySelector("[data-ball-serve]")?.addEventListener("change", (event) => {
+      const ball = currentStep().variants[activeVariant];
+      ball.height = event.target.checked ? -30 : 35;
+      placementTarget = null; placementMessage = ""; markDirty(); render();
+    });
     root.querySelector("[data-step-scatter]")?.addEventListener("input", (event) => { currentStep().scatter = clamp(event.target.value, 0, 10); markDirty(); render(); });
     root.querySelectorAll("[data-step-move]").forEach((button) => button.addEventListener("click", () => {
       const program = currentProgram();

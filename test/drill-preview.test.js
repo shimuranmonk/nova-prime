@@ -21,6 +21,14 @@ test("robot position changes the lateral estimate", () => {
   assert.notEqual(left.x, right.x);
 });
 
+test("negative Trainer height produces a two-sided serve preview", () => {
+  const result = previewBall(createBall({ speed: 1.8, spin: 5.5, type: "back", height: -30 }));
+  assert.equal(result.ok, true);
+  assert.ok(result.serveBounce);
+  assert.ok(result.serveBounce.yCm > 137);
+  assert.ok(result.yCm < 137);
+});
+
 test("out-of-bounds estimates are clamped to the visible table", () => {
   assert.deepEqual(previewPosition({ outcome: "side", xCm: -1000, yCm: 1000 }), { x: 2, y: 2 });
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { md5Hex } from "../src/infrastructure/robot/md5.js";
-import { bytesToHex, containsDoneSignal, createAuthResponse, encodeBall, encodeDrillPacket, NOVA_PACKETS } from "../src/infrastructure/robot/nova-protocol.js";
+import { bytesToHex, containsDoneSignal, createAuthResponse, encodeBall, encodeDrillPacket, NOVA_PACKETS, selectProgramBalls } from "../src/infrastructure/robot/nova-protocol.js";
 
 test("MD5 matches RFC vectors required by the robot handshake", () => {
   assert.equal(md5Hex(""), "d41d8cd98f00b204e9800998ecf8427e");
@@ -40,6 +40,21 @@ test("drill packet has the seven-byte header and bounded ball payload", () => {
   assert.equal(packet[0], 0x81);
   assert.equal(view.getUint16(1, true), 28);
   assert.deepEqual([...packet.slice(3, 7)], [0x01, 10, 1, 1]);
+});
+
+test("inactive steps are omitted and serve positions remain fixed during random order", () => {
+  const program = { steps: [
+    { enabled: true, scatter: 0, variants: [{ speed: 2, spin: 2, type: "back", height: -30, drop: 0, bpm: 45, repetitions: 1 }] },
+    { enabled: false, scatter: 0, variants: [{ speed: 3, spin: 2, type: "top", height: 40, drop: 9, bpm: 45, repetitions: 1 }] },
+    { enabled: true, scatter: 0, variants: [{ speed: 3, spin: 2, type: "top", height: 40, drop: 1, bpm: 45, repetitions: 1 }] },
+    { enabled: true, scatter: 0, variants: [{ speed: 3, spin: 2, type: "top", height: 40, drop: 2, bpm: 45, repetitions: 1 }] },
+  ] };
+  const selected = selectProgramBalls(program, { randomOrder: true, random: () => 0 });
+  assert.deepEqual(selected.map((ball) => ball.height), [-30, 40, 40]);
+  assert.deepEqual(selected.map((ball) => ball.drop), [0, 2, 1]);
+  const packet = encodeDrillPacket(program, { randomOrder: true, random: () => 0 });
+  assert.equal(packet[6], 0);
+  assert.equal(packet.length, 7 + 3 * 24);
 });
 
 test("done notification detection tolerates framed bytes", () => {

@@ -34,6 +34,9 @@ function uniqueName(records, value) {
   }
 }
 
+const parseEnabled = (value) => value == null || String(value).trim() === "" || !/^(0|false|no|off)$/i.test(String(value).trim());
+const parseOptionalNumber = (value, fallback, label, limits) => value == null || String(value).trim() === "" ? fallback : parseNumber(value, label, limits);
+
 function parseCsv(text) {
   const lines = String(text).replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
   if (!lines.length) throw new Error("Migration file is empty");
@@ -65,10 +68,20 @@ function parseCsv(text) {
       };
       if (!["top", "back"].includes(ball.type)) throw new Error("Type must be top or back");
       const key = `${group}\u0000${name.toLowerCase()}`;
-      if (!grouped.has(key)) grouped.set(key, { group, name, steps: new Map() });
+      if (!grouped.has(key)) grouped.set(key, {
+        group,
+        name,
+        steps: new Map(),
+        random: /^(1|true|yes|on)$/i.test(String(parts[12] ?? "").trim()),
+        robotPosition: ["left", "middle", "right"].includes(String(parts[13] ?? "").trim().toLowerCase()) ? String(parts[13]).trim().toLowerCase() : "middle",
+      });
       const drill = grouped.get(key);
       if (!drill.steps.has(ballNumber)) drill.steps.set(ballNumber, []);
-      drill.steps.get(ballNumber).push(ball);
+      drill.steps.get(ballNumber).push({
+        ball,
+        scatter: parseOptionalNumber(parts[10], 0, "Scatter", { minimum: 0, maximum: 10 }),
+        enabled: parseEnabled(parts[11]),
+      });
     } catch (error) { errors.push({ line: lineNumber, message: error.message }); }
   });
   if (excludedRows) warnings.push(`${excludedRows} built-in row${excludedRows === 1 ? " was" : "s were"} excluded; Nova Prime already supplies its verified built-in catalogue.`);
@@ -79,11 +92,11 @@ function parseCsv(text) {
 function canonicalCandidates(grouped, fingerprint, timestamp) {
   return grouped.map((legacy, drillIndex) => {
     const baseId = `migration:nova-plus:${fingerprint.slice(0, 16)}:${legacy.group}:${drillIndex + 1}`;
-    const steps = [...legacy.steps.entries()].sort(([left], [right]) => left - right).map(([, variants], stepIndex) => ({
+    const steps = [...legacy.steps.entries()].sort(([left], [right]) => left - right).map(([, records], stepIndex) => ({
       id: `${baseId}:step:${stepIndex + 1}`,
-      enabled: true,
-      scatter: 0,
-      variants,
+      enabled: records[0].enabled,
+      scatter: records[0].scatter,
+      variants: records.map((record) => record.ball),
     }));
     const program = { steps, metadata: { migratedFrom: NOVA_PLUS_CSV_MIGRATION } };
     return {
@@ -93,8 +106,8 @@ function canonicalCandidates(grouped, fingerprint, timestamp) {
       builtinKey: null,
       name: legacy.name,
       group: legacy.group,
-      robotPosition: "middle",
-      random: false,
+      robotPosition: legacy.robotPosition,
+      random: legacy.random,
       programs: { 1: clone(program), 2: clone(program), 3: clone(program) },
       createdAt: timestamp,
       updatedAt: timestamp,

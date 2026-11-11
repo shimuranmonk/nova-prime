@@ -32,6 +32,7 @@
 - Player-half coordinate orientation and reversible percent/centimetre mapping
 - Direct placement preservation of Height, Spin, type, BPM, and Reps
 - Speed/Drop fitting, scatter-constrained Drop, dynamic Speed/Spin limits, closest-target feedback, pointer drag/tap, and keyboard placement
+- Active-step filtering, negative-Height Serve detection, robot-side first-bounce preview, serve-aware random order, and extended CSV preservation
 - 20-step program limit, ordered steps, multiple ball variants, and Levels 1–3 persistence
 - Deterministic uncalibrated physics preview with bounded table markers
 - Standard and Complete calibration plan coverage
