@@ -8,6 +8,8 @@ New drills receive immutable drill and step identities and begin with one valid 
 
 The visual editor builds independent programs for Levels 1–3. Each program supports up to 20 ordered steps, per-step enable and scatter controls, and multiple ball variants. Each ball exposes the Nova Plus controls: Speed 0–10, speed-dependent Spin, Top/Back, Height −50–100, Drop −10–10, BPM 30–90, and Reps 1–100. Programs can run sequentially or randomly. The graduated complete table supports drag, tap, and keyboard targeting; direct placement fits Speed and Drop while preserving every other ball parameter. Robot Left/Middle/Right position and the vertical Height adjuster remain visible beside the table.
 
+`Active` is the user-facing form of the canonical step `enabled` flag inherited from Nova Plus and Nova Trainer. Turning it off preserves the step and all variants but excludes it from execution. `Serve` follows Nova Trainer exactly: it is derived from Height below zero, switches to −30 when enabled and 35 when disabled, uses the same robot Height packet, and displays the estimated first bounce on the robot side. When Random order is selected, serve positions remain fixed while only non-serve positions are shuffled.
+
 Editor changes remain an in-memory draft until **Save program**. Cancelling or closing leaves the stored drill unchanged; saving validates the complete drill before one storage write.
 
 ## File format

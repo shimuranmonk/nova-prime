@@ -56,6 +56,7 @@ Implementation status: verified GATT discovery, bounded authenticated login, not
 - Show the complete table and support direct pointer and keyboard landing placement.
 - Preserve Height, Spin, type, BPM, Reps, and Scatter when direct placement fits Speed and Drop.
 - Use Nova Plus parameter limits and dynamic Speed/Spin compatibility across editing, migration, validation, and robot encoding.
+- Preserve Nova Plus/Trainer Active steps and Nova Trainer Serve behavior. Serve uses negative Height and must remain fixed during random ordering.
 - Report unreachable targets as closest safe estimates without claiming physical accuracy.
 
 Implementation status: the 34 built-ins, Groups A/B/C library management, immutable custom identities, ordering, import/export, selection, safe simulation, ball parameters, complete-table editing, and bounded direct-placement fitting are complete.

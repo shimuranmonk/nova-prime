@@ -28,6 +28,7 @@ This branch advances Nova Prime through the JewelFlow 0.7 migration increment, r
 - Calibrated parameter-response corrections applied to visual drill previews without enabling robot commands
 - Closest-safe Speed and Drop fitting that preserves Height, Spin, type, BPM, Reps, and Scatter
 - Nova Plus parameter truth: Speed 0–10, dynamic Spin limit, Height −50–100, Drop −10–10, BPM 30–90, and Reps 1–100
+- Nova Plus/Trainer Active steps and Nova Trainer Serve balls, with negative Height, first-bounce preview, and fixed serve positions during random order
 - Local audio import with SHA-256 duplicate detection, rename/delete, duration, and size details
 - Reusable playlists with ordered tracks plus ad-hoc Quick Music queues
 - Music sessions with playback progress, automatic completion, Pause, Resume, Stop, recoverable errors, and history

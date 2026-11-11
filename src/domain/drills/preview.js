@@ -52,6 +52,7 @@ export function previewBall(ball, robotPosition = "middle", dt = 3e-3) {
   let netClearance = null;
   let firstBounce = null;
   let secondBounce = null;
+  let robotBounce = null;
 
   for (let elapsed = 0; elapsed < 3; elapsed += dt) {
     const speed = Math.hypot(forwardVelocity, verticalVelocity);
@@ -80,7 +81,8 @@ export function previewBall(ball, robotPosition = "middle", dt = 3e-3) {
       if (bounceU > TABLE.L + 0.01 || Math.abs(bounceW) > TABLE.W / 2 + 0.01 || bounceU < 0) {
         return Object.freeze({ ok: false, outcome: bounceU > TABLE.L ? "long" : "side", xCm: bounceW * 100, yCm: (TABLE.L - bounceU) * 100, netClearanceCm: netClearance == null ? null : netClearance * 100 });
       }
-      if (bounceU >= TABLE.NET_U && !firstBounce) firstBounce = { u: bounceU, w: bounceW };
+      if (bounceU < TABLE.NET_U && !robotBounce) robotBounce = { u: bounceU, w: bounceW };
+      else if (bounceU >= TABLE.NET_U && !firstBounce) firstBounce = { u: bounceU, w: bounceW };
       else if (bounceU >= TABLE.NET_U) {
         secondBounce = { u: bounceU, w: bounceW };
         break;
@@ -96,6 +98,7 @@ export function previewBall(ball, robotPosition = "middle", dt = 3e-3) {
     }
   }
 
+  if (Number(ball.height) < 0 && !robotBounce) return Object.freeze({ ok: false, outcome: "noserve", netClearanceCm: netClearance == null ? null : netClearance * 100 });
   if (!firstBounce) return Object.freeze({ ok: false, outcome: "short", netClearanceCm: netClearance == null ? null : netClearance * 100 });
   return Object.freeze({
     ok: true,
@@ -104,6 +107,7 @@ export function previewBall(ball, robotPosition = "middle", dt = 3e-3) {
     yCm: (TABLE.L - firstBounce.u) * 100,
     secondBounce: Boolean(secondBounce),
     netClearanceCm: netClearance == null ? null : netClearance * 100,
+    serveBounce: robotBounce ? Object.freeze({ xCm: robotBounce.w * 100, yCm: (TABLE.L - robotBounce.u) * 100 }) : null,
   });
 }
 

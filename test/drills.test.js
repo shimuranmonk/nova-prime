@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createBall, createDrill, createStep, DRILL_STEP_LIMIT } from "../src/domain/drills/schema.js";
+import { createBall, createDrill, createStep, DRILL_STEP_LIMIT, isServeBall } from "../src/domain/drills/schema.js";
 import { validateBall, validateDrill, validateStep } from "../src/domain/drills/validation.js";
 
 test("new drills satisfy the canonical schema", () => {
@@ -23,6 +23,11 @@ test("Nova Plus height, BPM, and speed-dependent spin limits are authoritative",
   assert.ok(validateBall(createBall({ height: -51 })).issues.some((entry) => entry.path.endsWith("height")));
   assert.ok(validateBall(createBall({ bpm: 91 })).issues.some((entry) => entry.path.endsWith("bpm")));
   assert.ok(validateBall(createBall({ speed: 10, spin: 1 })).issues.some((entry) => entry.code === "DRILL_SPIN_SPEED_LIMIT"));
+});
+
+test("serve state is derived from the Trainer negative-height convention", () => {
+  assert.equal(isServeBall(createBall({ height: -30 })), true);
+  assert.equal(isServeBall(createBall({ height: 0 })), false);
 });
 
 test("drop plus scatter cannot exceed the robot envelope", () => {

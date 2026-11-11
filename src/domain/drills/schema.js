@@ -28,6 +28,10 @@ export function spinLimitForSpeed(value) {
   return SPIN_LIMITS[lower] + (SPIN_LIMITS[upper] - SPIN_LIMITS[lower]) * (position - lower);
 }
 
+export function isServeBall(ball) {
+  return Number(ball?.height) < 0;
+}
+
 export function createBall(overrides = {}) {
   return Object.freeze({
     speed: 5,

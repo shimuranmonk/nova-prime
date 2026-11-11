@@ -6,6 +6,7 @@ import { NovaPlusCsvMigrationService } from "../src/application/migration/nova-p
 import { MemoryStore } from "../src/infrastructure/storage/memory-store.js";
 
 const HEADER = "Set;Ball;Name;Speed;Spin;Type;Height;Drop;BPM;Reps";
+const EXTENDED_HEADER = `${HEADER};Scatter;Active;Random;Position`;
 const VALID_CSV = [
   HEADER,
   "Basic;1;Push BH;4;2;back;40;0;45;1",
@@ -37,6 +38,22 @@ test("Nova Plus CSV preview is read-only, excludes built-ins, and preserves vari
   assert.deepEqual(preview.candidates[0].programs[3], preview.candidates[0].programs[1]);
   assert.deepEqual(await store.getAll("drills"), []);
   assert.deepEqual(await store.getAll("migrationReceipts"), []);
+});
+
+test("extended Nova Plus and Trainer columns preserve Active, Scatter, Random, Position, and Serve height", async () => {
+  const csv = [
+    EXTENDED_HEADER,
+    "A;1;Serve pattern;2;2;back;-30;0;45;1;2;1;1;right",
+    "A;2;Serve pattern;4;3;top;35;2;55;1;1;0;1;right",
+  ].join("\n");
+  const preview = await service().preview(csv);
+  assert.equal(preview.canCommit, true);
+  const drill = preview.candidates[0];
+  assert.equal(drill.random, true);
+  assert.equal(drill.robotPosition, "right");
+  assert.equal(drill.programs[1].steps[0].variants[0].height, -30);
+  assert.equal(drill.programs[1].steps[0].scatter, 2);
+  assert.equal(drill.programs[1].steps[1].enabled, false);
 });
 
 test("invalid Nova Plus rows block commit without changing local data", async () => {

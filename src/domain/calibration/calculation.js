@@ -7,7 +7,7 @@ export const STANDARD_CALIBRATION_PLAN = Object.freeze([
   planBall("none-forehand", "No spin · forehand", { speed: 3.5, spin: 0, type: "top", height: 46, drop: 4 }, { xCm: 35, yCm: 75 }, "none"),
   planBall("back-short", "Backspin · short middle", { speed: 1.8, spin: 5.5, type: "back", height: 42, drop: 0 }, { xCm: 0, yCm: 100 }, "back"),
   planBall("top-fast-fh", "Fast topspin · deep forehand", { speed: 4.5, spin: 3, type: "top", height: 48, drop: 4 }, { xCm: 35, yCm: 30 }, "top"),
-  planBall("serve-short", "Short backspin serve", { speed: 1.8, spin: 5.5, type: "back", height: 28, drop: 0 }, { xCm: 0, yCm: 110 }, "serve"),
+  planBall("serve-short", "Short backspin serve", { speed: 1.8, spin: 5.5, type: "back", height: -30, drop: 0 }, { xCm: 0, yCm: 110 }, "serve"),
 ]);
 
 export const COMPLETE_CALIBRATION_PLAN = Object.freeze(STANDARD_CALIBRATION_PLAN.flatMap((test) => [test, Object.freeze({ ...test, id: `${test.id}-repeat`, name: `${test.name} · repeat` })]));
