@@ -179,6 +179,8 @@ These should be evaluated as separate JewelFlow increments, not silently folded 
 
 ## 8. What is still on the plate
 
+Continuation update (2026-11-14): [PR #27](https://github.com/shimuranmonk/nova-prime/pull/27) tracks 0.17 and the handover. Main's documentation conflict was resolved preserving the 0.16 and 0.17 descriptions. The fresh checkout does not contain the original three newline-only modifications; they remain untouched in their original location, which was not available in this session. [PHYSICAL_TEST_RUN.md](PHYSICAL_TEST_RUN.md) provides an ordered run sheet and test-only integration constraints. Hardware testing has not run; production control remains disabled. Check PR status and latest CI before repeating repository actions below.
+
 ### Immediate repository work
 
 1. Fetch the current remote state.

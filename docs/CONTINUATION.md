@@ -29,7 +29,7 @@ When the user invokes JewelFlow, follow that sequence unless stages are already 
 - Branch: `jewelflow/0.17-trainer-beta9-parity`
 - Functional commit: `95e0c69 Integrate Trainer beta.9 drill workflows`
 - Branch is pushed to GitHub.
-- 0.17 PR was not yet created when this file was drafted.
+- 0.17 PR: https://github.com/shimuranmonk/nova-prime/pull/27 (check current GitHub status before acting).
 - PR #26 (0.16 AGPL) is merged on GitHub.
 - Fetch before comparing because the local `origin/main` reference was stale.
 
@@ -115,6 +115,8 @@ The packaged foundation already includes authenticated Web Bluetooth, serialized
 - AGPL source offer and notices stay in every bundle.
 
 ## Immediate next actions
+
+Continuation update (2026-11-14): PR #27 is open; the conflict with main's 0.16 status paragraph was resolved retaining both increments. A fresh checkout had no uncommitted changes; the original three newline-only edits are not available here and were not discarded or committed. Local baseline: 130 tests, build, and verification of 55 files passed. Confirm the latest PR CI before merging. Use [PHYSICAL_TEST_RUN.md](PHYSICAL_TEST_RUN.md) for preparation and evidence; no physical checks have run and the gate remains closed. A separate isolated test entry point remains to be implemented and reviewed before hardware testing.
 
 1. Inspect the three newline-only files.
 2. Open a PR for `jewelflow/0.17-trainer-beta9-parity` to `main`.
