@@ -1,6 +1,7 @@
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
 import { CalibrationService } from "../application/calibration/calibration-service.js";
 import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
+import { BuiltinPreferencesService, builtinRandomOrder } from "../application/drills/builtin-preferences.js";
 import { MsyncService } from "../application/msync/msync-service.js";
 import { MsyncSimulator } from "../application/msync/msync-simulator.js";
 import { AudioPlayer } from "../application/music/audio-player.js";
@@ -43,6 +44,8 @@ let dataMessage = "";
 let migrationMessage = "";
 let migrationPreview = null;
 let customMessage = "";
+let builtinMessage = "";
+let builtinPreferences = {};
 let customCache = [];
 let calibrationProfile = null;
 let calibrationMessage = "";
@@ -87,6 +90,7 @@ const store = await IndexedDbStore.open().catch((error) => {
   return new MemoryStore();
 });
 const customDrillService = new CustomDrillService(store);
+const builtinPreferencesService = new BuiltinPreferencesService(store);
 const novaPlusMigration = new NovaPlusCsvMigrationService(store);
 const sharingService = new SharingService(customDrillService);
 const calibrationService = new CalibrationService(store);
@@ -122,6 +126,10 @@ async function refreshCustomCache() {
   customCache = await customDrillService.list();
 }
 
+async function refreshBuiltinPreferences() {
+  builtinPreferences = await builtinPreferencesService.load();
+}
+
 async function refreshCalibrationProfile() {
   calibrationProfile = await calibrationService.active();
 }
@@ -144,6 +152,13 @@ function resolveDrill(id) {
 
 function programForDrill(drill) {
   return drill?.programs?.[uiState.level] ?? drill?.programs?.[1] ?? null;
+}
+
+function randomOrderFor(drill, level = uiState.level) {
+  if (!drill) return false;
+  const program = drill.programs?.[level] ?? drill.programs?.[1];
+  if ((program?.steps ?? []).filter((step) => step.enabled).length < 2) return false;
+  return drill.source === "builtin" ? builtinRandomOrder(drill, level, builtinPreferences) : Boolean(drill.random);
 }
 
 const controller = new LocalSessionController({
@@ -338,7 +353,7 @@ function sessionConsole(session) {
   const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
   return `
     <section class="app-card session-console" aria-label="Active session">
-      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${isMsync ? "MSYNC timeline" : escapeHtml(drill?.name ?? "Local session")}${trackLabel}</p></div><span class="simulation-pill">${isMsync ? "Timeline simulation" : session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
+      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${isMsync ? "MSYNC timeline" : `${escapeHtml(drill?.name ?? "Local session")} · ${session.spec?.randomOrder ? "Random order" : "Sequential"}`}${trackLabel}</p></div><span class="simulation-pill">${isMsync ? "Timeline simulation" : session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
       <strong class="session-metric">${metric}</strong>
       ${isMsync ? `<p class="helper-text">Robot Lead ${((msyncSnapshot?.robotLeadMs ?? 1300) / 1000).toFixed(3)}s · planned robot cues are displayed only and never transmitted.</p>` : ""}
       <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
@@ -435,15 +450,19 @@ function drillCard(drill, locked) {
     return `<i class="ball-dot ${kind}"></i>`;
   }).join("");
   const selected = uiState.drillId === drill.id;
-  return `<button class="drill-tile ${selected ? "selected" : ""}" type="button" data-drill-id="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}><span><strong>${escapeHtml(drill.name)}</strong>${drill.random ? '<small class="random-tag">Random</small>' : ""}</span><span class="ball-detail"><span class="ball-dots">${dots}</span>${steps.length} ball${steps.length === 1 ? "" : "s"}</span></button>`;
+  return `<button class="drill-tile ${selected ? "selected" : ""}" type="button" data-drill-id="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}><span><strong>${escapeHtml(drill.name)}</strong>${randomOrderFor(drill) ? '<small class="random-tag">Random</small>' : ""}</span><span class="ball-detail"><span class="ball-dots">${dots}</span>${steps.length} ball${steps.length === 1 ? "" : "s"}</span></button>`;
 }
 
 function drillLibrary(session) {
   const locked = session.state !== SESSION_STATES.IDLE;
   const drills = getBuiltinDrills(uiState.category);
+  const selected = getBuiltinDrill(uiState.drillId);
+  const activeSteps = selected?.programs?.[uiState.level]?.steps?.filter((step) => step.enabled).length ?? 0;
+  const random = randomOrderFor(selected);
   return `
     <section class="app-card library-card" aria-labelledby="library-title">
-      <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>${BUILTIN_DRILLS.length} drills · level ${uiState.level}</p></div><button class="small-button" type="button" disabled>Fixed order</button></div>
+      <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>${BUILTIN_DRILLS.length} drills · level ${uiState.level}</p></div><div class="library-heading-actions"><button class="small-button ${random ? "active" : ""}" type="button" data-builtin-order ${locked || !selected || activeSteps < 2 ? "disabled" : ""}>${random ? "Random order" : "Sequential"}</button><button class="small-button" type="button" data-builtin-reset ${locked || !Object.keys(builtinPreferences).length ? "disabled" : ""}>Reset settings</button></div></div>
+      ${builtinMessage ? `<p class="helper-text" role="status">${escapeHtml(builtinMessage)}</p>` : ""}
       <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${label} <small>${count}</small></button>`).join("")}</div>
       <div class="drill-grid">${drills.map((drill) => drillCard(drill, locked)).join("")}</div>
     </section>`;
@@ -546,7 +565,7 @@ async function msyncView() {
 }
 
 async function trainView() {
-  await Promise.all([refreshCustomCache(), refreshCalibrationProfile(), refreshMusicCache()]);
+  await Promise.all([refreshCustomCache(), refreshBuiltinPreferences(), refreshCalibrationProfile(), refreshMusicCache()]);
   await refreshMsyncCache();
   const session = controller.snapshot();
   return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${voiceControlCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
@@ -816,6 +835,20 @@ function bindRouteActions(route) {
       await render("train");
     });
     document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
+    document.querySelector("[data-builtin-order]:not(:disabled)")?.addEventListener("click", async () => {
+      const drill = getBuiltinDrill(uiState.drillId);
+      if (!drill) return;
+      const next = !randomOrderFor(drill);
+      builtinPreferences = await builtinPreferencesService.setRandom(drill, uiState.level, next);
+      builtinMessage = `${drill.name} · Level ${uiState.level}: ${next ? "random order" : "sequential"}.`;
+      await render("train");
+    });
+    document.querySelector("[data-builtin-reset]:not(:disabled)")?.addEventListener("click", async () => {
+      if (!globalThis.confirm("Reset built-in playback settings for every drill and level? Custom drills will not change.")) return;
+      builtinPreferences = await builtinPreferencesService.reset();
+      builtinMessage = "Built-in playback settings restored. Custom drills were not changed.";
+      await render("train");
+    });
     document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => {
       uiState.mode = button.dataset.uiMode;
       uiState.amount = uiState.mode === "time" ? 60 : 10;
@@ -903,7 +936,7 @@ function bindRouteActions(route) {
         uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
         try {
           const selection = await musicLibrary.resolve({ playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds });
-          const spec = createSessionSpec({ mode: "music", level: uiState.level, drillId: uiState.drillId, playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds, pauseSeconds: 0 });
+          const spec = createSessionSpec({ mode: "music", level: uiState.level, drillId: uiState.drillId, randomOrder: randomOrderFor(resolveDrill(uiState.drillId)), playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds, pauseSeconds: 0 });
           const result = controller.start(spec, { countdownSeconds: 0 });
           if (result.status !== "EXECUTED") throw new Error("Music session could not start");
           musicMessage = `Playing ${selection.label}.`;
@@ -916,7 +949,7 @@ function bindRouteActions(route) {
         uiState.amount = Number(form.get("amount"));
         uiState.pauseSeconds = Number(form.get("pause"));
         uiState.countdownSeconds = Number(form.get("countdown"));
-        const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
+        const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, randomOrder: randomOrderFor(resolveDrill(uiState.drillId)), repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
         controller.start(spec, { countdownSeconds: uiState.countdownSeconds });
       }
       await render("train");

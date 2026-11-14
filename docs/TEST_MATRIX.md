@@ -26,7 +26,7 @@
 - Built-in catalogue contains exactly 6 Basic, 12 Combined, and 16 Complex drills
 - All 34 drills have unique stable IDs and validate at levels 1–3
 - Representative ball parameters match the authoritative Trainer source
-- Sequence order, random flags, UI selection, and session-history drill linkage
+- Sequence order, per-level built-in random preferences, immutable-default recovery, UI selection, and session-history order/drill linkage
 - Custom drill immutable IDs, sanitized unique names, and Groups A/B/C persistence
 - Duplicate drill and step identity regeneration
 - Reorder and post-delete order compaction
@@ -36,7 +36,7 @@
 - Player-half coordinate orientation and reversible percent/centimetre mapping
 - Direct placement preservation of Height, Spin, type, BPM, and Reps
 - Speed/Drop fitting, scatter-constrained Drop, dynamic Speed/Spin limits, closest-target feedback, pointer drag/tap, and keyboard placement
-- Active-step filtering, negative-Height Serve detection, robot-side first-bounce preview, serve-aware random order, and extended CSV preservation
+- Active-step filtering, negative-Height Serve detection, robot-side first-bounce preview, serve-aware random order, inherited Add Step settings, and extended CSV preservation
 - 20-step program limit, ordered steps, multiple ball variants, and Levels 1–3 persistence
 - Deterministic uncalibrated physics preview with bounded table markers
 - Standard and Complete calibration plan coverage

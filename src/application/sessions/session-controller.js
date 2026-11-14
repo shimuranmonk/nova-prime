@@ -166,6 +166,7 @@ export class LocalSessionController {
       level: this.#spec.level,
       targetAmount: this.#spec.mode === "reps" ? this.#spec.repetitions : this.#spec.mode === "time" ? this.#spec.durationSeconds : null,
       pauseSeconds: this.#spec.pauseSeconds,
+      randomOrder: this.#spec.randomOrder,
       playlistId: this.#spec.playlistId,
       quickTrackIds: this.#spec.quickTrackIds,
       msyncAttachmentId: this.#spec.msyncAttachmentId,

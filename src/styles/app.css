@@ -63,6 +63,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .setup-card, .library-card, .session-console, .voice-card, .data-layout > .app-card, .info-grid > .app-card { padding: 15px; }
 .section-heading, .console-heading, .menu-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.library-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .section-heading p { margin-top: 2px; }
 .eyebrow, .control-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.65rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
 .simulation-pill { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; background: var(--teal-soft); color: var(--teal-dark); font-size: 0.68rem; font-weight: 850; }

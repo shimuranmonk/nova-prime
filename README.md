@@ -23,13 +23,14 @@ This branch advances Nova Prime through the JewelFlow 0.7 migration increment, r
 - Verified 34-drill Nova Trainer catalogue with Basic, Combined, Complex, random, and three-level programs
 - Persistent custom drills in Groups A/B/C with create, rename, duplicate, move, reorder, delete, select, and simulation support
 - Atomic versioned custom-drill JSON import and export, with a 100-drill limit per group
-- Interactive Levels 1–3 editor with a complete table, drag/tap/keyboard targeting, up to 20 ordered steps, multiple balls per step, enable/scatter controls, and random or sequential playback
+- Interactive Levels 1–3 editor with a complete table, drag/tap/keyboard targeting, up to 20 ordered steps, inherited Add Step settings, multiple balls per step, enable/scatter controls, and random or sequential playback
 - Uncalibrated table preview for speed, spin, type, height, direction, tempo, and repetitions
 - Standard and Complete guided calibration with manual landing observations, Undo, local profiles, import/export, and Quick Check
 - Calibrated parameter-response corrections applied to visual drill previews without enabling robot commands
 - Closest-safe Speed and Drop fitting that preserves Height, Spin, type, BPM, Reps, and Scatter
 - Nova Plus parameter truth: Speed 0–10, dynamic Spin limit, Height −50–100, Drop −10–10, BPM 30–90, and Reps 1–100
 - Nova Plus/Trainer Active steps and Nova Trainer Serve balls, with negative Height, first-bounce preview, and fixed serve positions during random order
+- Per-level built-in Random/Sequential preferences with one-action recovery to the immutable catalogue defaults
 - Local audio import with SHA-256 duplicate detection, rename/delete, duration, and size details
 - Reusable playlists with ordered tracks plus ad-hoc Quick Music queues
 - Music sessions with playback progress, automatic completion, Pause, Resume, Stop, recoverable errors, and history

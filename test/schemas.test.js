@@ -26,6 +26,7 @@ test("session requirements depend on mode", () => {
   assert.equal(validateSessionSpec(createSessionSpec({ drillId: "drill_1" })).valid, true);
   assert.equal(validateSessionSpec(createSessionSpec({ mode: "music", drillId: "drill_1" })).valid, false);
   assert.equal(validateSessionSpec(createSessionSpec({ mode: "msync", drillId: null })).valid, false);
+  assert.equal(validateSessionSpec(createSessionSpec({ drillId: "drill_1", randomOrder: "yes" })).valid, false);
 });
 
 test("MSYNC attachments require validated source data", () => {
@@ -40,8 +41,9 @@ test("statistics reject negative counters", () => {
 
 test("statistics accept legacy records and validate optional planning fields", () => {
   const legacy = createSessionRecord();
-  const { level, targetAmount, pauseSeconds, ...withoutPlanningFields } = legacy;
+  const { level, targetAmount, pauseSeconds, randomOrder, ...withoutPlanningFields } = legacy;
   assert.equal(validateSessionRecord(withoutPlanningFields).valid, true);
   assert.equal(validateSessionRecord(createSessionRecord({ level: 4 })).valid, false);
   assert.equal(validateSessionRecord(createSessionRecord({ targetAmount: -1 })).valid, false);
+  assert.equal(validateSessionRecord(createSessionRecord({ randomOrder: "yes" })).valid, false);
 });
