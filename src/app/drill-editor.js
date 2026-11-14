@@ -26,6 +26,18 @@ function mutableStep(step = {}) {
   };
 }
 
+export function inheritedStep(previousStep) {
+  const sourceBall = previousStep?.variants?.[0] ?? createBall();
+  const ball = mutableBall(sourceBall);
+  if (isServeBall(ball)) ball.height = createBall().height;
+  return mutableStep({
+    id: createId("step"),
+    enabled: true,
+    scatter: previousStep?.variants?.length === 1 ? Number(previousStep.scatter ?? 0) : 0,
+    variants: [ball],
+  });
+}
+
 function programCopy(program) {
   return {
     steps: program.steps.map((step) => ({ ...mutableStep(step), id: createId("step") })),
@@ -294,8 +306,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     }
     root.querySelector("[data-editor-add-step]")?.addEventListener("click", () => {
       const program = currentProgram();
-      const sourceBall = currentStep()?.variants?.[activeVariant] ?? createBall();
-      const step = mutableStep({ id: createId("step"), variants: [mutableBall(sourceBall)] });
+      const step = inheritedStep(program.steps.at(-1));
       program.steps.push(step); activeStepId = step.id; activeVariant = 0; markDirty(); render();
     });
     root.querySelector("[data-step-enabled]")?.addEventListener("change", (event) => { currentStep().enabled = event.target.checked; markDirty(); render(); });

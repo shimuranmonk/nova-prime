@@ -7,7 +7,7 @@ import { COMMAND_RESULTS, SESSION_STATES } from "../src/domain/sessions/state-ma
 test("reps dry run counts down, completes, and records no physical balls", () => {
   const records = [];
   const controller = new LocalSessionController({ now: () => "2026-11-09T00:00:00.000Z", onRecord: (record) => records.push(record) });
-  const result = controller.start(createSessionSpec({ drillId: "dry-run", repetitions: 3, pauseSeconds: 0 }), { countdownSeconds: 1 });
+  const result = controller.start(createSessionSpec({ drillId: "dry-run", repetitions: 3, pauseSeconds: 0, randomOrder: true }), { countdownSeconds: 1 });
   assert.equal(result.status, COMMAND_RESULTS.EXECUTED);
   assert.equal(controller.state, SESSION_STATES.COUNTDOWN);
 
@@ -25,6 +25,7 @@ test("reps dry run counts down, completes, and records no physical balls", () =>
   assert.equal(records[0].level, 1);
   assert.equal(records[0].targetAmount, 3);
   assert.equal(records[0].pauseSeconds, 0);
+  assert.equal(records[0].randomOrder, true);
 });
 
 test("time dry run pauses explicitly and resumes without advancing while paused", () => {

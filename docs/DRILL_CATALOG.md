@@ -28,8 +28,10 @@ The source reference is embedded in the catalogue module so later updates can id
 - All built-ins use the middle robot position and zero scatter, matching the source.
 - Basic drills retain the source’s level-specific speed, spin, and BPM parameters.
 - Combined, Complex, and random sequences retain the source behavior: their three level programs use the same level-one stroke parameters.
-- Random definitions remain in the Complex category and retain `random: true`.
+- Random definitions remain in the Complex category and retain `random: true` as their default.
+- Random or sequential playback can be overridden independently for each built-in drill level. These preferences are stored separately from the immutable catalogue, and single-ball programs always remain sequential.
+- **Reset settings** removes every built-in playback override and restores the catalogue defaults without changing custom drills.
 
 ## Verification boundary
 
-Automated tests assert the 6/12/16 category counts, unique stable IDs, canonical validation, representative source parameters, sequence order, and random flags. The catalogue is available for local Reps and Time simulation. Physical output remains unverified in Nova Prime until the live executor and robot test matrix are complete.
+Automated tests assert the 6/12/16 category counts, unique stable IDs, canonical validation, representative source parameters, sequence order, default random flags, per-level overrides, and recovery. The resolved order is carried by the session specification and history record. The catalogue is available for local Reps and Time simulation. Physical output remains unverified in Nova Prime until the live executor and robot test matrix are complete.

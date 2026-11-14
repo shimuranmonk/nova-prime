@@ -19,6 +19,7 @@ export function createSessionRecord(overrides = {}) {
     level: null,
     targetAmount: null,
     pauseSeconds: 0,
+    randomOrder: false,
     errorCode: null,
     ...overrides,
   });
@@ -33,6 +34,7 @@ export function validateSessionRecord(record) {
     if (!Number.isFinite(record[field]) || record[field] < 0) issues.push(issue("STAT_NUMBER", `${field} must be non-negative`, field));
   }
   if (record.level != null && ![1, 2, 3].includes(record.level)) issues.push(issue("STAT_LEVEL", "level must be 1, 2, 3, or empty", "level"));
+  if (record.randomOrder != null && typeof record.randomOrder !== "boolean") issues.push(issue("STAT_RANDOM_ORDER", "randomOrder must be true, false, or empty", "randomOrder"));
   for (const field of ["targetAmount", "pauseSeconds"]) {
     if (record[field] != null && (!Number.isFinite(record[field]) || record[field] < 0)) issues.push(issue("STAT_NUMBER", `${field} must be non-negative when present`, field));
   }
