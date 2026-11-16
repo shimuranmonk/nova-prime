@@ -14,6 +14,8 @@ Version `0.11.0-active-serve.0` adds the verified Active and Serve controls. Act
 
 ## Interaction contract
 
+The editor uses a bold yellow dashed direction line and dashed X/Y projections with highlighted coordinate values. Guides follow the target during dragging. Buttons and landing markers have at least 44 × 44 CSS-pixel touch areas, with larger slider interaction areas and spaced controls. Phone and low-height landscape layouts scroll rather than compressing the table; desktop and tablet landscape retain side-by-side panels when space permits. These presentation changes do not change placement fitting or enable robot control.
+
 - Tap an empty point on the player half to reposition the selected ball.
 - Drag the selected marker for continuous visual targeting; fitting occurs when the pointer is released.
 - Use arrow keys on the selected ball for small adjustments, or Shift+Arrow for larger adjustments.

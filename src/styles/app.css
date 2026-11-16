@@ -213,7 +213,13 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 .preview-marker.selected { outline: 3px solid var(--ink); }
 .preview-marker.disabled { opacity: .42; }
 .placement-path { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
-.placement-path line { fill: none; stroke: #ffd23f; stroke-width: .75; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+.placement-path line { fill: none; stroke: #ffd23f; stroke-width: 3; stroke-dasharray: 8 6; vector-effect: non-scaling-stroke; }
+.placement-path .placement-coordinate { stroke-width: 2; stroke-dasharray: 6 5; }
+.table-stage { position: relative; }
+.table-ruler-x { position: relative; padding-top: 3px; }
+.placement-coordinate-value { z-index: 3; padding: 1px 3px; border-radius: 3px; background: #fff0b3; color: #654400; font-size: .75rem; font-weight: 900; line-height: 1.2; pointer-events: none; }
+.coordinate-y { position: absolute; left: 0; transform: translateY(-50%); }
+.coordinate-x { position: absolute; top: 0; transform: translateX(-50%); }
 .placement-target { position: absolute; z-index: 2; width: 52px; height: 52px; transform: translate(-50%, -50%); border: 2px dashed rgba(255,255,255,.72); border-radius: 50%; pointer-events: none; }
 .placement-target.requested { border-color: #ffd23f; background: rgba(255,210,63,.12); }
 .serve-bounce { position: absolute; z-index: 2; width: 12px; height: 12px; transform: translate(-50%, -50%); border: 2px solid white; border-radius: 50%; background: #ffd23f; box-shadow: 0 2px 5px rgba(10,26,36,.3); pointer-events: none; }
@@ -648,6 +654,42 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
     min-height: 0;
     margin-inline: 0;
   }
+}
+
+/* Keep editor touch targets generous without changing controls elsewhere. */
+#editor-dialog button:not(.preview-marker) { min-height: 44px; min-width: 44px; padding: 9px 14px; font-size: .8rem; touch-action: manipulation; }
+#editor-dialog .preview-marker { width: 44px; height: 44px; font-size: .85rem; }
+#editor-dialog .robot-position-selector { gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+#editor-dialog .robot-position-selector button { min-width: 72px; }
+#editor-dialog .step-actions, #editor-dialog .editor-level-actions { flex-wrap: wrap; gap: 8px; }
+#editor-dialog .variant-tabs { gap: 8px; }
+#editor-dialog .variant-tabs button { flex-shrink: 0; }
+#editor-dialog .ball-actions, #editor-dialog .ball-kind { gap: 8px; }
+#editor-dialog .editor-switch { min-height: 44px; padding: 5px 7px; gap: 10px; font-size: .8rem; cursor: pointer; }
+#editor-dialog .editor-switch input { width: 22px; height: 22px; min-height: 22px; flex-shrink: 0; }
+#editor-dialog .editor-range input { height: 44px; min-height: 44px; margin: 0; }
+#editor-dialog input[type="range"]::-webkit-slider-thumb { width: 24px; height: 24px; }
+#editor-dialog input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; }
+#editor-dialog .height-adjuster { min-width: 44px; }
+#editor-dialog .table-stage { container-type: size; grid-template-columns: 32px minmax(0, 1fr) 48px; grid-template-rows: auto 24px; align-content: start; }
+#editor-dialog .table-preview { width: min(100%, calc((100cqh - 24px) * .55657)); height: auto; max-height: none; justify-self: center; margin-inline: 0; }
+#editor-dialog .table-ruler-x { width: min(100%, calc((100cqh - 24px) * .55657)); justify-self: center; }
+#editor-dialog .table-ruler-y { transform: translateX(max(0px, calc((100cqw - 80px - (100cqh - 24px) * .55657) / 2))); }
+#editor-dialog .editor-workspace { grid-template-rows: 176px minmax(0, 1fr); }
+#editor-dialog .program-heading { flex-wrap: wrap; }
+#editor-dialog .editor-add-button { margin-top: 8px; }
+#editor-dialog .ball-panel-heading { flex-wrap: wrap; }
+@media (max-width: 740px), (orientation: landscape) and (max-height: 520px) {
+  #editor-dialog .editor-workspace { display: block; overflow-y: auto; }
+  #editor-dialog .preview-panel, #editor-dialog .step-panel, #editor-dialog .ball-panel { display: block; overflow: visible; margin-bottom: 10px; }
+  #editor-dialog .table-stage { container-type: normal; overflow: visible; }
+  #editor-dialog .table-preview { width: min(100%, 360px); height: auto; }
+  #editor-dialog .table-ruler-x { width: min(100%, 360px); }
+  #editor-dialog .table-ruler-y { transform: none; }
+}
+@media (max-width: 420px) {
+  #editor-dialog .ball-actions { grid-template-columns: 1fr; }
+  #editor-dialog .editor-header { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
