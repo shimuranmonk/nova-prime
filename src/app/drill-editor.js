@@ -179,9 +179,13 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         </div>
         <div class="ball-flags">
           <label class="editor-switch"><input type="checkbox" data-step-enabled ${step.enabled ? "checked" : ""}><span>Active</span></label>
-          <label class="editor-switch"><input type="checkbox" data-ball-serve ${isServeBall(ball) ? "checked" : ""}><span>Serve <small>first bounce on robot side</small></span></label>
+          <label class="editor-switch" title="Serve: first bounce on the robot side"><input type="checkbox" data-ball-serve ${isServeBall(ball) ? "checked" : ""}><span>Serve</span></label>
+          <div class="ball-actions" role="group" aria-label="Ball actions">
+            <button type="button" disabled title="Test ball unavailable until physical verification passes" aria-label="Test ball unavailable until physical verification passes"><span aria-hidden="true">▶</span></button>
+            <button type="button" data-variant-duplicate title="Add a variant by copying this ball" aria-label="Add a variant by copying this ball"><span aria-hidden="true">＋</span></button>
+            <button type="button" class="danger-button" data-variant-delete title="${step.variants.length === 1 ? "Cannot delete the only ball variant" : "Delete this ball variant"}" aria-label="Delete this ball variant" ${step.variants.length === 1 ? "disabled" : ""}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg></button>
+          </div>
         </div>
-        <div class="ball-actions"><button type="button" disabled title="Connect the robot to test this ball">▶ Test</button><button type="button" data-variant-duplicate>＋ Variant</button><button type="button" class="danger-button" data-variant-delete ${step.variants.length === 1 ? "disabled" : ""}>Delete</button></div>
         <p class="preview-outcome ${result.ok ? "ok" : "warning"}"><strong>${escapeHtml(outcomeLabel(result))}</strong>${Number.isFinite(result.netClearanceCm) ? ` · net ${result.netClearanceCm.toFixed(1)} cm` : ""}</p>
       </section>`;
   }

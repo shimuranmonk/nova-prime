@@ -679,6 +679,10 @@ input, select { width: 100%; min-height: 44px; border: 1px solid var(--line); bo
 #editor-dialog .program-heading { flex-wrap: wrap; }
 #editor-dialog .editor-add-button { margin-top: 8px; }
 #editor-dialog .ball-panel-heading { flex-wrap: wrap; }
+#editor-dialog .ball-flags { position: sticky; bottom: 0; z-index: 4; gap: 8px; }
+#editor-dialog .ball-flags .editor-switch { padding-inline: 0; gap: 6px; font-size: .75rem; }
+#editor-dialog .ball-flags .ball-actions { display: flex; gap: 6px; margin: 0 0 0 auto; }
+#editor-dialog .ball-flags .ball-actions button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; font-size: 1.3rem; }
 @media (max-width: 740px), (orientation: landscape) and (max-height: 520px) {
   #editor-dialog .editor-workspace { display: block; overflow-y: auto; }
   #editor-dialog .preview-panel, #editor-dialog .step-panel, #editor-dialog .ball-panel { display: block; overflow: visible; margin-bottom: 10px; }
