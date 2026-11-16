@@ -2,6 +2,14 @@
 
 > Start here in a new Codex conversation. Then read [HANDOVER.md](HANDOVER.md), [ROBOT.md](ROBOT.md), and [TEST_MATRIX.md](TEST_MATRIX.md). This file is deliberately concise and operational.
 
+## Latest continuation update — 2026-11-16
+
+- PR #27 (0.17 Trainer beta.9 parity) is merged at `3db0187`; its repository actions below are historical and must not be repeated.
+- PR #28 (`feature/editor-touch-guides`) contains the cosmetic editor revision: bold direction and X/Y guides, corrected depth ruler, 44-pixel touch targets, responsive scrolling, and compact Test/Add variant/Delete icons beside Active/Serve with help labels. Check its current GitHub status before acting.
+- Local verification: 130 tests passed, build passed, 55-file release verification passed; browser layout checks covered desktop, tablet portrait/landscape, and phone portrait/landscape. Real-device touch validation remains pending.
+- The available checkout was clean before these changes. The original three newline-only modifications were unavailable and were not discarded or included.
+- Next: complete the isolated test-only integration review and physical evidence in `PHYSICAL_TEST_RUN.md` and HANDOVER section 9. No physical test has run in this continuation. `FEATURE_FLAGS.robot` remains false; production live wiring and truthful live dispatch counts remain gated.
+
 ## Identity and mission
 
 - Product: **Nova Prime**.
