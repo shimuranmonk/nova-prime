@@ -116,15 +116,19 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         <div class="editor-section-heading"><div><span class="eyebrow">${calibration ? "CALIBRATED PLACEMENT" : "ESTIMATED PLACEMENT"}</span><h3 id="preview-title">Aim on the table</h3></div><span class="preview-key"><i></i> Top <i class="back"></i> Back</span></div>
         <div class="robot-position-selector" role="group" aria-label="Robot position">${["left", "middle", "right"].map((position) => `<button type="button" data-robot-position="${position}" class="${draft.robotPosition === position ? "selected" : ""}" aria-pressed="${draft.robotPosition === position}">${position[0].toUpperCase() + position.slice(1)}</button>`).join("")}</div>
         <div class="table-stage">
-          <div class="table-ruler-y" aria-hidden="true"><span style="bottom:0">0</span><span style="bottom:21.9%">30</span><span style="bottom:43.8%">60</span><span style="bottom:65.7%">90</span><span style="bottom:87.6%">120</span></div>
+          <div class="table-ruler-y" aria-hidden="true"><span style="bottom:0">0</span><span style="bottom:10.95%">30</span><span style="bottom:21.9%">60</span><span style="bottom:32.85%">90</span><span style="bottom:43.8%">120</span><strong class="placement-coordinate-value coordinate-y" style="top:${requested.y}%">${point.yCm.toFixed(0)}</strong></div>
           <div class="table-preview" data-placement-table role="group" aria-label="Interactive table. Drag the selected ball or tap the player half to choose a landing target.">
             <span class="table-landing-zone"><small>Tap or drag here</small></span><span class="table-net"></span><span class="table-label player">Player</span><span class="table-label robot">Robot</span>
-            <svg class="placement-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="3" x2="${requested.x}" y2="${requested.y}" data-placement-line></line></svg>
+            <svg class="placement-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <line class="placement-direction" x1="50" y1="3" x2="${requested.x}" y2="${requested.y}" data-placement-line></line>
+              <line class="placement-coordinate" x1="0" y1="${requested.y}" x2="${requested.x}" y2="${requested.y}"></line>
+              <line class="placement-coordinate" x1="${requested.x}" y1="${requested.y}" x2="${requested.x}" y2="100"></line>
+            </svg>
             <span class="placement-target ${placementTarget ? "requested" : ""}" style="left:${requested.x}%;top:${requested.y}%" data-placement-target aria-hidden="true"></span>
             ${selectedServePosition ? `<span class="serve-bounce" style="left:${selectedServePosition.x}%;top:${selectedServePosition.y}%" aria-label="Estimated first serve bounce"></span>` : ""}
             ${markers.join("")}
           </div>
-          <div class="table-ruler-x" aria-hidden="true"><span>−60</span><span>−30</span><span>0</span><span>30</span><span>60</span></div>
+          <div class="table-ruler-x" aria-hidden="true"><span>−60</span><span>−30</span><span>0</span><span>30</span><span>60</span><strong class="placement-coordinate-value coordinate-x" style="left:${requested.x}%">${point.xCm.toFixed(0)}</strong></div>
           <label class="height-adjuster"><span>Height</span><input type="range" min="-50" max="100" step="1" value="${selectedStep.variants[selectedVariant].height}" data-ball-field="height"><output>${selectedStep.variants[selectedVariant].height}</output></label>
         </div>
         <div class="placement-readout"><strong>${depth} · ${side}</strong><span>${Math.abs(point.xCm).toFixed(0)} cm ${point.xCm < -1 ? "left" : point.xCm > 1 ? "right" : "centre"} · ${point.yCm.toFixed(0)} cm from player end</span></div>
@@ -175,9 +179,13 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         </div>
         <div class="ball-flags">
           <label class="editor-switch"><input type="checkbox" data-step-enabled ${step.enabled ? "checked" : ""}><span>Active</span></label>
-          <label class="editor-switch"><input type="checkbox" data-ball-serve ${isServeBall(ball) ? "checked" : ""}><span>Serve <small>first bounce on robot side</small></span></label>
+          <label class="editor-switch" title="Serve: first bounce on the robot side"><input type="checkbox" data-ball-serve ${isServeBall(ball) ? "checked" : ""}><span>Serve</span></label>
+          <div class="ball-actions" role="group" aria-label="Ball actions">
+            <button type="button" disabled title="Test ball unavailable until physical verification passes" aria-label="Test ball unavailable until physical verification passes"><span aria-hidden="true">▶</span></button>
+            <button type="button" data-variant-duplicate title="Add a variant by copying this ball" aria-label="Add a variant by copying this ball"><span aria-hidden="true">＋</span></button>
+            <button type="button" class="danger-button" data-variant-delete title="${step.variants.length === 1 ? "Cannot delete the only ball variant" : "Delete this ball variant"}" aria-label="Delete this ball variant" ${step.variants.length === 1 ? "disabled" : ""}><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg></button>
+          </div>
         </div>
-        <div class="ball-actions"><button type="button" disabled title="Connect the robot to test this ball">▶ Test</button><button type="button" data-variant-duplicate>＋ Variant</button><button type="button" class="danger-button" data-variant-delete ${step.variants.length === 1 ? "disabled" : ""}>Delete</button></div>
         <p class="preview-outcome ${result.ok ? "ok" : "warning"}"><strong>${escapeHtml(outcomeLabel(result))}</strong>${Number.isFinite(result.netClearanceCm) ? ` · net ${result.netClearanceCm.toFixed(1)} cm` : ""}</p>
       </section>`;
   }
@@ -289,6 +297,14 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         const line = table.querySelector("[data-placement-line]");
         if (target) { target.style.left = `${x}%`; target.style.top = `${y}%`; target.classList.add("requested"); }
         line?.setAttribute("x2", x); line?.setAttribute("y2", y);
+        const [horizontal, vertical] = table.querySelectorAll(".placement-coordinate");
+        horizontal?.setAttribute("y1", y); horizontal?.setAttribute("y2", y); horizontal?.setAttribute("x2", x);
+        vertical?.setAttribute("x1", x); vertical?.setAttribute("x2", x); vertical?.setAttribute("y1", y);
+        const point = tablePointFromPosition({ x, y });
+        const xValue = root.querySelector(".coordinate-x");
+        const yValue = root.querySelector(".coordinate-y");
+        if (xValue) { xValue.style.left = `${x}%`; xValue.textContent = point.xCm.toFixed(0); }
+        if (yValue) { yValue.style.top = `${y}%`; yValue.textContent = point.yCm.toFixed(0); }
         return { x, y };
       };
       table.addEventListener("pointerdown", (event) => {

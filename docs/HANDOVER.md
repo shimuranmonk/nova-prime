@@ -2,6 +2,8 @@
 
 > Prepared 2026-11-14 for continuation in a new conversation. This document is the human-readable project record. For a compact agent startup brief, read [CONTINUATION.md](CONTINUATION.md).
 
+> Update 2026-11-16: PR #27 is merged. PR #28 tracks the visual-editor cosmetic revision: stronger direction/X/Y guides, corrected depth ruler, larger touch targets, responsive scrolling, and Test/Add variant/Delete icons on the Active/Serve row with help labels. Check current PR status before repeating repository actions described below. All 130 tests, static build, and 55-file verification passed; five browser viewport checks passed. Real-device touch checks and the physical robot release gate remain pending. Live robot control stays disabled.
+
 ## 1. Executive summary
 
 Nova Prime is the unified, local-first community application for the PONGBOT Nova S Pro. It combines Nova Trainer's robot foundation, calibration approach, physics, drill catalogue, and visual editing with Nova Plus's Music, playlists, MSYNC, statistics, sharing, voice, and parameter model.
