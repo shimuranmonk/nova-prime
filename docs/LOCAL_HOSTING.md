@@ -2,6 +2,8 @@
 
 Nova Prime uses one static release bundle for hosted HTTPS and offline phone/tablet use. Copy the complete contents of `dist/` into the mobile HTTP server's document directory; do not open `index.html` directly as a file.
 
+For a ready-to-extract Android package and user instructions, see [ANDROID_INSTALL.md](ANDROID_INSTALL.md). End users download the release ZIP; they do not need Node.js, npm, Git, or a build step.
+
 ## Stable origin
 
 Use a fixed loopback URL such as `http://127.0.0.1:8080/` or `http://localhost:8080/`. Browser storage belongs to the complete origin, so changing protocol, hostname, or port creates a different storage area. Export a Nova Prime backup before deliberately changing any of them.

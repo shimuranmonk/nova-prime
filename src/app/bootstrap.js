@@ -1242,7 +1242,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.16.0-agpl-license.0";
+document.querySelector("#build-version").textContent = "v0.17.0-android-package.0";
 await refreshFooter();
 
 setInterval(() => {

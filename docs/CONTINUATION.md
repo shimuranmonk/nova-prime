@@ -1,5 +1,13 @@
 # Nova Prime continuation memory
 
+## Latest continuation update — 2026-11-17
+
+- Focused task: Android local-server distribution. Main baseline fetched at `48a9a10`; checkout was clean.
+- Proposed package version: `0.17.0-android-package.0` (verify against merged main before release). Production ZIP contains built `dist/` at archive root; no physical-test build exists or is emitted.
+- Added Android extraction/upgrade guide, ZIP packager with license/notices and robot-disabled checks, and tag-triggered GitHub Release workflow. Local tests/build/verify and a 55-entry ZIP integrity check passed after clearing read-only flags from generated `dist/` files.
+- Physical gate remains closed; production robot flag stays off. Preserve IndexedDB compatibility key `nova_ultimate` and origin `http://127.0.0.1:8080/`.
+- Next: review and merge this increment, run its CI, create matching tag `v0.17.0-android-package.0`, wait for the Release workflow to publish the ZIP, then verify the asset URL and archive contents. Do not describe a release download as published until verified.
+
 > Start here in a new Codex conversation. Then read [HANDOVER.md](HANDOVER.md), [ROBOT.md](ROBOT.md), and [TEST_MATRIX.md](TEST_MATRIX.md). This file is deliberately concise and operational.
 
 ## Latest continuation update — 2026-11-16

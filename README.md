@@ -74,6 +74,8 @@ npm run verify
 npm run preview
 ```
 
+For Android installation without Node.js or a build step, download the versioned `nova-prime-<version>-release.zip` from [GitHub Releases](https://github.com/shimuranmonk/nova-prime/releases), extract its contents into an Android HTTP server app's document directory, and open `http://127.0.0.1:8080/`. See [Android local installation](docs/ANDROID_INSTALL.md) for offline use and safe upgrades.
+
 `npm run preview` serves the built bundle at `http://127.0.0.1:4173/` for loopback testing.
 
 ## Current safety boundary

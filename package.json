@@ -1,11 +1,12 @@
 {
   "name": "nova-prime",
-  "version": "0.16.0-agpl-license.0",
+  "version": "0.17.0-android-package.0",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package:release": "python scripts/package-release.py",
     "preview": "node scripts/serve.mjs",
     "test": "node --test",
     "verify": "node scripts/verify.mjs"
