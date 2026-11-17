@@ -1,5 +1,7 @@
 # Nova Prime project handover
 
+> Update 2026-11-17: Android no-build distribution is being prepared as version `0.17.0-android-package.0`. `ANDROID_INSTALL.md` describes extraction into a loopback server document root, offline use, and same-origin upgrades. `.github/workflows/release.yml` builds, verifies, packages and attaches the production ZIP on a matching `v*` tag. The production package checks that the robot flag is false and production bootstrap does not import the live robot stack. No separate physical-test package is currently implemented. Tests/build/verify and local ZIP integrity passed; merge, matching tag, published asset, and its final URL still need confirmation.
+
 > Prepared 2026-11-14 for continuation in a new conversation. This document is the human-readable project record. For a compact agent startup brief, read [CONTINUATION.md](CONTINUATION.md).
 
 > Update 2026-11-16: PR #27 is merged. PR #28 tracks the visual-editor cosmetic revision: stronger direction/X/Y guides, corrected depth ruler, larger touch targets, responsive scrolling, and Test/Add variant/Delete icons on the Active/Serve row with help labels. Check current PR status before repeating repository actions described below. All 130 tests, static build, and 55-file verification passed; five browser viewport checks passed. Real-device touch checks and the physical robot release gate remain pending. Live robot control stays disabled.
