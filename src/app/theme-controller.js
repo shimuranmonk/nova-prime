@@ -34,4 +34,3 @@ export class ThemeController {
     this.document?.querySelector?.('meta[name="theme-color"]')?.setAttribute("content", colors[resolved]);
   }
 }
-

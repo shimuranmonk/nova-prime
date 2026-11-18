@@ -699,4 +699,3 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
-

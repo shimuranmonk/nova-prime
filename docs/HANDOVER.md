@@ -392,4 +392,3 @@ Nova Prime is not complete merely because every automated test passes. Completio
 - remaining migration and agreed UX work complete;
 - full responsive, accessibility, backup/restore, and deployment regression;
 - documentation, versioning, license bundle, release notes, and hosted deployment complete.
-

@@ -201,4 +201,3 @@ Keep immediate access to the robot's physical power control, use conservative se
 - Do not treat a React port or minification as source-code protection.
 - Use feature branches and proportionate tests; rebuild before browser QA.
 - Keep documentation and release status synchronized with implementation.
-

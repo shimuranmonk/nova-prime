@@ -26,4 +26,3 @@ test("theme controller persists supported themes and rejects unknown values", ()
   assert.equal(attributes.get("root:data-theme"), "court");
   assert.throws(() => controller.set("neon"), /Unsupported/);
 });
-
