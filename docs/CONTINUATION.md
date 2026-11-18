@@ -1,5 +1,13 @@
 # Nova Prime continuation memory
 
+## Latest continuation update — 2026-11-18
+
+- Nova Plus visual alignment is implemented before physical robot testing: light gray/white surfaces, coral active controls, larger touch targets, a 2×2 session-mode selector, larger drill category/cards, and a more readable scrollable menu.
+- First-run appearance now defaults to Light; explicit saved Auto/Dark/Court preferences remain available. Calibration, visual editor, Music, MSYNC, voice, sharing, statistics, recovery, and all other Prime features are retained. Browser preview confirmed the light training screen and full menu.
+- Automated tests: 130 passed. Production build and release verification passed (55 files). `FEATURE_FLAGS.robot` remains false. The physical gate has not passed; the isolated test-only path and physical checklist remain outstanding.
+- The existing untracked Android ZIP was preserved and still represents the earlier UI. Create a separately versioned package for this visual increment after approval; do not overwrite that archive.
+- Preserve the untracked Android release ZIP; do not overwrite it while rebuilding or packaging this UI revision.
+
 ## Latest continuation update — 2026-11-17
 
 - Focused task: Android local-server distribution. Main baseline fetched at `48a9a10`; checkout was clean.
@@ -193,3 +201,4 @@ Keep immediate access to the robot's physical power control, use conservative se
 - Do not treat a React port or minification as source-code protection.
 - Use feature branches and proportionate tests; rebuild before browser QA.
 - Keep documentation and release status synchronized with implementation.
+

@@ -11,11 +11,11 @@ function harness(saved = null, dark = false) {
   return { controller, storage, attributes };
 }
 
-test("theme controller defaults safely to Auto and follows system color", () => {
+test("theme controller defaults safely to Nova Plus light appearance", () => {
   const { controller, attributes } = harness("unexpected", true);
-  assert.equal(controller.load(), "auto");
-  assert.equal(attributes.get("root:data-theme"), "auto");
-  assert.equal(attributes.get("meta:content"), "#101b22");
+  assert.equal(controller.load(), "light");
+  assert.equal(attributes.get("root:data-theme"), "light");
+  assert.equal(attributes.get("meta:content"), "#f4f5f8");
 });
 
 test("theme controller persists supported themes and rejects unknown values", () => {
@@ -26,3 +26,4 @@ test("theme controller persists supported themes and rejects unknown values", ()
   assert.equal(attributes.get("root:data-theme"), "court");
   assert.throws(() => controller.set("neon"), /Unsupported/);
 });
+
