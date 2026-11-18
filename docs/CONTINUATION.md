@@ -6,6 +6,7 @@
 - First-run appearance now defaults to Light; explicit saved Auto/Dark/Court preferences remain available. Calibration, visual editor, Music, MSYNC, voice, sharing, statistics, recovery, and all other Prime features are retained. Browser preview confirmed the light training screen and full menu.
 - Automated tests: 130 passed. Production build and release verification passed (55 files). `FEATURE_FLAGS.robot` remains false. The physical gate has not passed; the isolated test-only path and physical checklist remain outstanding.
 - The existing untracked Android ZIP was preserved and still represents the earlier UI. Create a separately versioned package for this visual increment after approval; do not overwrite that archive.
+- Drill selection now uses mutually exclusive Built-in drills and My drills tabs; Built-in is the default. Drill content and existing filters/actions remain under the matching tab.
 - Preserve the untracked Android release ZIP; do not overwrite it while rebuilding or packaging this UI revision.
 
 ## Latest continuation update — 2026-11-17

@@ -1,1256 +1,11 @@
-import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
-import { CalibrationService } from "../application/calibration/calibration-service.js";
-import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
-import { BuiltinPreferencesService, builtinRandomOrder } from "../application/drills/builtin-preferences.js";
-import { MsyncService } from "../application/msync/msync-service.js";
-import { MsyncSimulator } from "../application/msync/msync-simulator.js";
-import { AudioPlayer } from "../application/music/audio-player.js";
-import { MusicLibraryService } from "../application/music/music-library-service.js";
-import { NovaPlusCsvMigrationService } from "../application/migration/nova-plus-csv-migration.js";
-import { LocalSessionController } from "../application/sessions/session-controller.js";
-import { SharingService } from "../application/sharing/sharing-service.js";
-import { VoiceController } from "../application/voice/voice-controller.js";
-import { BUILTIN_DRILLS, BUILTIN_GROUPS, getBuiltinDrill, getBuiltinDrills } from "../domain/drills/builtin-catalog.js";
-import { createSessionSpec } from "../domain/sessions/schema.js";
-import { SESSION_STATES } from "../domain/sessions/state-machine.js";
-import { buildStatistics } from "../domain/statistics/analytics.js";
-import { MAX_SHARE_BYTES } from "../domain/sharing/package.js";
-import { IndexedDbStore } from "../infrastructure/storage/indexed-db-store.js";
-import { MemoryStore } from "../infrastructure/storage/memory-store.js";
-import { detectCapabilities } from "./capabilities.js";
-import { createCalibrationWizard } from "./calibration-wizard.js";
-import { createDrillEditor } from "./drill-editor.js";
-import { FEATURE_FLAGS } from "./feature-flags.js";
-import { createRouter } from "./router.js";
-import { ThemeController } from "./theme-controller.js";
-
-const capabilities = detectCapabilities();
-const themeController = new ThemeController();
-themeController.load();
-const view = document.querySelector("#route-view");
-const menu = document.querySelector("#app-menu");
-const menuScrim = document.querySelector("#menu-scrim");
-const menuToggle = document.querySelector("#menu-toggle");
-const drillDialog = document.querySelector("#drill-dialog");
-const drillForm = document.querySelector("#drill-form");
-const drillDialogResult = document.querySelector("#drill-dialog-result");
-const editorDialog = document.querySelector("#editor-dialog");
-const editorRoot = document.querySelector("#editor-root");
-const calibrationDialog = document.querySelector("#calibration-dialog");
-const calibrationRoot = document.querySelector("#calibration-root");
-let activeRoute = "train";
-let storageNotice = "";
-let dataMessage = "";
-let migrationMessage = "";
-let migrationPreview = null;
-let customMessage = "";
-let builtinMessage = "";
-let builtinPreferences = {};
-let customCache = [];
-let calibrationProfile = null;
-let calibrationMessage = "";
-let musicMessage = "";
-let trackCache = [];
-let playlistCache = [];
-let musicSnapshot = null;
-let msyncMessage = "";
-let msyncCache = [];
-let msyncIssues = [];
-let msyncSnapshot = null;
-let sharingMessage = "";
-let sharingImportPreview = null;
-let voiceStatus = "ready";
-let voiceMessage = "Voice controls are off. Touch controls always remain available.";
-let appReady = false;
-
-const uiState = {
-  mode: "reps",
-  level: 1,
-  amount: 10,
-  pauseSeconds: 0,
-  countdownSeconds: 3,
-  category: "basic",
-  group: "A",
-  customArrange: false,
-  drillId: BUILTIN_DRILLS[0].id,
-  playlistId: null,
-  quickTrackIds: [],
-  msyncTrackId: null,
-  robotLeadSeconds: 1.3,
-  statisticsPeriod: 30,
-  sharingTitle: "My Nova Prime drills",
-  sharingNote: "",
-  sharingDrillIds: [],
-  voiceEnabled: false,
-  voicePendingStart: false,
-};
-
-const store = await IndexedDbStore.open().catch((error) => {
-  storageNotice = `${error?.message || "Persistent browser storage is unavailable."} This visit uses temporary memory only.`;
-  return new MemoryStore();
-});
-const customDrillService = new CustomDrillService(store);
-const builtinPreferencesService = new BuiltinPreferencesService(store);
-const novaPlusMigration = new NovaPlusCsvMigrationService(store);
-const sharingService = new SharingService(customDrillService);
-const calibrationService = new CalibrationService(store);
-const musicLibrary = new MusicLibraryService(store);
-const audioPlayer = new AudioPlayer();
-const msyncService = new MsyncService(store);
-const msyncSimulator = new MsyncSimulator();
-const drillEditor = createDrillEditor({
-  dialog: editorDialog,
-  root: editorRoot,
-  service: customDrillService,
-  getCalibration: () => calibrationService.active(),
-  onSaved: async (saved) => {
-    uiState.drillId = saved.id;
-    uiState.group = saved.group;
-    customMessage = "Ball program saved.";
-    await refreshCustomCache();
-    if (activeRoute === "train") await render("train");
-  },
-});
-const calibrationWizard = createCalibrationWizard({
-  dialog: calibrationDialog,
-  root: calibrationRoot,
-  service: calibrationService,
-  onSaved: async (saved, quick) => {
-    calibrationProfile = saved;
-    calibrationMessage = quick ? "Quick Check saved." : "Calibration saved and visual previews updated.";
-    if (activeRoute === "train") await render("train");
-  },
-});
-
-async function refreshCustomCache() {
-  customCache = await customDrillService.list();
-}
-
-async function refreshBuiltinPreferences() {
-  builtinPreferences = await builtinPreferencesService.load();
-}
-
-async function refreshCalibrationProfile() {
-  calibrationProfile = await calibrationService.active();
-}
-
-async function refreshMusicCache() {
-  [trackCache, playlistCache] = await Promise.all([musicLibrary.tracks(), musicLibrary.playlists()]);
-  if (uiState.playlistId && !playlistCache.some((playlist) => playlist.id === uiState.playlistId)) uiState.playlistId = null;
-  uiState.quickTrackIds = uiState.quickTrackIds.filter((id) => trackCache.some((track) => track.id === id));
-}
-
-async function refreshMsyncCache() {
-  msyncCache = await msyncService.list();
-  const attachedTracks = trackCache.filter((track) => msyncCache.some((attachment) => attachment.id === track.msyncAttachmentId));
-  if (!attachedTracks.some((track) => track.id === uiState.msyncTrackId)) uiState.msyncTrackId = attachedTracks[0]?.id ?? null;
-}
-
-function resolveDrill(id) {
-  return getBuiltinDrill(id) ?? customCache.find((drill) => drill.id === id) ?? null;
-}
-
-function programForDrill(drill) {
-  return drill?.programs?.[uiState.level] ?? drill?.programs?.[1] ?? null;
-}
-
-function randomOrderFor(drill, level = uiState.level) {
-  if (!drill) return false;
-  const program = drill.programs?.[level] ?? drill.programs?.[1];
-  if ((program?.steps ?? []).filter((step) => step.enabled).length < 2) return false;
-  return drill.source === "builtin" ? builtinRandomOrder(drill, level, builtinPreferences) : Boolean(drill.random);
-}
-
-const controller = new LocalSessionController({
-  onRecord: async (record) => {
-    await store.put("sessionRecords", record);
-    await refreshFooter();
-    if (["data", "statistics"].includes(activeRoute)) await render(activeRoute);
-  },
-});
-
-async function executeSessionCommand(command) {
-  const snapshot = controller.snapshot();
-  const musicSession = snapshot.spec?.mode === "music";
-  const msyncSession = snapshot.spec?.mode === "msync";
-  if (command === "pause") {
-    if (musicSession || msyncSession) audioPlayer.pause();
-    if (msyncSession) msyncSimulator.pause();
-    return controller.pause();
-  }
-  if (command === "resume") {
-    if (musicSession || msyncSession) await audioPlayer.resume();
-    if (msyncSession) msyncSimulator.resume();
-    return controller.resume();
-  }
-  if (command === "stop") {
-    if (musicSession || msyncSession) audioPlayer.stop();
-    if (msyncSession) msyncSimulator.stop();
-    uiState.voicePendingStart = false;
-    return controller.stop();
-  }
-  if (command === "reset") {
-    if (musicSession || msyncSession) audioPlayer.stop();
-    if (msyncSession) msyncSimulator.stop();
-    uiState.voicePendingStart = false;
-    return controller.reset();
-  }
-  return Object.freeze({ status: "REJECTED", reason: "UNKNOWN_COMMAND" });
-}
-
-const voiceController = new VoiceController({
-  recognitionFactory: capabilities.speechRecognition
-    ? () => {
-      const Recognition = globalThis.SpeechRecognition ?? globalThis.webkitSpeechRecognition;
-      return new Recognition();
-    }
-    : null,
-  onStatus: (status) => {
-    voiceStatus = status.state;
-    voiceMessage = status.message;
-    if (appReady && activeRoute === "train") void render("train");
-  },
-  onCommand: async (command) => {
-    const state = controller.snapshot().state;
-    if (command === "start") {
-      if (state !== SESSION_STATES.IDLE) {
-        voiceStatus = "rejected";
-        voiceMessage = "A session is already active. Nothing changed.";
-      } else {
-        uiState.voicePendingStart = true;
-        voiceStatus = "confirm";
-        voiceMessage = "Start recognized. Review the setup and tap Confirm start.";
-      }
-    } else {
-      const result = await executeSessionCommand(command);
-      voiceStatus = result?.status === "EXECUTED" ? "executed" : "rejected";
-      voiceMessage = result?.status === "EXECUTED"
-        ? `${command[0].toUpperCase()}${command.slice(1)} command executed.`
-        : `${command[0].toUpperCase()}${command.slice(1)} is not available in the current session state.`;
-    }
-    if (activeRoute === "train") await render("train");
-  },
-});
-
-audioPlayer.subscribe((snapshot) => {
-  const previousState = musicSnapshot?.state;
-  musicSnapshot = snapshot;
-  const activeMode = controller.snapshot().spec?.mode;
-  const activeMusic = activeMode === "music";
-  const activeMsync = activeMode === "msync";
-  if (snapshot.state === "completed" && previousState !== "completed" && activeMusic) {
-    controller.complete({ completedCycles: snapshot.completedTracks });
-  }
-  if (snapshot.state === "error" && previousState !== "error" && activeMusic) {
-    musicMessage = snapshot.error;
-    controller.fail("AUDIO_PLAYBACK_FAILED");
-  }
-  if (activeMsync && snapshot.state === "playing") msyncSimulator.advance(snapshot.currentTime * 1000);
-  if (activeMsync && snapshot.state === "completed" && previousState !== "completed") msyncSimulator.advance(msyncSnapshot?.durationMs ?? 0);
-  if (snapshot.state === "error" && previousState !== "error" && activeMsync) {
-    msyncMessage = snapshot.error;
-    msyncSimulator.stop();
-    controller.fail("MSYNC_AUDIO_PLAYBACK_FAILED");
-  }
-  if (appReady && ["train", "music", "msync"].includes(activeRoute)) void render(activeRoute);
-});
-
-msyncSimulator.subscribe((snapshot) => {
-  const previousState = msyncSnapshot?.state;
-  msyncSnapshot = snapshot;
-  const activeMsync = controller.snapshot().spec?.mode === "msync";
-  if (activeMsync && snapshot.state === "completed" && previousState !== "completed") {
-    audioPlayer.stop();
-    controller.complete({ completedCycles: snapshot.activations });
-  }
-  if (appReady && activeRoute === "train") void render("train");
-});
-
-const escapeHtml = (value) => String(value)
-  .replaceAll("&", "&amp;")
-  .replaceAll("<", "&lt;")
-  .replaceAll(">", "&gt;")
-  .replaceAll('"', "&quot;")
-  .replaceAll("'", "&#039;");
-
-function formatDuration(milliseconds) {
-  const seconds = Math.max(0, Math.round(Number(milliseconds) / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
-function formatTrainingTime(seconds) {
-  const total = Math.max(0, Math.round(Number(seconds) || 0));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  if (hours) return `${hours}h ${minutes}m`;
-  if (minutes) return `${minutes}m`;
-  return `${total}s`;
-}
-
-function formatBytes(bytes) {
-  const value = Math.max(0, Number(bytes) || 0);
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function selectedMusicSummary() {
-  if (uiState.playlistId) {
-    const playlist = playlistCache.find((item) => item.id === uiState.playlistId);
-    if (playlist) {
-      const durationMs = playlist.items.reduce((total, item) => total + (trackCache.find((track) => track.id === item.trackId)?.durationMs ?? 0), 0);
-      return { label: playlist.name, count: playlist.items.length, durationMs };
-    }
-  }
-  const tracks = uiState.quickTrackIds.map((id) => trackCache.find((track) => track.id === id)).filter(Boolean);
-  return { label: "Quick Music", count: tracks.length, durationMs: tracks.reduce((total, track) => total + track.durationMs, 0) };
-}
-
-function selectedMsync() {
-  const track = trackCache.find((item) => item.id === uiState.msyncTrackId) ?? null;
-  const attachment = msyncCache.find((item) => item.id === track?.msyncAttachmentId) ?? null;
-  return { track, attachment };
-}
-
-function connectionCard() {
-  return `
-    <section class="app-card status-card" aria-labelledby="connection-title">
-      <div class="status-copy"><span class="connection-dot"></span><div><h2 id="connection-title">Robot control gated</h2><p>Transport and priority Stop pass simulated tests; physical Nova S Pro verification is still required.</p></div></div>
-      <button class="outline-button" type="button" disabled title="Bluetooth remains disabled until physical safety verification passes">Verify first</button>
-    </section>`;
-}
-
-function calibrationCard() {
-  const profile = calibrationProfile;
-  const quick = profile?.quickCheck;
-  return `
-    <section class="app-card calibration-card" aria-labelledby="calibration-title">
-      <div><h2 id="calibration-title">Calibration</h2><p>${profile ? `${escapeHtml(profile.name)} Â· accuracy Â±${profile.accuracy} cm` : "Not calibrated Â· guided setup ready"}</p><details><summary>More</summary><p>${profile ? `Mode: ${escapeHtml(profile.mode)} Â· ${profile.observations.length} observations${profile.scatterEstimate == null ? "" : ` Â· scatter ${profile.scatterEstimate} cm`}${quick ? ` Â· Quick Check ${quick.meanErrorCm} cm` : ""}.` : "Record observed landings without enabling Bluetooth or robot commands."}</p><div class="calibration-file-actions">${profile ? `<button type="button" data-calibration-export>Export</button>` : ""}<label>Import<input data-calibration-import type="file" accept="application/json,.json"></label></div></details>${calibrationMessage ? `<span class="calibration-message" role="status">${escapeHtml(calibrationMessage)}</span>` : ""}</div>
-      <div class="calibration-card-actions">${profile ? `<button class="outline-button" type="button" data-calibration-quick>Quick Check</button>` : ""}<button class="outline-button" type="button" data-calibration-open>${profile ? "Recalibrate" : "Calibrate"}</button></div>
-    </section>`;
-}
-
-function modeButton(mode, label, available = true, locked = false) {
-  const selected = uiState.mode === mode;
-  return `<button type="button" class="segment ${selected ? "selected" : ""}" data-ui-mode="${mode}" ${available && !locked ? "" : "disabled"} aria-pressed="${selected}">${label}${available ? "" : "<small>Soon</small>"}</button>`;
-}
-
-function sessionConsole(session) {
-  if (session.state === SESSION_STATES.IDLE) return "";
-  const target = session.spec?.mode === "time" ? session.spec.durationSeconds : session.spec?.repetitions;
-  const isMsync = session.spec?.mode === "msync";
-  let metric = session.spec?.mode === "music"
-    ? `${musicSnapshot?.completedTracks ?? 0} / ${musicSnapshot?.trackCount ?? 0} tracks Â· ${formatDuration((musicSnapshot?.currentTime ?? 0) * 1000)} / ${formatDuration((musicSnapshot?.duration ?? 0) * 1000)}`
-    : isMsync
-      ? `${formatDuration(msyncSnapshot?.positionMs ?? 0)} / ${formatDuration(msyncSnapshot?.durationMs ?? 0)}${msyncSnapshot?.resting ? " Â· REST" : msyncSnapshot?.active ? ` Â· ${msyncSnapshot.active.type} ${escapeHtml(msyncSnapshot.active.name)}` : " Â· IDLE"}`
-    : session.spec?.mode === "time" ? `${Math.round(session.elapsedSeconds)} / ${target} seconds` : `${session.completedCycles} / ${target} repetitions`;
-  if (session.state === SESSION_STATES.COUNTDOWN) metric = `Starting in ${Math.ceil(session.countdownRemaining)}`;
-  if (session.state === SESSION_STATES.PAUSED) metric = `Paused Â· ${metric}`;
-  if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s Â· ${metric}`;
-  const progress = Math.round((session.spec?.mode === "music" ? musicSnapshot?.progress ?? 0 : isMsync ? msyncSnapshot?.progress ?? 0 : session.progress) * 100);
-  const drill = resolveDrill(session.spec?.drillId);
-  const trackLabel = ["music", "msync"].includes(session.spec?.mode) && musicSnapshot?.currentTrack ? ` Â· ${escapeHtml(musicSnapshot.currentTrack.displayName)}` : "";
-  const stoppable = [SESSION_STATES.PREPARING, SESSION_STATES.ARMED, SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING, SESSION_STATES.PAUSED, SESSION_STATES.ERROR].includes(session.state);
-  return `
-    <section class="app-card session-console" aria-label="Active session">
-      <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${isMsync ? "MSYNC timeline" : `${escapeHtml(drill?.name ?? "Local session")} Â· ${session.spec?.randomOrder ? "Random order" : "Sequential"}`}${trackLabel}</p></div><span class="simulation-pill">${isMsync ? "Timeline simulation" : session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
-      <strong class="session-metric">${metric}</strong>
-      ${isMsync ? `<p class="helper-text">Robot Lead ${((msyncSnapshot?.robotLeadMs ?? 1300) / 1000).toFixed(3)}s Â· planned robot cues are displayed only and never transmitted.</p>` : ""}
-      <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
-      <div class="console-actions">
-        <button type="button" data-command="pause" ${session.state === SESSION_STATES.RUNNING ? "" : "disabled"}>Pause</button>
-        <button type="button" data-command="resume" ${session.state === SESSION_STATES.PAUSED ? "" : "disabled"}>Resume</button>
-        <button type="button" class="stop-button" data-command="stop" ${stoppable ? "" : "disabled"}>Stop</button>
-        <button type="button" data-command="reset" ${[SESSION_STATES.COMPLETED, SESSION_STATES.ERROR].includes(session.state) ? "" : "disabled"}>New session</button>
-      </div>
-    </section>`;
-}
-
-function voiceControlCard(session) {
-  const supported = voiceController.supported;
-  const enabled = supported && uiState.voiceEnabled;
-  const pending = enabled && uiState.voicePendingStart && session.state === SESSION_STATES.IDLE;
-  return `
-    <section class="app-card voice-card" aria-labelledby="voice-title">
-      <div class="section-heading"><div><span class="eyebrow">OPTIONAL Â· ONE COMMAND</span><h2 id="voice-title">Voice controls</h2><p>${supported ? "Press Listen, then say one exact command." : "Speech recognition is not available in this browser."}</p></div><span class="voice-state voice-${escapeHtml(voiceStatus)}">${enabled ? escapeHtml(voiceStatus) : "Off"}</span></div>
-      <div class="voice-actions">
-        ${enabled
-          ? `<button type="button" data-voice-listen class="primary-button" ${voiceController.listening ? "disabled" : ""}>${voiceController.listening ? "Listeningâ€¦" : "Listen for command"}</button><button type="button" data-voice-disable>Turn off</button>`
-          : `<button type="button" data-voice-enable class="primary-button" ${supported ? "" : "disabled"}>Turn on voice</button>`}
-      </div>
-      <p class="voice-message" role="status" aria-live="polite">${escapeHtml(voiceMessage)}</p>
-      ${pending ? `<div class="voice-confirm" role="alert"><div><strong>Confirm session start</strong><span>Voice never starts the robot or a simulation without this touch confirmation.</span></div><button type="button" data-voice-confirm-start class="primary-button">Confirm start</button><button type="button" data-voice-cancel-start>Cancel</button></div>` : ""}
-      <details><summary>Commands and privacy</summary><p><strong>Start:</strong> â€œNova startâ€ Â· <strong>Pause:</strong> â€œNova pauseâ€ Â· <strong>Resume:</strong> â€œNova resumeâ€ Â· <strong>Stop:</strong> â€œStopâ€ or â€œNova emergency stopâ€.</p><p>Nova Prime stores no audio or transcript history. Your browser or speech provider may process speech online. You can keep voice off and use every touch control.</p></details>
-    </section>`;
-}
-
-function setupCard(session) {
-  const locked = session.state !== SESSION_STATES.IDLE;
-  const amountLabel = uiState.mode === "time" ? "Duration (s)" : "Count";
-  const selectedDrill = resolveDrill(uiState.drillId);
-  const music = selectedMusicSummary();
-  const msync = selectedMsync();
-  const sourceOptions = [
-    ...(uiState.quickTrackIds.length ? [`<option value="quick" ${uiState.playlistId ? "" : "selected"}>Quick Music Â· ${uiState.quickTrackIds.length} tracks</option>`] : []),
-    ...playlistCache.map((playlist) => `<option value="${escapeHtml(playlist.id)}" ${uiState.playlistId === playlist.id ? "selected" : ""}>${escapeHtml(playlist.name)} Â· ${playlist.items.length} tracks</option>`),
-  ].join("");
-  const musicForm = `
-      <form id="session-form" class="session-form music-session-form">
-        <label><span>Music source</span><select name="musicSource" ${locked ? "disabled" : ""} required>${sourceOptions || '<option value="">No music saved</option>'}</select></label>
-        <div class="music-source-summary"><strong>${escapeHtml(music.label)}</strong><span>${music.count} track${music.count === 1 ? "" : "s"} Â· ${formatDuration(music.durationMs)}</span></div>
-        <a class="manage-music-link" href="#music">Manage music</a>
-        <button class="primary-button" type="submit" ${locked || music.count === 0 ? "disabled" : ""}>Start Music session</button>
-      </form>`;
-  const msyncOptions = trackCache.filter((track) => msyncCache.some((attachment) => attachment.id === track.msyncAttachmentId))
-    .map((track) => `<option value="${escapeHtml(track.id)}" ${uiState.msyncTrackId === track.id ? "selected" : ""}>${escapeHtml(track.displayName)}</option>`).join("");
-  const msyncForm = `
-      <form id="session-form" class="session-form music-session-form">
-        <label><span>Validated timeline</span><select name="msyncTrack" ${locked ? "disabled" : ""} required>${msyncOptions || '<option value="">No validated MSYNC timeline</option>'}</select></label>
-        <label><span>Robot Lead (s)</span><input name="robotLead" type="number" min="0" max="5" step="0.001" value="${uiState.robotLeadSeconds}" ${locked ? "disabled" : ""} required></label>
-        <div class="music-source-summary"><strong>${escapeHtml(msync.track?.displayName ?? "No timeline selected")}</strong><span>${msync.attachment ? `${msync.attachment.validationReceipt.summary.cues} cues Â· ${formatDuration(msync.attachment.validationReceipt.summary.durationMs)}` : "Attach an MSYNC file first"}</span></div>
-        <a class="manage-music-link" href="#msync">Manage MSYNC</a>
-        <button class="primary-button" type="submit" ${locked || !msync.attachment ? "disabled" : ""}>Start MSYNC simulation</button>
-      </form>`;
-  const standardForm = `
-      <form id="session-form" class="session-form">
-        <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
-        <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
-        <label><span>Countdown</span><select name="countdown" ${locked ? "disabled" : ""}><option value="3" ${uiState.countdownSeconds === 3 ? "selected" : ""}>3 seconds</option><option value="5" ${uiState.countdownSeconds === 5 ? "selected" : ""}>5 seconds</option><option value="0" ${uiState.countdownSeconds === 0 ? "selected" : ""}>None</option></select></label>
-        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>
-      </form>`;
-  return `
-    <section class="app-card setup-card" aria-labelledby="setup-title">
-      <div class="section-heading"><div><span class="eyebrow">QUICK TRAINING</span><h2 id="setup-title">Session setup</h2></div><span class="simulation-pill">Dry run</span></div>
-
-      <div class="control-group">
-        <span class="control-label">Difficulty level</span>
-        <div class="level-selector" role="group" aria-label="Difficulty level">
-          ${[1, 2, 3].map((level) => `<button type="button" data-level="${level}" class="level-button ${uiState.level === level ? "selected" : ""}" aria-pressed="${uiState.level === level}" ${locked ? "disabled" : ""}>${level}</button>`).join("")}
-        </div>
-      </div>
-
-      <div class="mode-selector" role="group" aria-label="Training mode">
-        ${modeButton("reps", "Reps", true, locked)}
-        ${modeButton("time", "Time", true, locked)}
-        ${modeButton("music", "Music", true, locked)}
-        ${modeButton("msync", "MSYNC", true, locked)}
-      </div>
-
-      ${uiState.mode === "music" ? musicForm : uiState.mode === "msync" ? msyncForm : standardForm}
-      <p class="helper-text">${uiState.mode === "msync" ? "MSYNC controls the drill timeline from validated cues." : `Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. ${uiState.mode === "music" ? "Audio stays on this device and completes automatically." : "Uses the canonical lifecycle."}`} Sends no robot commands and records zero dispatched balls.</p>
-      ${(uiState.mode === "msync" ? msyncMessage : musicMessage) ? `<p class="custom-message" role="status">${escapeHtml(uiState.mode === "msync" ? msyncMessage : musicMessage)}</p>` : ""}
-    </section>`;
-}
-
-function drillCard(drill, locked) {
-  const steps = drill.programs[uiState.level].steps.filter((step) => step.enabled);
-  const dots = steps.slice(0, 8).map((step) => {
-    const ball = step.variants[0];
-    const kind = ball.height < 0 ? "serve" : ball.type === "back" ? "back" : "top";
-    return `<i class="ball-dot ${kind}"></i>`;
-  }).join("");
-  const selected = uiState.drillId === drill.id;
-  return `<button class="drill-tile ${selected ? "selected" : ""}" type="button" data-drill-id="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}><span><strong>${escapeHtml(drill.name)}</strong>${randomOrderFor(drill) ? '<small class="random-tag">Random</small>' : ""}</span><span class="ball-detail"><span class="ball-dots">${dots}</span>${steps.length} ball${steps.length === 1 ? "" : "s"}</span></button>`;
-}
-
-function drillLibrary(session) {
-  const locked = session.state !== SESSION_STATES.IDLE;
-  const drills = getBuiltinDrills(uiState.category);
-  const selected = getBuiltinDrill(uiState.drillId);
-  const activeSteps = selected?.programs?.[uiState.level]?.steps?.filter((step) => step.enabled).length ?? 0;
-  const random = randomOrderFor(selected);
-  return `
-    <section class="app-card library-card" aria-labelledby="library-title">
-      <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>${BUILTIN_DRILLS.length} drills Â· level ${uiState.level}</p></div><div class="library-heading-actions"><button class="small-button ${random ? "active" : ""}" type="button" data-builtin-order ${locked || !selected || activeSteps < 2 ? "disabled" : ""}>${random ? "Random order" : "Sequential"}</button><button class="small-button" type="button" data-builtin-reset ${locked || !Object.keys(builtinPreferences).length ? "disabled" : ""}>Reset settings</button></div></div>
-      ${builtinMessage ? `<p class="helper-text" role="status">${escapeHtml(builtinMessage)}</p>` : ""}
-      <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${label} <small>${count}</small></button>`).join("")}</div>
-      <div class="drill-grid">${drills.map((drill) => drillCard(drill, locked)).join("")}</div>
-    </section>`;
-}
-
-function customDrillCard(drill, locked, index, groupLength) {
-  const program = programForDrill(drill);
-  const steps = program?.steps?.filter((step) => step.enabled) ?? [];
-  const selected = uiState.drillId === drill.id;
-  return `
-    <article class="custom-drill-card ${selected ? "selected" : ""}">
-      <button class="custom-drill-select" type="button" data-custom-select="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}>
-        <strong>${escapeHtml(drill.name)}</strong>
-        <span>${steps.length} ball${steps.length === 1 ? "" : "s"} Â· ${escapeHtml(drill.robotPosition)}</span>
-      </button>
-      <div class="custom-drill-actions">
-        ${uiState.customArrange ? `<button type="button" data-custom-move="${escapeHtml(drill.id)}" data-direction="-1" aria-label="Move ${escapeHtml(drill.name)} up" ${locked || index === 0 ? "disabled" : ""}>â†‘</button><button type="button" data-custom-move="${escapeHtml(drill.id)}" data-direction="1" aria-label="Move ${escapeHtml(drill.name)} down" ${locked || index === groupLength - 1 ? "disabled" : ""}>â†“</button>` : ""}
-        <button class="manage-button" type="button" data-custom-edit="${escapeHtml(drill.id)}" aria-label="Manage ${escapeHtml(drill.name)}" ${locked ? "disabled" : ""}>âœŽ</button>
-      </div>
-    </article>`;
-}
-
-function customDrills(session) {
-  const locked = session.state !== SESSION_STATES.IDLE;
-  const groupDrills = customCache.filter((drill) => drill.group === uiState.group);
-  const counts = Object.fromEntries(CUSTOM_GROUPS.map((group) => [group, customCache.filter((drill) => drill.group === group).length]));
-  return `
-    <section class="app-card library-card" aria-labelledby="custom-title">
-      <div class="section-heading"><div><h2 id="custom-title">My drills</h2><p>${customCache.length} drill${customCache.length === 1 ? "" : "s"}</p></div></div>
-      <div class="custom-toolbar">
-        <button type="button" data-custom-arrange class="small-button ${uiState.customArrange ? "active" : ""}" ${locked || groupDrills.length < 2 ? "disabled" : ""}>${uiState.customArrange ? "Done" : "Arrange"}</button>
-        <button id="custom-export-all" type="button" class="small-button" ${locked || customCache.length === 0 ? "disabled" : ""}>Export all</button>
-        <label class="small-button import-button ${locked ? "disabled" : ""}">Import<input id="custom-import" type="file" accept="application/json,.json" ${locked ? "disabled" : ""}></label>
-      </div>
-      <div class="pill-row" role="group" aria-label="Custom drill group">${CUSTOM_GROUPS.map((group) => `<button type="button" data-group="${group}" class="pill ${uiState.group === group ? "selected" : ""}" aria-pressed="${uiState.group === group}" ${locked ? "disabled" : ""}>Group ${group} <small>${counts[group]}</small></button>`).join("")}</div>
-      ${customMessage ? `<p class="custom-message" role="status">${escapeHtml(customMessage)}</p>` : ""}
-      <div class="custom-drill-grid">${groupDrills.map((drill, index) => customDrillCard(drill, locked, index, groupDrills.length)).join("")}</div>
-      ${groupDrills.length === 0 ? `<div class="empty-library"><strong>Group ${uiState.group} is empty</strong><span>Create a drill here or import a Nova Prime drill file.</span></div>` : ""}
-      <button class="new-drill" type="button" data-custom-new ${locked ? "disabled" : ""}><span>ï¼‹</span><strong>New drill</strong><small>Group ${uiState.group}</small></button>
-    </section>`;
-}
-
-function playlistCard(playlist) {
-  const ordered = [...playlist.items].sort((a, b) => a.order - b.order);
-  const durationMs = ordered.reduce((total, item) => total + (trackCache.find((track) => track.id === item.trackId)?.durationMs ?? 0), 0);
-  const items = ordered.map((item, index) => {
-    const track = trackCache.find((entry) => entry.id === item.trackId);
-    return `<li><div><strong>${escapeHtml(track?.displayName ?? "Missing track")}</strong><span>${track ? formatDuration(track.durationMs) : "Unavailable"}</span></div><div class="music-row-actions"><button type="button" data-playlist-move="${escapeHtml(playlist.id)}" data-index="${index}" data-direction="-1" ${index === 0 ? "disabled" : ""} aria-label="Move track up">â†‘</button><button type="button" data-playlist-move="${escapeHtml(playlist.id)}" data-index="${index}" data-direction="1" ${index === ordered.length - 1 ? "disabled" : ""} aria-label="Move track down">â†“</button><button type="button" data-playlist-remove="${escapeHtml(playlist.id)}" data-index="${index}" aria-label="Remove track">Ã—</button></div></li>`;
-  }).join("");
-  return `<article class="app-card playlist-card">
-    <form data-playlist-rename="${escapeHtml(playlist.id)}" class="playlist-heading"><label><span>Playlist name</span><input name="name" maxlength="80" value="${escapeHtml(playlist.name)}" required></label><button type="submit">Save name</button></form>
-    <p>${ordered.length} track${ordered.length === 1 ? "" : "s"} Â· ${formatDuration(durationMs)}</p>
-    <ol class="playlist-items">${items}</ol>
-    <div class="playlist-add"><select data-playlist-add-select="${escapeHtml(playlist.id)}" aria-label="Track to add">${trackCache.map((track) => `<option value="${escapeHtml(track.id)}">${escapeHtml(track.displayName)}</option>`).join("")}</select><button type="button" data-playlist-add="${escapeHtml(playlist.id)}" ${trackCache.length ? "" : "disabled"}>Add track</button></div>
-    <div class="playlist-actions"><button class="primary-button" type="button" data-playlist-use="${escapeHtml(playlist.id)}">Use in training</button><button class="danger-button" type="button" data-playlist-delete="${escapeHtml(playlist.id)}">Delete playlist</button></div>
-  </article>`;
-}
-
-async function musicView() {
-  await refreshMusicCache();
-  const trackRows = trackCache.map((track) => `<article class="track-row">
-    <input type="checkbox" data-quick-track="${escapeHtml(track.id)}" aria-label="Select ${escapeHtml(track.displayName)} for Quick Music" ${uiState.quickTrackIds.includes(track.id) ? "checked" : ""}>
-    <div class="track-copy"><strong>${escapeHtml(track.displayName)}</strong><span>${formatDuration(track.durationMs)} Â· ${formatBytes(track.byteSize)} Â· stored locally</span></div>
-    <form data-track-rename="${escapeHtml(track.id)}" class="track-rename"><input name="name" value="${escapeHtml(track.displayName)}" maxlength="80" aria-label="Rename ${escapeHtml(track.displayName)}"><button type="submit">Rename</button></form>
-    <button class="danger-button" type="button" data-track-delete="${escapeHtml(track.id)}">Delete</button>
-  </article>`).join("");
-  return `<div class="page-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">LOCAL MUSIC</span><h1>Music library</h1><p>Import audio once, build playlists, or select a few tracks for Quick Music. Audio remains in this browser and can play without internet or Wi-Fi.</p></div>
-    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
-    <section class="app-card music-import-card"><div><h2>Tracks</h2><p>${trackCache.length} stored Â· duplicate files are skipped by content identity</p></div><label class="primary-button music-import">Import audio<input id="music-import" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.opus,.flac,.aac" multiple></label></section>
-    ${musicMessage ? `<p class="notice music-notice" role="status">${escapeHtml(musicMessage)}</p>` : ""}
-    <section class="music-track-list" aria-label="Stored tracks">${trackRows || '<div class="app-card empty-library"><strong>No music stored yet</strong><span>Import audio files from this device. Nova Prime stores them locally and does not upload them.</span></div>'}</section>
-    <section class="app-card quick-music-card"><div><h2>Quick Music</h2><p>Select tracks above for a one-off training queue.</p></div><div><button id="quick-music-use" class="primary-button" type="button" ${uiState.quickTrackIds.length ? "" : "disabled"}>Use ${uiState.quickTrackIds.length} selected</button></div></section>
-    <section class="app-card playlist-create"><div><h2>New playlist</h2><p>Create a reusable playlist from the tracks currently selected for Quick Music.</p></div><form id="playlist-create"><input name="name" maxlength="80" placeholder="Playlist name" required><button class="primary-button" type="submit" ${uiState.quickTrackIds.length ? "" : "disabled"}>Create from selected</button></form></section>
-    <div class="playlist-grid">${playlistCache.map(playlistCard).join("")}</div>`;
-}
-
-function msyncIssueList() {
-  if (!msyncIssues.length) return "";
-  return `<section class="app-card msync-issues" aria-label="MSYNC validation results"><h2>Validation details</h2><ul>${msyncIssues.map((item) => `<li class="${item.severity === "ERROR" ? "msync-error" : "msync-warning"}"><strong>${escapeHtml(item.code)}</strong><span>${item.line ? `Line ${item.line} Â· ` : ""}${escapeHtml(item.section ?? "MSYNC")} Â· ${escapeHtml(item.message)}</span></li>`).join("")}</ul></section>`;
-}
-
-async function msyncView() {
-  await refreshMusicCache();
-  await refreshMsyncCache();
-  const attachments = msyncCache.map((attachment) => {
-    const track = trackCache.find((item) => item.id === attachment.trackId);
-    const summary = attachment.validationReceipt.summary;
-    return `<article class="app-card msync-attachment-card">
-      <div><span class="eyebrow">VALIDATED V1</span><h2>${escapeHtml(track?.displayName ?? "Missing audio")}</h2><p>${escapeHtml(attachment.sourceFilename)} Â· ${summary.cues} cues Â· ${formatDuration(summary.durationMs)} Â· ${summary.warnings} warning${summary.warnings === 1 ? "" : "s"}</p></div>
-      <div class="msync-card-actions"><button class="primary-button" type="button" data-msync-use="${escapeHtml(track?.id ?? "")}" ${track ? "" : "disabled"}>Use in training</button><button type="button" data-msync-export="${escapeHtml(attachment.id)}">Export source</button><button class="danger-button" type="button" data-msync-remove="${escapeHtml(attachment.trackId)}">Remove</button></div>
-    </article>`;
-  }).join("");
-  const trackOptions = trackCache.map((track) => `<option value="${escapeHtml(track.id)}">${escapeHtml(track.displayName)} Â· ${formatDuration(track.durationMs)}</option>`).join("");
-  return `<div class="page-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">FROZEN FORMAT V1</span><h1>MSYNC timelines</h1><p>Validate a timeline against its exact local audio file, then simulate synchronized cues. Nova Prime never repairs a file silently and sends no robot commands in this release.</p></div>
-    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
-    <section class="app-card msync-import-card"><div><h2>Validate and attach</h2><p>The selected trackâ€™s SHA-256 identity and measured duration must match the MSYNC file.</p></div><form id="msync-import-form"><label><span>Audio track</span><select name="trackId" required>${trackOptions || '<option value="">Import audio in Music first</option>'}</select></label><label class="file-button">Choose MSYNC<input name="msyncFile" type="file" accept=".ini,.msync,text/plain" required></label><button class="primary-button" type="submit" ${trackCache.length ? "" : "disabled"}>Validate and attach</button></form></section>
-    ${msyncMessage ? `<p class="notice music-notice" role="status">${escapeHtml(msyncMessage)}</p>` : ""}
-    ${msyncIssueList()}
-    <section class="msync-list" aria-label="Validated MSYNC timelines">${attachments || '<div class="app-card empty-library"><strong>No validated timeline yet</strong><span>Import audio in Music, then attach its matching MSYNC v1 file here.</span></div>'}</section>`;
-}
-
-async function trainView() {
-  await Promise.all([refreshCustomCache(), refreshBuiltinPreferences(), refreshCalibrationProfile(), refreshMusicCache()]);
-  await refreshMsyncCache();
-  const session = controller.snapshot();
-  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${voiceControlCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
-}
-
-async function dataView() {
-  await refreshCustomCache();
-  const records = (await store.getAll("sessionRecords")).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
-  const rows = records.length
-    ? records.map((record) => `<li><div><strong>${escapeHtml(record.mode.toUpperCase())}</strong><span>${escapeHtml(record.outcome)}</span></div><span>${escapeHtml(resolveDrill(record.drillId)?.name ?? "Local drill")} Â· ${record.completedCycles} cycles Â· ${record.durationSeconds}s</span><time>${escapeHtml(new Date(record.startedAt).toLocaleString())}</time></li>`).join("")
-    : `<li class="empty-row">No local sessions recorded yet.</li>`;
-  const migrationCard = migrationPreview ? `<section class="app-card migration-preview" aria-label="Nova Plus migration preview">
-      <div class="section-heading"><div><span class="eyebrow">VALIDATED PREVIEW</span><h2>${migrationPreview.alreadyMigrated ? "Already migrated" : `${migrationPreview.drills} custom drill${migrationPreview.drills === 1 ? "" : "s"} ready`}</h2><p>${migrationPreview.rows} CSV rows Â· ${formatBytes(migrationPreview.bytes)} Â· ${migrationPreview.excludedRows} built-in row${migrationPreview.excludedRows === 1 ? "" : "s"} excluded</p></div></div>
-      <div class="share-group-summary"><span>Group A <strong>${migrationPreview.groups.A}</strong></span><span>Group B <strong>${migrationPreview.groups.B}</strong></span><span>Group C <strong>${migrationPreview.groups.C}</strong></span></div>
-      ${migrationPreview.names.length ? `<ul class="share-name-list">${migrationPreview.names.slice(0, 8).map((name) => `<li>${escapeHtml(name)}</li>`).join("")}${migrationPreview.names.length > 8 ? `<li>+ ${migrationPreview.names.length - 8} more</li>` : ""}</ul>` : ""}
-      ${migrationPreview.warnings.length ? `<ul class="migration-messages migration-warnings">${migrationPreview.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
-      ${migrationPreview.errors.length ? `<ul class="migration-messages migration-errors">${migrationPreview.errors.map((error) => `<li>${error.line ? `Line ${error.line}: ` : ""}${escapeHtml(error.message)}</li>`).join("")}</ul>` : ""}
-      <div class="share-actions">${migrationPreview.canCommit ? `<button id="migration-confirm" class="primary-button" type="button">Import ${migrationPreview.drills} drill${migrationPreview.drills === 1 ? "" : "s"}</button>` : ""}<button id="migration-cancel" type="button">Close preview</button></div>
-      <p class="helper-text">The preview changed nothing. Import adds validated drills atomically, records a receipt, and never edits your Nova Plus file.</p>
-    </section>` : "";
-  return `
-    <div class="page-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">LOCAL-FIRST</span><h1>Data and recovery</h1></div>
-    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
-    <div class="data-layout">
-      <section class="app-card"><div class="section-heading"><div><h2>Session history</h2><p>${records.length} saved</p></div></div><ul class="history-list">${rows}</ul></section>
-      <section class="app-card recovery-card"><h2>Backup and restore</h2><p>Restore validates the complete file before atomically replacing local collections.</p><div class="backup-actions"><button id="export-backup" class="primary-button" type="button">Export backup</button><label class="file-button">Restore backup<input id="import-backup" type="file" accept="application/json,.json"></label></div><p id="backup-result" class="helper-text" aria-live="polite">${escapeHtml(dataMessage)}</p></section>
-      <section class="app-card migration-card"><div><span class="eyebrow">NOVA PLUS</span><h2>Migrate custom drills</h2><p>Choose a Nova Plus CSV export. Prime previews Groups Aâ€“C, validates every ball, and excludes its own built-in catalogue before you confirm.</p></div><label class="file-button">Choose Nova Plus CSV<input id="migration-file" type="file" accept="text/csv,.csv"></label><p class="helper-text" aria-live="polite">${escapeHtml(migrationMessage || "Your original file and legacy app remain unchanged.")}</p></section>
-      ${migrationCard}
-    </div>`;
-}
-
-async function statisticsView() {
-  await Promise.all([refreshCustomCache(), refreshCalibrationProfile()]);
-  const records = await store.getAll("sessionRecords");
-  const statistics = buildStatistics(records, { days: uiState.statisticsPeriod, calibrationProfile });
-  const { summary } = statistics;
-  const maxDailySessions = Math.max(1, ...statistics.daily.map((day) => day.sessions));
-  const trend = statistics.daily.length
-    ? statistics.daily.map((day) => `<li title="${day.sessions} sessions Â· ${day.completedCycles} cycles"><span class="trend-bar"><i style="height:${Math.max(10, Math.round((day.sessions / maxDailySessions) * 100))}%"></i></span><strong>${day.sessions}</strong><time>${escapeHtml(new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }))}</time></li>`).join("")
-    : '<li class="statistics-empty">Complete a simulation session to begin the activity trend.</li>';
-  const modes = statistics.modes.map((mode) => `<article class="mode-stat"><div><strong>${escapeHtml(mode.label)}</strong><span>${mode.sessions} session${mode.sessions === 1 ? "" : "s"} Â· ${formatTrainingTime(mode.durationSeconds)}</span></div><b>${mode.share}%</b><span class="share-track"><i style="width:${mode.share}%"></i></span></article>`).join("");
-  const drills = statistics.drills.length
-    ? statistics.drills.map((drill, index) => `<li><span>${index + 1}</span><div><strong>${escapeHtml(resolveDrill(drill.drillId)?.name ?? "Saved drill")}</strong><small>${drill.sessions} session${drill.sessions === 1 ? "" : "s"} Â· ${drill.completedCycles} cycles</small></div></li>`).join("")
-    : '<li class="statistics-empty">No drill activity is recorded for this period.</li>';
-  const guidance = statistics.guidance.map((item) => `<article class="guidance-item guidance-${item.tone}"><span class="eyebrow">PLAN GUIDANCE</span><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.reason)}</p><strong>${escapeHtml(item.action)}</strong></article>`).join("");
-  return `<div class="page-heading statistics-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">DEVICE-LOCAL</span><h1>Statistics</h1><p>Review training consistency and receive transparent plan suggestions based only on session records saved on this device.</p></div>
-    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
-    <div class="statistics-boundary"><strong>Activity analyticsâ€”not skill scoring</strong><span>Simulation records do not prove physical ball delivery or playing performance. Nothing is uploaded.</span></div>
-    <div class="statistics-period" role="group" aria-label="Statistics period">${[[7, "7 days"], [30, "30 days"], ["all", "All"]].map(([value, label]) => `<button type="button" data-statistics-period="${value}" class="${String(uiState.statisticsPeriod) === String(value) ? "selected" : ""}" aria-pressed="${String(uiState.statisticsPeriod) === String(value)}">${label}</button>`).join("")}</div>
-    <section class="statistics-summary" aria-label="Training activity summary">
-      <article><span>Sessions</span><strong>${summary.sessions}</strong></article>
-      <article><span>Training time</span><strong>${formatTrainingTime(summary.durationSeconds)}</strong></article>
-      <article><span>Completed cycles</span><strong>${summary.completedCycles}</strong></article>
-      <article><span>Completion</span><strong>${summary.completionRate}%</strong></article>
-      <article><span>Active days</span><strong>${summary.activeDays}</strong></article>
-      <article><span>Current streak</span><strong>${summary.currentStreak} day${summary.currentStreak === 1 ? "" : "s"}</strong></article>
-    </section>
-    <div class="statistics-grid">
-      <section class="app-card trend-card"><div class="section-heading"><div><h2>Activity trend</h2><p>Latest 14 active days in this period</p></div></div><ol class="trend-chart">${trend}</ol></section>
-      <section class="app-card"><div class="section-heading"><div><h2>Mode mix</h2><p>Share of local sessions</p></div></div><div class="mode-stat-list">${modes}</div></section>
-      <section class="app-card"><div class="section-heading"><div><h2>Most used drills</h2><p>Ranked by sessions</p></div></div><ol class="drill-stat-list">${drills}</ol></section>
-      <section class="app-card guidance-card"><div class="section-heading"><div><h2>Adaptive plan guidance</h2><p>Rule-based and explainable</p></div></div><div class="guidance-list">${guidance}</div></section>
-    </div>`;
-}
-
-async function sharingView() {
-  await refreshCustomCache();
-  const availableIds = new Set(customCache.map((drill) => drill.id));
-  uiState.sharingDrillIds = uiState.sharingDrillIds.filter((id) => availableIds.has(id));
-  const selected = new Set(uiState.sharingDrillIds);
-  const rows = customCache.length
-    ? customCache.map((drill) => `<label class="share-drill-row"><input type="checkbox" data-share-drill="${escapeHtml(drill.id)}" ${selected.has(drill.id) ? "checked" : ""}><span><strong>${escapeHtml(drill.name)}</strong><small>Group ${escapeHtml(drill.group)} Â· ${[1, 2, 3].filter((level) => drill.programs[level]).length} level${[1, 2, 3].filter((level) => drill.programs[level]).length === 1 ? "" : "s"}</small></span><b>${escapeHtml(drill.source)}</b></label>`).join("")
-    : '<div class="empty-library"><strong>No custom drills to share</strong><span>Create a drill in Training, then return here to make a versioned pack.</span><a class="manage-music-link" href="#train">Go to Training</a></div>';
-  const preview = sharingImportPreview?.summary;
-  const previewCard = preview ? `<section class="app-card share-preview-card" aria-label="Validated import preview">
-      <div class="section-heading"><div><span class="eyebrow">VALIDATED PREVIEW</span><h2>${escapeHtml(preview.title)}</h2><p>${preview.drills} drill${preview.drills === 1 ? "" : "s"} Â· ${preview.programs} level programs Â· ${preview.steps} steps Â· ${formatBytes(preview.bytes)}</p></div></div>
-      ${preview.note ? `<p class="share-note">${escapeHtml(preview.note)}</p>` : ""}
-      <div class="share-group-summary"><span>Group A <strong>${preview.groups.A}</strong></span><span>Group B <strong>${preview.groups.B}</strong></span><span>Group C <strong>${preview.groups.C}</strong></span></div>
-      <ul class="share-name-list">${preview.names.slice(0, 8).map((name) => `<li>${escapeHtml(name)}</li>`).join("")}${preview.names.length > 8 ? `<li>+ ${preview.names.length - 8} more</li>` : ""}</ul>
-      <div class="share-actions"><button id="share-import-confirm" class="primary-button" type="button">Import ${preview.drills} drill${preview.drills === 1 ? "" : "s"}</button><button id="share-import-clear" type="button">Cancel preview</button></div>
-      <p class="helper-text">Nothing has been imported yet. Names and identities are resolved safely only after you confirm.</p>
-    </section>` : "";
-  return `<div class="page-heading sharing-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">EXPLICIT Â· VERSIONED Â· LOCAL-FIRST</span><h1>Share custom drills</h1><p>Create a validated Nova Prime drill pack, save it as a file, or open your deviceâ€™s share sheet. Import always shows a preview before changing local data.</p></div>
-    ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
-    <div class="sharing-boundary"><strong>You choose when data leaves this device</strong><span>Nova Prime has no sharing account or background upload. The system share button sends a file only to the destination you select.</span></div>
-    ${sharingMessage ? `<p class="notice sharing-notice" role="status">${escapeHtml(sharingMessage)}</p>` : ""}
-    <div class="sharing-layout">
-      <section class="app-card share-create-card"><div class="section-heading"><div><h2>Create a drill pack</h2><p>${uiState.sharingDrillIds.length} of ${customCache.length} selected</p></div><div class="share-selection-actions"><button data-share-select-all type="button" ${customCache.length ? "" : "disabled"}>Select all</button><button data-share-clear type="button" ${uiState.sharingDrillIds.length ? "" : "disabled"}>Clear</button></div></div>
-        <div class="share-drill-list">${rows}</div>
-        <form id="share-create-form" class="share-metadata"><label><span>Pack title</span><input name="title" maxlength="80" value="${escapeHtml(uiState.sharingTitle)}" required></label><label><span>Optional note</span><textarea name="note" maxlength="280" rows="3" placeholder="What should the recipient know?">${escapeHtml(uiState.sharingNote)}</textarea></label></form>
-        <div class="share-actions"><button data-share-download class="primary-button" type="button" ${uiState.sharingDrillIds.length ? "" : "disabled"}>Download pack</button><button data-share-native type="button" ${uiState.sharingDrillIds.length && capabilities.webShare ? "" : "disabled"}>Share with deviceâ€¦</button></div>
-        <p class="helper-text">${capabilities.webShare ? "Your browser provides a system share sheet." : "System sharing is unavailable here; downloading the same validated pack always works."}</p>
-      </section>
-      <section class="app-card share-import-card"><div><h2>Preview an incoming pack</h2><p>Select a <code>.nova-share.json</code> file. Nova Prime validates its version, size, drill types, identities, and every ball parameter before showing the confirmation step.</p></div><label class="file-button">Choose drill pack<input id="share-import-file" type="file" accept="application/json,.json,.nova-share.json"></label><small>Maximum file size: ${formatBytes(MAX_SHARE_BYTES)}</small></section>
-      ${previewCard}
-    </div>`;
-}
-
-function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainerâ€™s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1â€“3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Versioned sharing</strong><p>Create validated custom-drill packs, use explicit device sharing, and preview every incoming file before import.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Stable voice commands</strong><p>Use optional press-to-listen start, pause, resume, and stop commands, with touch confirmation before every spoken start.</p></article><article class="app-card"><h2>Verified in simulation</h2><strong class="large-value">Robot safety stack</strong><p>Protocol encoding, authentication, serialized writes, queue cancellation, and priority Stop pass fake-device tests. Bluetooth stays off until physical tests pass.</p></article><article class="app-card"><h2>Open source</h2><strong class="large-value">AGPL-3.0-or-later</strong><p>Nova Prime comes without warranty. Modified network versions must offer corresponding source. <a href="https://github.com/shimuranmonk/nova-prime" target="_blank" rel="noopener noreferrer">View source and license</a>.</p></article></div>`;
-}
-
-function capabilityView() {
-  return `<div class="page-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">DIAGNOSTICS</span><h1>Browser capabilities</h1></div><div class="info-grid">${Object.entries(capabilities).map(([name, available]) => `<article class="app-card capability-row"><span>${escapeHtml(name)}</span><strong class="${available ? "available" : "unavailable"}">${available ? "Available" : "Unavailable"}</strong></article>`).join("")}</div>`;
-}
-
-function roadmap() {
-  const releases = [["0.1", "Foundation", "App shell, local data, drills, calibration, and safe sessions"], ["0.2", "Music", "Stored tracks, playlists, and Quick Music"], ["0.3", "MSYNC", "Validation, simulation, and safe synchronization"], ["0.4", "Insights", "Local statistics and explainable plan guidance"], ["0.5", "Connected", "Versioned drill sharing and stable, optional voice commands"], ["0.6", "Robot", "Safety executor and hardware verification before live control"], ["0.7", "Migration", "Previewed and atomic Nova Plus custom-drill migration"], ["0.8", "Themes", "Auto, Light, Dark, and Court appearance choices"], ["0.9", "Placement", "Interactive drag, tap, and keyboard ball targeting"]];
-  return `<div class="page-heading"><a href="#train" class="back-link">â† Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
-}
-
-const renderers = { train: trainView, music: musicView, msync: msyncView, statistics: statisticsView, sharing: sharingView, data: dataView, overview, capabilities: capabilityView, roadmap };
-
-async function render(route) {
-  activeRoute = route;
-  document.querySelectorAll("[data-menu-route]").forEach((link) => link.toggleAttribute("aria-current", link.dataset.menuRoute === route));
-  view.innerHTML = await renderers[route]();
-  document.title = `Nova Prime Â· ${route[0].toUpperCase()}${route.slice(1)}`;
-  bindRouteActions(route);
-  closeMenu();
-}
-
-function downloadJson(payload, filename) {
-  const url = URL.createObjectURL(new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function downloadText(text, filename) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function openDrillDialog(drill = null) {
-  drillForm.reset();
-  drillForm.elements.id.value = drill?.id ?? "";
-  drillForm.elements.name.value = drill?.name ?? "";
-  drillForm.elements.group.value = drill?.group ?? uiState.group;
-  drillForm.elements.robotPosition.value = drill?.robotPosition ?? "middle";
-  document.querySelector("#drill-dialog-title").textContent = drill ? "Manage drill" : "New drill";
-  document.querySelector("#drill-edit-actions").hidden = !drill;
-  drillDialogResult.textContent = "";
-  drillDialog.showModal();
-  drillForm.elements.name.focus();
-}
-
-function bindRouteActions(route) {
-  if (route === "sharing") {
-    const titleInput = document.querySelector("#share-create-form [name=title]");
-    const noteInput = document.querySelector("#share-create-form [name=note]");
-    titleInput?.addEventListener("input", () => { uiState.sharingTitle = titleInput.value; });
-    noteInput?.addEventListener("input", () => { uiState.sharingNote = noteInput.value; });
-    document.querySelectorAll("[data-share-drill]").forEach((input) => input.addEventListener("change", () => {
-      const chosen = new Set(uiState.sharingDrillIds);
-      if (input.checked) chosen.add(input.dataset.shareDrill); else chosen.delete(input.dataset.shareDrill);
-      uiState.sharingDrillIds = customCache.filter((drill) => chosen.has(drill.id)).map((drill) => drill.id);
-      void render("sharing");
-    }));
-    document.querySelector("[data-share-select-all]:not(:disabled)")?.addEventListener("click", () => {
-      uiState.sharingDrillIds = customCache.map((drill) => drill.id);
-      void render("sharing");
-    });
-    document.querySelector("[data-share-clear]:not(:disabled)")?.addEventListener("click", () => {
-      uiState.sharingDrillIds = [];
-      void render("sharing");
-    });
-    document.querySelector("[data-share-download]:not(:disabled)")?.addEventListener("click", async () => {
-      try {
-        const bundle = await sharingService.create({ ids: uiState.sharingDrillIds, title: uiState.sharingTitle, note: uiState.sharingNote });
-        downloadJson(bundle.payload, bundle.filename);
-        sharingMessage = `Downloaded ${bundle.summary.drills} validated drill${bundle.summary.drills === 1 ? "" : "s"} as ${bundle.filename}.`;
-      } catch (error) { sharingMessage = `Share pack blocked: ${error.message}`; }
-      await render("sharing");
-    });
-    document.querySelector("[data-share-native]:not(:disabled)")?.addEventListener("click", async () => {
-      try {
-        const bundle = await sharingService.create({ ids: uiState.sharingDrillIds, title: uiState.sharingTitle, note: uiState.sharingNote });
-        await sharingService.share(bundle);
-        sharingMessage = `Shared ${bundle.filename} through the device share sheet.`;
-      } catch (error) {
-        sharingMessage = error.name === "AbortError" ? "Sharing cancelled; no file was sent by Nova Prime." : `System sharing blocked: ${error.message}`;
-      }
-      await render("sharing");
-    });
-    document.querySelector("#share-import-file")?.addEventListener("change", async (event) => {
-      try {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        if (file.size > MAX_SHARE_BYTES) throw new Error("File exceeds the 1 MB safety limit");
-        const payload = JSON.parse(await file.text());
-        const summary = sharingService.preview(payload);
-        sharingImportPreview = { payload, summary, filename: file.name };
-        sharingMessage = `Validated ${file.name}. Review the preview before importing.`;
-      } catch (error) {
-        sharingImportPreview = null;
-        sharingMessage = `Import preview blocked: ${error.message}`;
-      }
-      await render("sharing");
-    });
-    document.querySelector("#share-import-clear")?.addEventListener("click", () => {
-      sharingImportPreview = null;
-      sharingMessage = "Import preview cancelled; no local data changed.";
-      void render("sharing");
-    });
-    document.querySelector("#share-import-confirm")?.addEventListener("click", async () => {
-      if (!sharingImportPreview) return;
-      try {
-        const result = await sharingService.import(sharingImportPreview.payload);
-        sharingMessage = `Imported ${result.added} drill${result.added === 1 ? "" : "s"}. Conflicting identities and names were resolved safely.`;
-        sharingImportPreview = null;
-        await refreshCustomCache();
-      } catch (error) { sharingMessage = `Import blocked without changes: ${error.message}`; }
-      await render("sharing");
-    });
-  }
-  if (route === "statistics") {
-    document.querySelectorAll("[data-statistics-period]").forEach((button) => button.addEventListener("click", () => {
-      uiState.statisticsPeriod = button.dataset.statisticsPeriod === "all" ? "all" : Number(button.dataset.statisticsPeriod);
-      void render("statistics");
-    }));
-  }
-  if (route === "train") {
-    document.querySelector("[data-voice-enable]")?.addEventListener("click", async () => {
-      uiState.voiceEnabled = true;
-      voiceStatus = "ready";
-      voiceMessage = "Voice is ready. Tap Listen and say one command.";
-      await render("train");
-    });
-    document.querySelector("[data-voice-disable]")?.addEventListener("click", async () => {
-      voiceController.cancel();
-      uiState.voiceEnabled = false;
-      uiState.voicePendingStart = false;
-      voiceStatus = "ready";
-      voiceMessage = "Voice controls are off. Touch controls always remain available.";
-      await render("train");
-    });
-    document.querySelector("[data-voice-listen]")?.addEventListener("click", () => voiceController.listen());
-    document.querySelector("[data-voice-confirm-start]")?.addEventListener("click", () => {
-      uiState.voicePendingStart = false;
-      voiceStatus = "ready";
-      voiceMessage = "Start confirmed by touch.";
-      document.querySelector("#session-form")?.requestSubmit();
-    });
-    document.querySelector("[data-voice-cancel-start]")?.addEventListener("click", async () => {
-      uiState.voicePendingStart = false;
-      voiceStatus = "ready";
-      voiceMessage = "Spoken start cancelled. Nothing changed.";
-      await render("train");
-    });
-    document.querySelector("[data-calibration-open]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, false));
-    document.querySelector("[data-calibration-quick]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, true));
-    document.querySelector("[data-calibration-export]")?.addEventListener("click", async () => downloadJson(await calibrationService.export(), `nova-prime-calibration-${new Date().toISOString().slice(0, 10)}.json`));
-    document.querySelector("[data-calibration-import]")?.addEventListener("change", async (event) => {
-      try {
-        const file = event.target.files?.[0]; if (!file) return;
-        const result = await calibrationService.import(JSON.parse(await file.text()));
-        calibrationProfile = result.profiles[0] ?? null;
-        calibrationMessage = `Imported ${result.imported} calibration profile${result.imported === 1 ? "" : "s"}.`;
-      } catch (error) { calibrationMessage = `Import blocked: ${error.message}`; }
-      await render("train");
-    });
-    document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
-    document.querySelector("[data-builtin-order]:not(:disabled)")?.addEventListener("click", async () => {
-      const drill = getBuiltinDrill(uiState.drillId);
-      if (!drill) return;
-      const next = !randomOrderFor(drill);
-      builtinPreferences = await builtinPreferencesService.setRandom(drill, uiState.level, next);
-      builtinMessage = `${drill.name} Â· Level ${uiState.level}: ${next ? "random order" : "sequential"}.`;
-      await render("train");
-    });
-    document.querySelector("[data-builtin-reset]:not(:disabled)")?.addEventListener("click", async () => {
-      if (!globalThis.confirm("Reset built-in playback settings for every drill and level? Custom drills will not change.")) return;
-      builtinPreferences = await builtinPreferencesService.reset();
-      builtinMessage = "Built-in playback settings restored. Custom drills were not changed.";
-      await render("train");
-    });
-    document.querySelectorAll("[data-ui-mode]:not(:disabled)").forEach((button) => button.addEventListener("click", () => {
-      uiState.mode = button.dataset.uiMode;
-      uiState.amount = uiState.mode === "time" ? 60 : 10;
-      if (uiState.mode === "music" && !uiState.playlistId && uiState.quickTrackIds.length === 0) uiState.playlistId = playlistCache[0]?.id ?? null;
-      if (uiState.mode === "msync" && !uiState.msyncTrackId) uiState.msyncTrackId = trackCache.find((track) => track.msyncAttachmentId)?.id ?? null;
-      musicMessage = "";
-      msyncMessage = "";
-      void render("train");
-    }));
-    document.querySelectorAll("[data-category]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; uiState.drillId = getBuiltinDrills(uiState.category)[0].id; void render("train"); }));
-    document.querySelectorAll("[data-drill-id]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.drillId; void render("train"); }));
-    document.querySelectorAll("[data-group]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; uiState.customArrange = false; void render("train"); }));
-    document.querySelectorAll("[data-custom-select]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.customSelect; void render("train"); }));
-    document.querySelectorAll("[data-custom-edit]:not(:disabled)").forEach((button) => button.addEventListener("click", () => openDrillDialog(resolveDrill(button.dataset.customEdit))));
-    document.querySelector("[data-custom-new]:not(:disabled)")?.addEventListener("click", () => openDrillDialog());
-    document.querySelector("[data-custom-arrange]:not(:disabled)")?.addEventListener("click", () => { uiState.customArrange = !uiState.customArrange; void render("train"); });
-    document.querySelectorAll("[data-custom-move]:not(:disabled)").forEach((button) => button.addEventListener("click", async () => {
-      await customDrillService.move(button.dataset.customMove, Number(button.dataset.direction));
-      customMessage = "Drill order saved.";
-      await render("train");
-    }));
-    document.querySelector("#custom-export-all:not(:disabled)")?.addEventListener("click", async () => {
-      downloadJson(await customDrillService.export(), `nova-prime-drills-${new Date().toISOString().slice(0, 10)}.json`);
-      customMessage = "All custom drills exported.";
-      await render("train");
-    });
-    document.querySelector("#custom-import:not(:disabled)")?.addEventListener("change", async (event) => {
-      try {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        const result = await customDrillService.import(JSON.parse(await file.text()));
-        if (result.drills[0]) {
-          uiState.group = result.drills[0].group;
-          uiState.drillId = result.drills[0].id;
-        }
-        customMessage = `Imported ${result.added} drill${result.added === 1 ? "" : "s"}.`;
-      } catch (error) {
-        customMessage = `Import blocked: ${error.message}`;
-      }
-      await render("train");
-    });
-    document.querySelector("#session-form")?.addEventListener("input", (event) => {
-      const form = new FormData(event.currentTarget);
-      if (form.has("amount")) uiState.amount = Number(form.get("amount"));
-      if (form.has("pause")) uiState.pauseSeconds = Number(form.get("pause"));
-      if (form.has("countdown")) uiState.countdownSeconds = Number(form.get("countdown"));
-      if (form.has("robotLead")) uiState.robotLeadSeconds = Number(form.get("robotLead"));
-      if (event.target.name === "msyncTrack") {
-        uiState.msyncTrackId = form.get("msyncTrack");
-        const attachment = msyncCache.find((item) => item.id === trackCache.find((track) => track.id === uiState.msyncTrackId)?.msyncAttachmentId);
-        uiState.robotLeadSeconds = attachment?.parsed?.session?.robotLead ?? uiState.robotLeadSeconds;
-        void render("train");
-      }
-      if (event.target.name === "musicSource") {
-        uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
-        void render("train");
-      }
-    });
-    document.querySelector("#session-form")?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      if (uiState.mode === "msync") {
-        uiState.msyncTrackId = form.get("msyncTrack");
-        uiState.robotLeadSeconds = Number(form.get("robotLead"));
-        const track = trackCache.find((item) => item.id === uiState.msyncTrackId);
-        try {
-          if (!track?.msyncAttachmentId) throw new Error("Choose a track with a validated MSYNC timeline");
-          const checked = await msyncService.revalidate(track.msyncAttachmentId);
-          if (!checked.valid) {
-            msyncIssues = checked.validation.issues;
-            throw new Error(checked.validation.errors[0]?.message ?? "MSYNC revalidation failed");
-          }
-          const spec = createSessionSpec({ mode: "msync", level: uiState.level, msyncAttachmentId: checked.attachment.id, pauseSeconds: 0 });
-          const result = controller.start(spec, { countdownSeconds: 0 });
-          if (result.status !== "EXECUTED") throw new Error("MSYNC simulation could not start");
-          msyncSimulator.start(checked.validation.parsed, { robotLeadSeconds: uiState.robotLeadSeconds });
-          msyncMessage = `Simulating ${track.displayName}.`;
-          await audioPlayer.start([checked.track]);
-        } catch (error) {
-          msyncMessage = error.message;
-          msyncSimulator.stop();
-          if (controller.snapshot().spec?.mode === "msync") controller.fail("MSYNC_START_FAILED");
-        }
-      } else if (uiState.mode === "music") {
-        uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
-        try {
-          const selection = await musicLibrary.resolve({ playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds });
-          const spec = createSessionSpec({ mode: "music", level: uiState.level, drillId: uiState.drillId, randomOrder: randomOrderFor(resolveDrill(uiState.drillId)), playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds, pauseSeconds: 0 });
-          const result = controller.start(spec, { countdownSeconds: 0 });
-          if (result.status !== "EXECUTED") throw new Error("Music session could not start");
-          musicMessage = `Playing ${selection.label}.`;
-          await audioPlayer.start(selection.tracks);
-        } catch (error) {
-          musicMessage = error.message;
-          if (controller.snapshot().spec?.mode === "music") controller.fail("AUDIO_START_FAILED");
-        }
-      } else {
-        uiState.amount = Number(form.get("amount"));
-        uiState.pauseSeconds = Number(form.get("pause"));
-        uiState.countdownSeconds = Number(form.get("countdown"));
-        const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, randomOrder: randomOrderFor(resolveDrill(uiState.drillId)), repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
-        controller.start(spec, { countdownSeconds: uiState.countdownSeconds });
-      }
-      await render("train");
-    });
-    document.querySelectorAll("[data-command]").forEach((button) => button.addEventListener("click", async () => {
-      await executeSessionCommand(button.dataset.command);
-      await render("train");
-    }));
-  }
-
-  if (route === "msync") {
-    document.querySelector("#msync-import-form")?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      const file = form.get("msyncFile");
-      try {
-        const result = await msyncService.attach(file, form.get("trackId"));
-        msyncIssues = result.validation.issues;
-        if (!result.attached) {
-          msyncMessage = `Not attached: ${result.validation.errors.length} validation error${result.validation.errors.length === 1 ? "" : "s"}.`;
-        } else {
-          uiState.msyncTrackId = result.track.id;
-          uiState.robotLeadSeconds = result.attachment.parsed.session.robotLead;
-          msyncMessage = `Validated and attached ${file.name}.`;
-        }
-      } catch (error) {
-        msyncIssues = [];
-        msyncMessage = `Import blocked: ${error.message}`;
-      }
-      await render("msync");
-    });
-    document.querySelectorAll("[data-msync-use]").forEach((button) => button.addEventListener("click", () => {
-      uiState.mode = "msync";
-      uiState.msyncTrackId = button.dataset.msyncUse;
-      const attachment = msyncCache.find((item) => item.id === trackCache.find((track) => track.id === uiState.msyncTrackId)?.msyncAttachmentId);
-      uiState.robotLeadSeconds = attachment?.parsed?.session?.robotLead ?? 1.3;
-      location.hash = "#train";
-    }));
-    document.querySelectorAll("[data-msync-export]").forEach((button) => button.addEventListener("click", () => {
-      const attachment = msyncCache.find((item) => item.id === button.dataset.msyncExport);
-      if (attachment) downloadText(attachment.sourceText, attachment.sourceFilename);
-    }));
-    document.querySelectorAll("[data-msync-remove]").forEach((button) => button.addEventListener("click", async () => {
-      const track = trackCache.find((item) => item.id === button.dataset.msyncRemove);
-      if (!track || !globalThis.confirm(`Remove the MSYNC timeline from â€œ${track.displayName}â€? The audio will remain stored.`)) return;
-      await msyncService.remove(track.id);
-      msyncIssues = [];
-      msyncMessage = "MSYNC timeline removed; audio remains stored.";
-      await render("msync");
-    }));
-  }
-
-  if (route === "music") {
-    document.querySelector("#music-import")?.addEventListener("change", async (event) => {
-      try {
-        const result = await musicLibrary.importFiles(event.target.files);
-        musicMessage = `Imported ${result.imported.length} track${result.imported.length === 1 ? "" : "s"}${result.duplicates.length ? `; skipped ${result.duplicates.length} duplicate${result.duplicates.length === 1 ? "" : "s"}` : ""}.`;
-      } catch (error) { musicMessage = `Import blocked: ${error.message}`; }
-      await render("music");
-    });
-    document.querySelectorAll("[data-quick-track]").forEach((input) => input.addEventListener("change", () => {
-      const selected = new Set(uiState.quickTrackIds);
-      input.checked ? selected.add(input.dataset.quickTrack) : selected.delete(input.dataset.quickTrack);
-      uiState.quickTrackIds = trackCache.filter((track) => selected.has(track.id)).map((track) => track.id);
-      void render("music");
-    }));
-    document.querySelector("#quick-music-use")?.addEventListener("click", () => {
-      uiState.mode = "music";
-      uiState.playlistId = null;
-      location.hash = "#train";
-    });
-    document.querySelector("#playlist-create")?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        const playlist = await musicLibrary.createPlaylist(new FormData(event.currentTarget).get("name"), uiState.quickTrackIds);
-        uiState.playlistId = playlist.id;
-        musicMessage = `Created ${playlist.name}.`;
-      } catch (error) { musicMessage = error.message; }
-      await render("music");
-    });
-    document.querySelectorAll("[data-track-rename]").forEach((form) => form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try { await musicLibrary.renameTrack(form.dataset.trackRename, new FormData(form).get("name")); musicMessage = "Track renamed."; }
-      catch (error) { musicMessage = error.message; }
-      await render("music");
-    }));
-    document.querySelectorAll("[data-track-delete]").forEach((button) => button.addEventListener("click", async () => {
-      const track = trackCache.find((item) => item.id === button.dataset.trackDelete);
-      if (!track || !globalThis.confirm(`Delete â€œ${track.displayName}â€ from this device?`)) return;
-      try { await musicLibrary.deleteTrack(track.id); uiState.quickTrackIds = uiState.quickTrackIds.filter((id) => id !== track.id); musicMessage = "Track deleted."; }
-      catch (error) { musicMessage = error.message; }
-      await render("music");
-    }));
-    document.querySelectorAll("[data-playlist-rename]").forEach((form) => form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const playlist = playlistCache.find((item) => item.id === form.dataset.playlistRename);
-      try { await musicLibrary.updatePlaylist(playlist.id, { name: new FormData(form).get("name"), trackIds: [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId) }); musicMessage = "Playlist renamed."; }
-      catch (error) { musicMessage = error.message; }
-      await render("music");
-    }));
-    document.querySelectorAll("[data-playlist-move]").forEach((button) => button.addEventListener("click", async () => {
-      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistMove);
-      const ids = [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId);
-      const from = Number(button.dataset.index); const to = from + Number(button.dataset.direction);
-      [ids[from], ids[to]] = [ids[to], ids[from]];
-      await musicLibrary.updatePlaylist(playlist.id, { name: playlist.name, trackIds: ids });
-      await render("music");
-    }));
-    document.querySelectorAll("[data-playlist-remove]").forEach((button) => button.addEventListener("click", async () => {
-      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistRemove);
-      const ids = [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId);
-      ids.splice(Number(button.dataset.index), 1);
-      if (ids.length === 0) { musicMessage = "A playlist needs at least one track; delete the playlist instead."; await render("music"); return; }
-      await musicLibrary.updatePlaylist(playlist.id, { name: playlist.name, trackIds: ids });
-      await render("music");
-    }));
-    document.querySelectorAll("[data-playlist-add]").forEach((button) => button.addEventListener("click", async () => {
-      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistAdd);
-      const select = document.querySelector(`[data-playlist-add-select="${CSS.escape(playlist.id)}"]`);
-      const ids = [...playlist.items].sort((a, b) => a.order - b.order).map((item) => item.trackId);
-      ids.push(select.value);
-      await musicLibrary.updatePlaylist(playlist.id, { name: playlist.name, trackIds: ids });
-      await render("music");
-    }));
-    document.querySelectorAll("[data-playlist-use]").forEach((button) => button.addEventListener("click", () => {
-      uiState.mode = "music";
-      uiState.playlistId = button.dataset.playlistUse;
-      location.hash = "#train";
-    }));
-    document.querySelectorAll("[data-playlist-delete]").forEach((button) => button.addEventListener("click", async () => {
-      const playlist = playlistCache.find((item) => item.id === button.dataset.playlistDelete);
-      if (!playlist || !globalThis.confirm(`Delete playlist â€œ${playlist.name}â€? Audio tracks will remain stored.`)) return;
-      await musicLibrary.deletePlaylist(playlist.id);
-      if (uiState.playlistId === playlist.id) uiState.playlistId = null;
-      musicMessage = "Playlist deleted.";
-      await render("music");
-    }));
-  }
-
-  if (route === "data") {
-    document.querySelector("#migration-file")?.addEventListener("change", async (event) => {
-      try {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        migrationPreview = await novaPlusMigration.preview(file);
-        migrationMessage = migrationPreview.alreadyMigrated
-          ? "This exact file was already migrated; no duplicate import is allowed."
-          : migrationPreview.canCommit
-            ? `Validated ${file.name}. Review the preview before importing.`
-            : `Preview found ${migrationPreview.errors.length} blocking error${migrationPreview.errors.length === 1 ? "" : "s"}.`;
-      } catch (error) {
-        migrationPreview = null;
-        migrationMessage = `Migration preview blocked: ${error.message}`;
-      }
-      await render("data");
-    });
-    document.querySelector("#migration-cancel")?.addEventListener("click", () => {
-      migrationPreview = null;
-      migrationMessage = "Migration preview closed; no local data changed.";
-      void render("data");
-    });
-    document.querySelector("#migration-confirm")?.addEventListener("click", async () => {
-      if (!migrationPreview) return;
-      try {
-        const result = await novaPlusMigration.commit(migrationPreview);
-        migrationMessage = `Migration complete: imported ${result.imported} custom drill${result.imported === 1 ? "" : "s"}.`;
-        migrationPreview = null;
-        await refreshCustomCache();
-      } catch (error) {
-        migrationMessage = `Migration blocked without changes: ${error.message}`;
-      }
-      await render("data");
-    });
-    document.querySelector("#export-backup")?.addEventListener("click", async () => {
-      const backup = await createBackup(store);
-      const url = URL.createObjectURL(new Blob([`${JSON.stringify(backup, null, 2)}\n`], { type: "application/json" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `nova-prime-backup-${backup.createdAt.slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      dataMessage = "Backup exported.";
-      await render("data");
-    });
-    document.querySelector("#import-backup")?.addEventListener("change", async (event) => {
-      try {
-        const file = event.target.files?.[0];
-        if (!file) return;
-        const restored = await restoreBackup(store, JSON.parse(await file.text()));
-        dataMessage = `Restore complete: ${restored.restored} records.`;
-        await refreshFooter();
-      } catch (error) {
-        dataMessage = `Restore blocked: ${error.message}`;
-      }
-      await render("data");
-    });
-  }
-}
-
-function openMenu() {
-  menu.classList.add("open");
-  menu.setAttribute("aria-hidden", "false");
-  menu.removeAttribute("inert");
-  menuToggle.setAttribute("aria-expanded", "true");
-  menuScrim.hidden = false;
-}
-
-function closeMenu() {
-  menu.classList.remove("open");
-  menu.setAttribute("aria-hidden", "true");
-  menu.setAttribute("inert", "");
-  menuToggle.setAttribute("aria-expanded", "false");
-  menuScrim.hidden = true;
-}
-
-async function refreshFooter() {
-  const records = await store.getAll("sessionRecords");
-  const cycles = records.reduce((total, record) => total + (Number(record.completedCycles) || 0), 0);
-  document.querySelector("#training-total").textContent = `${records.length} session${records.length === 1 ? "" : "s"} Â· ${cycles} cycles`;
-}
-
-menuToggle.addEventListener("click", openMenu);
-document.querySelector("#menu-close").addEventListener("click", closeMenu);
-menuScrim.addEventListener("click", closeMenu);
-const themeSelect = document.querySelector("#theme-select");
-themeSelect.value = themeController.value;
-themeSelect.addEventListener("change", () => themeController.set(themeSelect.value));
-document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });
-document.querySelector("#drill-dialog-close").addEventListener("click", () => drillDialog.close());
-document.querySelector("#drill-cancel").addEventListener("click", () => drillDialog.close());
-document.querySelector("#drill-edit-balls").addEventListener("click", async () => {
-  const id = drillForm.elements.id.value;
-  drillDialog.close();
-  try {
-    await drillEditor.open(id, uiState.level);
-  } catch (error) {
-    drillDialogResult.textContent = error.message;
-    drillDialog.showModal();
-  }
-});
-drillForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  drillDialogResult.textContent = "";
-  try {
-    const values = new FormData(drillForm);
-    const input = { name: values.get("name"), group: values.get("group"), robotPosition: values.get("robotPosition") };
-    const saved = values.get("id") ? await customDrillService.update(values.get("id"), input) : await customDrillService.create(input);
-    uiState.group = saved.group;
-    uiState.drillId = saved.id;
-    uiState.customArrange = false;
-    customMessage = values.get("id") ? "Drill changes saved." : "Custom drill created and selected.";
-    drillDialog.close();
-    await render("train");
-  } catch (error) {
-    drillDialogResult.textContent = error.message;
-  }
-});
-document.querySelector("#drill-duplicate").addEventListener("click", async () => {
-  try {
-    const copy = await customDrillService.duplicate(drillForm.elements.id.value);
-    uiState.group = copy.group;
-    uiState.drillId = copy.id;
-    customMessage = "Drill duplicated and selected.";
-    drillDialog.close();
-    await render("train");
-  } catch (error) {
-    drillDialogResult.textContent = error.message;
-  }
-});
-document.querySelector("#drill-export-one").addEventListener("click", async () => {
-  try {
-    const payload = await customDrillService.export([drillForm.elements.id.value]);
-    const name = payload.drills[0]?.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "custom-drill";
-    downloadJson(payload, `nova-prime-${name}.json`);
-    drillDialogResult.textContent = "Drill exported.";
-  } catch (error) {
-    drillDialogResult.textContent = error.message;
-  }
-});
-document.querySelector("#drill-delete").addEventListener("click", async () => {
-  const id = drillForm.elements.id.value;
-  const drill = resolveDrill(id);
-  if (!drill || !globalThis.confirm(`Delete â€œ${drill.name}â€? This cannot be undone.`)) return;
-  await customDrillService.delete(id);
-  if (uiState.drillId === id) uiState.drillId = BUILTIN_DRILLS[0].id;
-  customMessage = "Custom drill deleted.";
-  drillDialog.close();
-  await render("train");
-});
-
-appReady = true;
-createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.17.0-android-package.0";
-await refreshFooter();
-
-setInterval(() => {
-  if ([SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING].includes(controller.state)) {
-    controller.tick(1);
-    if (controller.snapshot().spec?.mode === "msync" && musicSnapshot?.state === "playing") msyncSimulator.advance((musicSnapshot.currentTime ?? 0) * 1000);
-    if (activeRoute === "train") void render("train");
-  }
-}, 1000);
-
-globalThis.NOVA_PRIME_FOUNDATION = Object.freeze({ capabilities, featureFlags: FEATURE_FLAGS, storage: store.kind });
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíß]7é:-jZ.¶›­–)Þ³V–×÷'B²7&VFT&6·WÂ&W7F÷&T&6·WÒg&öÒ"ââöÆ–6F–öâö&6·Wö&6·W×6W'f–6Ræ§2#°¦–×÷'B²6Æ–'&F–öå6W'f–6RÒg&öÒ"ââöÆ–6F–öâö6Æ–'&F–öâö6Æ–'&F–öâ×6W'f–6Ræ§2#°¦–×÷'B²5U5DôÕôu$õU2Â7W7FöÔG&–ÆÅ6W'f–6RÒg&öÒ"ââöÆ–6F–öâöG&–ÆÇ2ö7W7FöÒÖG&–ÆÂ×6W'f–6Ræ§2#°¦–×÷'B²'V–ÇF–å&VfW&Væ6W56W'f–6RÂ'V–ÇF–å&æFöÔ÷&FW"Òg&öÒ"ââöÆ–6F–öâöG&–ÆÇ2ö'V–ÇF–â×&VfW&Væ6W2æ§2#°¦–×÷'B²×7–æ56W'f–6RÒg&öÒ"ââöÆ–6F–öâö×7–æ2ö×7–æ2×6W'f–6Ræ§2#°¦–×÷'B²×7–æ56–×VÆF÷"Òg&öÒ"ââöÆ–6F–öâö×7–æ2ö×7–æ2×6–×VÆF÷"æ§2#°¦–×÷'B²VF–õÆ–W"Òg&öÒ"ââöÆ–6F–öâö×W6–2öVF–ò×Æ–W"æ§2#°¦–×÷'B²×W6–4Æ–'&'•6W'f–6RÒg&öÒ"ââöÆ–6F–öâö×W6–2ö×W6–2ÖÆ–'&'’×6W'f–6Ræ§2#°¦–×÷'B²æ÷fÇW477dÖ–w&F–öå6W'f–6RÒg&öÒ"ââöÆ–6F–öâöÖ–w&F–öâöæ÷f×ÇW2Ö77bÖÖ–w&F–öâæ§2#°¦–×÷'B²Æö6Å6W76–öä6öçG&öÆÆW"Òg&öÒ"ââöÆ–6F–öâ÷6W76–öç2÷6W76–öâÖ6öçG&öÆÆW"æ§2#°¦–×÷'B²6†&–æu6W'f–6RÒg&öÒ"ââöÆ–6F–öâ÷6†&–ær÷6†&–ær×6W'f–6Ræ§2#°¦–×÷'B²fö–6T6öçG&öÆÆW"Òg&öÒ"ââöÆ–6F–öâ÷fö–6R÷fö–6RÖ6öçG&öÆÆW"æ§2#°¦–×÷'B²%T”ÅD”åôE$”ÄÅ2Â%T”ÅD”åôu$õU2ÂvWD'V–ÇF–äG&–ÆÂÂvWD'V–ÇF–äG&–ÆÇ2Òg&öÒ"ââöFöÖ–âöG&–ÆÇ2ö'V–ÇF–âÖ6FÆöræ§2#°¦–×÷'B²7&VFU6W76–öå7V2Òg&öÒ"ââöFöÖ–â÷6W76–öç2÷66†VÖæ§2#°¦–×÷'B²4U54”ôåõ5DDU2Òg&öÒ"ââöFöÖ–â÷6W76–öç2÷7FFRÖÖ6†–æRæ§2#°¦–×÷'B²'V–ÆE7FF—7F–72Òg&öÒ"ââöFöÖ–â÷7FF—7F–72öæÇ—F–72æ§2#°¦–×÷'B²Ô…õ4„$Uô%•DU2Òg&öÒ"ââöFöÖ–â÷6†&–ær÷6¶vRæ§2#°¦–×÷'B²–æFW†VDF%7F÷&RÒg&öÒ"ââö–æg&7G'V7GW&R÷7F÷&vRö–æFW†VBÖF"×7F÷&Ræ§2#°¦–×÷'B²ÖVÖ÷'•7F÷&RÒg&öÒ"ââö–æg&7G'V7GW&R÷7F÷&vRöÖVÖ÷'’×7F÷&Ræ§2#°¦–×÷'B²FWFV7D6&–Æ—F–W2Òg&öÒ"âö6&–Æ—F–W2æ§2#°¦–×÷'B²7&VFT6Æ–'&F–öåv—¦&BÒg&öÒ"âö6Æ–'&F–öâ×v—¦&Bæ§2#°¦–×÷'B²7&VFTG&–ÆÄVF—F÷"Òg&öÒ"âöG&–ÆÂÖVF—F÷"æ§2#°¦–×÷'B²dTEU$UôdÄu2Òg&öÒ"âöfVGW&RÖfÆw2æ§2#°¦–×÷'B²7&VFU&÷WFW"Òg&öÒ"â÷&÷WFW"æ§2#°¦–×÷'B²F†VÖT6öçG&öÆÆW"Òg&öÒ"â÷F†VÖRÖ6öçG&öÆÆW"æ§2#° ¦6öç7B6&–Æ—F–W2ÒFWFV7D6&–Æ—F–W2‚“°¦6öç7BF†VÖT6öçG&öÆÆW"ÒæWrF†VÖT6öçG&öÆÆW"‚“°§F†VÖT6öçG&öÆÆW"æÆöB‚“°¦6öç7Bf–WrÒFö7VÖVçBçVW'•6VÆV7F÷"‚"7&÷WFR×f–Wr"“°¦6öç7BÖVçRÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6ÖÖVçR"“°¦6öç7BÖVçU67&–ÒÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6ÖVçR×67&–Ò"“°¦6öç7BÖVçUFövvÆRÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6ÖVçR×FövvÆR"“°¦6öç7BG&–ÆÄF–ÆörÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6G&–ÆÂÖF–Æör"“°¦6öç7BG&–ÆÄf÷&ÒÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6G&–ÆÂÖf÷&Ò"“°¦6öç7BG&–ÆÄF–Æöu&W7VÇBÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6G&–ÆÂÖF–Æör×&W7VÇB"“°¦6öç7BVF—F÷$F–ÆörÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6VF—F÷"ÖF–Æör"“°¦6öç7BVF—F÷%&ö÷BÒFö7VÖVçBçVW'•6VÆV7F÷"‚"6VF—F÷"×&ö÷B"“°¦6öç7B6Æ–'&F–öäF–ÆörÒFö7VÖVçBçVW'•6VÆV7F÷"‚"66Æ–'&F–öâÖF–Æör"“°¦6öç7B6Æ–'&F–öå&ö÷BÒFö7VÖVçBçVW'•6VÆV7F÷"‚"66Æ–'&F–öâ×&ö÷B"“°¦ÆWB7F—fU&÷WFRÒ'G&–â#°¦ÆWB7F÷&vTæ÷F–6RÒ"#°¦ÆWBFFÖW76vRÒ"#°¦ÆWBÖ–w&F–öäÖW76vRÒ"#°¦ÆWBÖ–w&F–öå&Wf–WrÒçVÆÃ°¦ÆWB7W7FöÔÖW76vRÒ"#°¦ÆWB'V–ÇF–äÖW76vRÒ"#°¦ÆWB'V–ÇF–å&VfW&Væ6W2Ò·Ó°¦ÆWB7W7FöÔ66†RÒµÓ°¦ÆWB6Æ–'&F–öå&öf–ÆRÒçVÆÃ°¦ÆWB6Æ–'&F–öäÖW76vRÒ"#°¦ÆWB×W6–4ÖW76vRÒ"#°¦ÆWBG&6´66†RÒµÓ°¦ÆWBÆ–Æ—7D66†RÒµÓ°¦ÆWB×W6–56æ6†÷BÒçVÆÃ°¦ÆWB×7–æ4ÖW76vRÒ"#°¦ÆWB×7–æ466†RÒµÓ°¦ÆWB×7–æ4—77VW2ÒµÓ°¦ÆWB×7–æ56æ6†÷BÒçVÆÃ°¦ÆWB6†&–ætÖW76vRÒ"#°¦ÆWB6†&–æt–×÷'E&Wf–WrÒçVÆÃ°¦ÆWBfö–6U7FGW2Ò'&VG’#°¦ÆWBfö–6TÖW76vRÒ%fö–6R6öçG&öÇ2&RöfbâF÷V6‚6öçG&öÇ2Çv—2&VÖ–âf–Æ&ÆRâ#°¦ÆWB&VG’ÒfÇ6S° ¦6öç7BV•7FFRÒ°¢ÖöFS¢'&W2"À¢ÆWfVÃ¢À¢Ö÷VçC¢À¢W6U6V6öæG3¢À¢6÷VçFF÷vå6V6öæG3¢2À¢6FVv÷'“¢&&6–2"À¢G&–ÆÅF#¢&'V–ÇF–â"À¢w&÷W¢$"À¢7W7FöÔ'&ævS¢fÇ6RÀ¢G&–ÆÄ–C¢%T”ÅD”åôE$”ÄÅ5³Òæ–BÀ¢Æ–Æ—7D–C¢çVÆÂÀ¢V–6µG&6´–G3¢µÒÀ¢×7–æ5G&6´–C¢çVÆÂÀ¢&ö&÷DÆVE6V6öæG3¢ã2À¢7FF—7F–75W&–öC¢3À¢6†&–æuF—FÆS¢$×’æ÷f&–ÖRG&–ÆÇ2"À¢6†&–ætæ÷FS¢""À¢6†&–ætG&–ÆÄ–G3¢µÒÀ¢fö–6TVæ&ÆVC¢fÇ6RÀ¢fö–6UVæF–æu7F'C¢fÇ6RÀ§Ó° ¦6öç7B7F÷&RÒv—B–æFW†VDF%7F÷&Ræ÷Vâ‚’æ6F6‚‚†W'&÷"’Óâ°¢7F÷&vTæ÷F–6RÒG¶W'&÷#òæÖW76vRÇÂ%W'6—7FVçB'&÷w6W"7F÷&vR—2Væf–Æ&ÆRâ'ÒF†—2f—6—BW6W2FV×÷&'’ÖVÖ÷'’öæÇ’æ°¢&WGW&âæWrÖVÖ÷'•7F÷&R‚“°§Ò“°¦6öç7B7W7FöÔG&–ÆÅ6W'f–6RÒæWr7W7FöÔG&–ÆÅ6W'f–6R‡7F÷&R“°¦6öç7B'V–ÇF–å&VfW&Væ6W56W'f–6RÒæWr'V–ÇF–å&VfW&Væ6W56W'f–6R‡7F÷&R“°¦6öç7Bæ÷fÇW4Ö–w&F–öâÒæWræ÷fÇW477dÖ–w&F–öå6W'f–6R‡7F÷&R“°¦6öç7B6†&–æu6W'f–6RÒæWr6†&–æu6W'f–6R†7W7FöÔG&–ÆÅ6W'f–6R“°¦6öç7B6Æ–'&F–öå6W'f–6RÒæWr6Æ–'&F–öå6W'f–6R‡7F÷&R“°¦6öç7B×W6–4Æ–'&'’ÒæWr×W6–4Æ–'&'•6W'f–6R‡7F÷&R“°¦6öç7BVF–õÆ–W"ÒæWrVF–õÆ–W"‚“°¦6öç7B×7–æ56W'f–6RÒæWr×7–æ56W'f–6R‡7F÷&R“°¦6öç7B×7–æ56–×VÆF÷"ÒæWr×7–æ56–×VÆF÷"‚“°¦6öç7BG&–ÆÄVF—F÷"Ò7&VFTG&–ÆÄVF—F÷"‡°¢F–Æös¢VF—F÷$F–ÆörÀ¢&ö÷C¢VF—F÷%&ö÷BÀ¢6W'f–6S¢7W7FöÔG&–ÆÅ6W'f–6RÀ¢vWD6Æ–'&F–öã¢‚’Óâ6Æ–'&F–öå6W'f–6Ræ7F—fR‚’À¢öå6fVC¢7–æ2‡6fVB’Óâ°¢V•7FFRæG&–ÆÄ–BÒ6fVBæ–C°¢V•7FFRæw&÷WÒ6fVBæw&÷W°¢7W7FöÔÖW76vRÒ$&ÆÂ&öw&Ò6fVBâ#°¢v—B&Vg&W6„7W7FöÔ66†R‚“°¢–b†7F—fU&÷WFRÓÓÒ'G&–â"’v—B&VæFW"‚'G&–â"“°¢ÒÀ§Ò“°¦6öç7B6Æ–'&F–öåv—¦&BÒ7&VFT6Æ–'&F–öåv—¦&B‡°¢F–Æös¢6Æ–'&F–öäF–ÆörÀ¢&ö÷C¢6Æ–'&F–öå&ö÷BÀ¢6W'f–6S¢6Æ–'&F–öå6W'f–6RÀ¢öå6fVC¢7–æ2‡6fVBÂV–6²’Óâ°¢6Æ–'&F–öå&öf–ÆRÒ6fVC°¢6Æ–'&F–öäÖW76vRÒV–6²ò%V–6²6†V6²6fVBâ"¢$6Æ–'&F–öâ6fVBæBf—7VÂ&Wf–Ww2WFFVBâ#°¢–b†7F—fU&÷WFRÓÓÒ'G&–â"’v—B&VæFW"‚'G&–â"“°¢ÒÀ§Ò“° ¦7–æ2gVæ7F–öâ&Vg&W6„7W7FöÔ66†R‚’°¢7W7FöÔ66†RÒv—B7W7FöÔG&–ÆÅ6W'f–6RæÆ—7B‚“°§Ð ¦7–æ2gVæ7F–öâ&Vg&W6„'V–ÇF–å&VfW&Væ6W2‚’°¢'V–ÇF–å&VfW&Væ6W2Òv—B'V–ÇF–å&VfW&Væ6W56W'f–6RæÆöB‚“°§Ð ¦7–æ2gVæ7F–öâ&Vg&W6„6Æ–'&F–öå&öf–ÆR‚’°¢6Æ–'&F–öå&öf–ÆRÒv—B6Æ–'&F–öå6W'f–6Ræ7F—fR‚“°§Ð ¦7–æ2gVæ7F–öâ&Vg&W6„×W6–466†R‚’°¢·G&6´66†RÂÆ–Æ—7D66†UÒÒv—B&öÖ—6RæÆÂ…¶×W6–4Æ–'&'’çG&6·2‚’Â×W6–4Æ–'&'’çÆ–Æ—7G2‚•Ò“°¢–b‡V•7FFRçÆ–Æ—7D–BbbÆ–Æ—7D66†Rç6öÖR‚‡Æ–Æ—7B’ÓâÆ–Æ—7Bæ–BÓÓÒV•7FFRçÆ–Æ—7D–B’’V•7FFRçÆ–Æ—7D–BÒçVÆÃ°¢V•7FFRçV–6µG&6´–G2ÒV•7FFRçV–6µG&6´–G2æf–ÇFW"‚†–B’ÓâG&6´66†Rç6öÖR‚‡G&6²’ÓâG&6²æ–BÓÓÒ–B’“°§Ð ¦7–æ2gVæ7F–öâ&Vg&W6„×7–æ466†R‚’°¢×7–æ466†RÒv—B×7–æ56W'f–6RæÆ—7B‚“°¢6öç7BGF6†VEG&6·2ÒG&6´66†Ræf–ÇFW"‚‡G&6²’Óâ×7–æ466†Rç6öÖR‚†GF6†ÖVçB’ÓâGF6†ÖVçBæ–BÓÓÒG&6²æ×7–æ4GF6†ÖVçD–B’“°¢–b‚GF6†VEG&6·2ç6öÖR‚‡G&6²’ÓâG&6²æ–BÓÓÒV•7FFRæ×7–æ5G&6´–B’’V•7FFRæ×7–æ5G&6´–BÒGF6†VEG&6·5³Óòæ–BóòçVÆÃ°§Ð ¦gVæ7F–öâ&W6öÇfTG&–ÆÂ†–B’°¢&WGW&âvWD'V–ÇF–äG&–ÆÂ†–B’óò7W7FöÔ66†Ræf–æB‚†G&–ÆÂ’ÓâG&–ÆÂæ–BÓÓÒ–B’óòçVÆÃ°§Ð ¦gVæ7F–öâ&öw&Ôf÷$G&–ÆÂ†G&–ÆÂ’°¢&WGW&âG&–ÆÃòç&öw&×3òå·V•7FFRæÆWfVÅÒóòG&–ÆÃòç&öw&×3òå³ÒóòçVÆÃ°§Ð ¦gVæ7F–öâ&æFöÔ÷&FW$f÷"†G&–ÆÂÂÆWfVÂÒV•7FFRæÆWfVÂ’°¢–b‚G&–ÆÂ’&WGW&âfÇ6S°¢6öç7B&öw&ÒÒG&–ÆÂç&öw&×3òå¶ÆWfVÅÒóòG&–ÆÂç&öw&×3òå³Ó°¢–b‚‡&öw&Óòç7FW2óòµÒ’æf–ÇFW"‚‡7FW’Óâ7FWæVæ&ÆVB’æÆVæwF‚Â"’&WGW&âfÇ6S°¢&WGW&âG&–ÆÂç6÷W&6RÓÓÒ&'V–ÇF–â"ò'V–ÇF–å&æFöÔ÷&FW"†G&–ÆÂÂÆWfVÂÂ'V–ÇF–å&VfW&Væ6W2’¢&ööÆVâ†G&–ÆÂç&æFöÒ“°§Ð ¦6öç7B6öçG&öÆÆW"ÒæWrÆö6Å6W76–öä6öçG&öÆÆW"‡°¢öå&V6÷&C¢7–æ2‡&V6÷&B’Óâ°¢v—B7F÷&RçWB‚'6W76–öå&V6÷&G2"Â&V6÷&B“°¢v—B&Vg&W6„fö÷FW"‚“°¢–b…²&FF"Â'7FF—7F–72%Òæ–æ6ÇVFW2†7F—fU&÷WFR’’v—B&VæFW"†7F—fU&÷WFR“°¢ÒÀ§Ò“° ¦7–æ2gVæ7F–öâW†V7WFU6W76–öä6öÖÖæB†6öÖÖæB’°¢6öç7B6æ6†÷BÒ6öçG&öÆÆW"ç6æ6†÷B‚“°¢6öç7B×W6–56W76–öâÒ6æ6†÷Bç7V3òæÖöFRÓÓÒ&×W6–2#°¢6öç7B×7–æ56W76–öâÒ6æ6†÷Bç7V3òæÖöFRÓÓÒ&×7–æ2#°¢–b†6öÖÖæBÓÓÒ'W6R"’°¢–b†×W6–56W76–öâÇÂ×7–æ56W76–öâ’VF–õÆ–W"çW6R‚“°¢–b†×7–æ56W76–öâ’×7–æ56–×VÆF÷"çW6R‚“°¢&WGW&â6öçG&öÆÆW"çW6R‚“°¢Ð¢–b†6öÖÖæBÓÓÒ'&W7VÖR"’°¢–b†×W6–56W76–öâÇÂ×7–æ56W76–öâ’v—BVF–õÆ–W"ç&W7VÖR‚“°¢–b†×7–æ56W76–öâ’×7–æ56–×VÆF÷"ç&W7VÖR‚“°¢&WGW&â6öçG&öÆÆW"ç&W7VÖR‚“°¢Ð¢–b†6öÖÖæBÓÓÒ'7F÷"’°¢–b†×W6–56W76–öâÇÂ×7–æ56W76–öâ’VF–õÆ–W"ç7F÷‚“°¢–b†×7–æ56W76–öâ’×7–æ56–×VÆF÷"ç7F÷‚“°¢V•7FFRçfö–6UVæF–æu7F'BÒfÇ6S°¢&WGW&â6öçG&öÆÆW"ç7F÷‚“°¢Ð¢–b†6öÖÖæBÓÓÒ'&W6WB"’°¢–b†×W6–56W76–öâÇÂ×7–æ56W76–öâ’VF–õÆ–W"ç7F÷‚“°¢–b†×7–æ56W76–öâ’×7–æ56–×VÆF÷"ç7F÷‚“°¢V•7FFRçfö–6UVæF–æu7F'BÒfÇ6S°¢&WGW&â6öçG&öÆÆW"ç&W6WB‚“°¢Ð¢&WGW&âö&¦V7Bæg&VW¦R‡²7FGW3¢%$T¤T5DTB"Â&V6öã¢%Tä´äõtåô4ôÔÔäB"Ò“°§Ð ¦6öç7Bfö–6T6öçG&öÆÆW"ÒæWrfö–6T6öçG&öÆÆW"‡°¢&V6övæ—F–öäf7F÷'“¢6&–Æ—F–W2ç7VV6…&V6övæ—F–öà¢ò‚’Óâ°¢6öç7B&V6övæ—F–öâÒvÆö&ÅF†—2å7VV6…&V6övæ—F–öâóòvÆö&ÅF†—2çvV&¶—E7VV6…&V6övæ—F–öã°¢&WGW&âæWr&V6övæ—F–öâ‚“°¢Ð¢¢çVÆÂÀ¢öå7FGW3¢‡7FGW2’Óâ°¢fö–6U7FGW2Ò7FGW2ç7FFS°¢fö–6TÖW76vRÒ7FGW2æÖW76vS°¢–b†&VG’bb7F—fU&÷WFRÓÓÒ'G&–â"’fö–B&VæFW"‚'G&–â"“°¢ÒÀ¢öä6öÖÖæC¢7–æ2†6öÖÖæB’Óâ°¢6öç7B7FFRÒ6öçG&öÆÆW"ç6æ6†÷B‚’ç7FFS°¢–b†6öÖÖæBÓÓÒ'7F'B"’°¢–b‡7FFRÓÒ4U54”ôåõ5DDU2ä”DÄR’°¢fö–6U7FGW2Ò'&V¦V7FVB#°¢fö–6TÖW76vRÒ$6W76–öâ—2Ç&VG’7F—fRâæ÷F†–ær6†ævVBâ#°¢ÒVÇ6R°¢V•7FFRçfö–6UVæF–æu7F'BÒG'VS°¢fö–6U7FGW2Ò&6öæf—&Ò#°¢fö–6TÖW76vRÒ%7F'B&V6övæ—¦VBâ&Wf–WrF†R6WGWæBF6öæf—&Ò7F'Bâ#°¢Ð¢ÒVÇ6R°¢6öç7B&W7VÇBÒv—BW†V7WFU6W76–öä6öÖÖæB†6öÖÖæB“°¢fö–6U7FGW2Ò&W7VÇCòç7FGW2ÓÓÒ$U„T5UDTB"ò&W†V7WFVB"¢'&V¦V7FVB#°¢fö–6TÖW76vRÒ&W7VÇCòç7FGW2ÓÓÒ$U„T5UDTB ¢òG¶6öÖÖæE³ÒçFõWW$66R‚—ÒG¶6öÖÖæBç6Æ–6Rƒ—Ò6öÖÖæBW†V7WFVBæ ¢¢G¶6öÖÖæE³ÒçFõWW$66R‚—ÒG¶6öÖÖæBç6Æ–6Rƒ—Ò—2æ÷Bf–Æ&ÆR–âF†R7W'&VçB6W76–öâ7FFRæ°¢Ð¢–b†7F—fU&÷WFRÓÓÒ'G&–â"’v—B&VæFW"‚'G&–â"“°¢ÒÀ§Ò“° ¦VF–õÆ–W"ç7V'67&–&R‚‡6æ6†÷B’Óâ°¢6öç7B&Wf–÷W57FFRÒ×W6–56æ6†÷Còç7FFS°¢×W6–56æ6†÷BÒ6æ6†÷C°¢6öç7B7F—fTÖöFRÒ6öçG&öÆÆW"ç6æ6†÷B‚’ç7V3òæÖöFS°¢6öç7B7F—fT×W6–2Ò7F—fTÖöFRÓÓÒ&×W6–2#°¢6öç7B7F—fT×7–æ2Ò7F—fTÖöFRÓÓÒ&×7–æ2#°¢–b‡6æ6†÷Bç7FFRÓÓÒ&6ö×ÆWFVB"bb&Wf–÷W57FFRÓÒ&6ö×ÆWFVB"bb7F—fT×W6–2’°¢6öçG&öÆÆW"æ6ö×ÆWFR‡²6ö×ÆWFVD7–6ÆW3¢6æ6†÷Bæ6ö×ÆWFVEG&6·2Ò“°¢Ð¢–b‡6æ6†÷Bç7FFRÓÓÒ&W'&÷""bb&Wf–÷W57FFRÓÒ&W'&÷""bb7F—fT×W6–2’°¢×W6–4ÖW76vRÒ6æ6†÷BæW'&÷#°¢6öçG&öÆÆW"æf–Â‚$TD”õõÄ”$4µôd”ÄTB"“°¢Ð¢–b†7F—fT×7–æ2bb6æ6†÷Bç7FFRÓÓÒ'Æ––ær"’×7–æ56–×VÆF÷"æGfæ6R‡6æ6†÷Bæ7W'&VçEF–ÖR¢“°¢–b†7F—fT×7–æ2bb6æ6†÷Bç7FFRÓÓÒ&6ö×ÆWFVB"bb&Wf–÷W57FFRÓÒ&6ö×ÆWFVB"’×7–æ56–×VÆF÷"æGfæ6R†×7–æ56æ6†÷CòæGW&F–öä×2óò“°¢–b‡6æ6†÷Bç7FFRÓÓÒ&W'&÷""bb&Wf–÷W57FFRÓÒ&W'&÷""bb7F—fT×7–æ2’°¢×7–æ4ÖW76vRÒ6æ6†÷BæW'&÷#°¢×7–æ56–×VÆF÷"ç7F÷‚“°¢6öçG&öÆÆW"æf–Â‚$Õ5”ä5ôTD”õõÄ”$4µôd”ÄTB"“°¢Ð¢–b†&VG’bb²'G&–â"Â&×W6–2"Â&×7–æ2%Òæ–æ6ÇVFW2†7F—fU&÷WFR’’fö–B&VæFW"†7F—fU&÷WFR“°§Ò“° ¦×7–æ56–×VÆF÷"ç7V'67&–&R‚‡6æ6†÷B’Óâ°¢6öç7B&Wf–÷W57FFRÒ×7–æ56æ6†÷Còç7FFS°¢×7–æ56æ6†÷BÒ6æ6†÷C°¢6öç7B7F—fT×7–æ2Ò6öçG&öÆÆW"ç6æ6†÷B‚’ç7V3òæÖöFRÓÓÒ&×7–æ2#°¢–b†7F—fT×7–æ2bb6æ6†÷Bç7FFRÓÓÒ&6ö×ÆWFVB"bb&Wf–÷W57FFRÓÒ&6ö×ÆWFVB"’°¢VF–õÆ–W"ç7F÷‚“°¢6öçG&öÆÆW"æ6ö×ÆWFR‡²6ö×ÆWFVD7–6ÆW3¢6æ6†÷Bæ7F—fF–öç2Ò“°¢Ð¢–b†&VG’bb7F—fU&÷WFRÓÓÒ'G&–â"’fö–B&VæFW"‚'G&–â"“°§Ò“° ¦6öç7BW66T‡FÖÂÒ‡fÇVR’Óâ7G&–ær‡fÇVR¢ç&WÆ6TÆÂ‚"b"Â"f×²"¢ç&WÆ6TÆÂ‚#Â"Â"fÇC²"¢ç&WÆ6TÆÂ‚#â"Â"fwC²"¢ç&WÆ6TÆÂ‚r"rÂ"gV÷C²"¢ç&WÆ6TÆÂ‚"r"Â"b33“²"“° ¦gVæ7F–öâf÷&ÖDGW&F–öâ†Ö–ÆÆ—6V6öæG2’°¢6öç7B6V6öæG2ÒÖF‚æÖ‚ƒÂÖF‚ç&÷VæB„çVÖ&W"†Ö–ÆÆ—6V6öæG2’ò’“°¢&WGW&âG´ÖF‚æfÆö÷"‡6V6öæG2òc—Ó¢Gµ7G&–ær‡6V6öæG2Rc’çE7F'Bƒ"Â#"—Ö°§Ð ¦gVæ7F–öâf÷&ÖEG&–æ–æuF–ÖR‡6V6öæG2’°¢6öç7BF÷FÂÒÖF‚æÖ‚ƒÂÖF‚ç&÷VæB„çVÖ&W"‡6V6öæG2’ÇÂ’“°¢6öç7B†÷W'2ÒÖF‚æfÆö÷"‡F÷FÂò3c“°¢6öç7BÖ–çWFW2ÒÖF‚æfÆö÷"‚‡F÷FÂR3c’òc“°¢–b††÷W'2’&WGW&âG¶†÷W'7Ö‚G¶Ö–çWFW7ÖÖ°¢–b†Ö–çWFW2’&WGW&âG¶Ö–çWFW7ÖÖ°¢&WGW&âG·F÷FÇ×6°§Ð ¦gVæ7F–öâf÷&ÖD'—FW2†'—FW2’°¢6öç7BfÇVRÒÖF‚æÖ‚ƒÂçVÖ&W"†'—FW2’ÇÂ“°¢–b‡fÇVRÂ#B’&WGW&âG·fÇVWÒ&°¢–b‡fÇVRÂ#B¢#B’&WGW&âG´ÖF‚ç&÷VæB‡fÇVRò#B—Ò´&°¢&WGW&âG²‡fÇVRòƒ#B¢#B’’çFôf—†VBƒ—ÒÔ&°§Ð ¦gVæ7F–öâ6VÆV7FVD×W6–57VÖÖ'’‚’°¢–b‡V•7FFRçÆ–Æ—7D–B’°¢6öç7BÆ–Æ—7BÒÆ–Æ—7D66†Ræf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒV•7FFRçÆ–Æ—7D–B“°¢–b‡Æ–Æ—7B’°¢6öç7BGW&F–öä×2ÒÆ–Æ—7Bæ—FV×2ç&VGV6R‚‡F÷FÂÂ—FVÒ’ÓâF÷FÂ²‡G&6´66†Ræf–æB‚‡G&6²’ÓâG&6²æ–BÓÓÒ—FVÒçG&6´–B“òæGW&F–öä×2óò’Â“°¢&WGW&â²Æ&VÃ¢Æ–Æ—7BææÖRÂ6÷VçC¢Æ–Æ—7Bæ—FV×2æÆVæwF‚ÂGW&F–öä×2Ó°¢Ð¢Ð¢6öç7BG&6·2ÒV•7FFRçV–6µG&6´–G2æÖ‚†–B’ÓâG&6´66†Ræf–æB‚‡G&6²’ÓâG&6²æ–BÓÓÒ–B’’æf–ÇFW"„&ööÆVâ“°¢&WGW&â²Æ&VÃ¢%V–6²×W6–2"Â6÷VçC¢G&6·2æÆVæwF‚ÂGW&F–öä×3¢G&6·2ç&VGV6R‚‡F÷FÂÂG&6²’ÓâF÷FÂ²G&6²æGW&F–öä×2Â’Ó°§Ð ¦gVæ7F–öâ6VÆV7FVD×7–æ2‚’°¢6öç7BG&6²ÒG&6´66†Ræf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒV•7FFRæ×7–æ5G&6´–B’óòçVÆÃ°¢6öç7BGF6†ÖVçBÒ×7–æ466†Ræf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒG&6³òæ×7–æ4GF6†ÖVçD–B’óòçVÆÃ°¢&WGW&â²G&6²ÂGF6†ÖVçBÓ°§Ð ¦gVæ7F–öâ6öææV7F–öä6&B‚’°¢&WGW&â ¢Ç6V7F–öâ6Æ73Ò&Ö6&B7FGW2Ö6&B"&–ÖÆ&VÆÆVF'“Ò&6öææV7F–öâ×F—FÆR#à¢ÆF—b6Æ73Ò'7FGW2Ö6÷’#ãÇ7â6Æ73Ò&6öææV7F–öâÖF÷B#ãÂ÷7ããÆF—cãÆƒ"–CÒ&6öææV7F–öâ×F—FÆR#å&ö&÷B6öçG&öÂvFVCÂöƒ#ãÇåG&ç7÷'BæB&–÷&—G’7F÷726–×VÆFVBFW7G3²‡—6–6Âæ÷f2&òfW&–f–6F–öâ—27F–ÆÂ&WV—&VBãÂ÷ãÂöF—cãÂöF—cà¢Æ'WGFöâ6Æ73Ò&÷WFÆ–æRÖ'WGFöâ"G—SÒ&'WGFöâ"F—6&ÆVBF—FÆSÒ$&ÇVWFö÷F‚&VÖ–ç2F—6&ÆVBVçF–Â‡—6–6Â6fWG’fW&–f–6F–öâ76W2#åfW&–g’f—'7CÂö'WGFöãà¢Â÷6V7F–öãæ°§Ð ¦gVæ7F–öâ6Æ–'&F–öä6&B‚’°¢6öç7B&öf–ÆRÒ6Æ–'&F–öå&öf–ÆS°¢6öç7BV–6²Ò&öf–ÆSòçV–6´6†V6³°¢&WGW&â ¢Ç6V7F–öâ6Æ73Ò&Ö6&B6Æ–'&F–öâÖ6&B"&–ÖÆ&VÆÆVF'“Ò&6Æ–'&F–öâ×F—FÆR#à¢ÆF—cãÆƒ"–CÒ&6Æ–'&F–öâ×F—FÆR#ä6Æ–'&F–öãÂöƒ#ãÇâG·&öf–ÆRòG¶W66T‡FÖÂ‡&öf–ÆRææÖR—Ò+r67W&7’+G·&öf–ÆRæ67W&7—Ò6Ö¢$æ÷B6Æ–'&FVB+rwV–FVB6WGW&VG’'ÓÂ÷ãÆFWF–Ç3ãÇ7VÖÖ'“äÖ÷&SÂ÷7VÖÖ'“ãÇâG·&öf–ÆRòÖöFS¢G¶W66T‡FÖÂ‡&öf–ÆRæÖöFR—Ò+rG·&öf–ÆRæö'6W'fF–öç2æÆVæwF‡Òö'6W'fF–öç2G·&öf–ÆRç66GFW$W7F–ÖFRÓÒçVÆÂò""¢+r66GFW"G·&öf–ÆRç66GFW$W7F–ÖFWÒ6ÖÒG·V–6²ò+rV–6²6†V6²G·V–6²æÖVäW'&÷$6×Ò6Ö¢"'Òæ¢%&V6÷&Bö'6W'fVBÆæF–æw2v—F†÷WBVæ&Æ–ær&ÇVWFö÷F‚÷"&ö&÷B6öÖÖæG2â'ÓÂ÷ãÆF—b6Æ73Ò&6Æ–'&F–öâÖf–ÆRÖ7F–öç2#âG·&öf–ÆRòÆ'WGFöâG—SÒ&'WGFöâ"FFÖ6Æ–'&F–öâÖW‡÷'CäW‡÷'CÂö'WGFöãæ¢"'ÓÆÆ&VÃä–×÷'CÆ–çWBFFÖ6Æ–'&F–öâÖ–×÷'BG—SÒ&f–ÆR"66WCÒ&Æ–6F–öâö§6öâÂæ§6öâ#ãÂöÆ&VÃãÂöF—cãÂöFWF–Ç3âG¶6Æ–'&F–öäÖW76vRòÇ7â6Æ73Ò&6Æ–'&F–öâÖÖW76vR"&öÆSÒ'7FGW2#âG¶W66T‡FÖÂ†6Æ–'&F–öäÖW76vR—ÓÂ÷7ãæ¢"'ÓÂöF—cà¢ÆF—b6Æ73Ò&6Æ–'&F–öâÖ6&BÖ7F–öç2#âG·&öf–ÆRòÆ'WGFöâ6Æ73Ò&÷WFÆ–æRÖ'WGFöâ"G—SÒ&'WGFöâ"FFÖ6Æ–'&F–öâ×V–6³åV–6²6†V6³Âö'WGFöãæ¢"'ÓÆ'WGFöâ6Æ73Ò&÷WFÆ–æRÖ'WGFöâ"G—SÒ&'WGFöâ"FFÖ6Æ–'&F–öâÖ÷VãâG·&öf–ÆRò%&V6Æ–'&FR"¢$6Æ–'&FR'ÓÂö'WGFöããÂöF—cà¢Â÷6V7F–öãæ°§Ð ¦gVæ7F–öâÖöFT'WGFöâ†ÖöFRÂÆ&VÂÂf–Æ&ÆRÒG'VRÂÆö6¶VBÒfÇ6R’°¢6öç7B6VÆV7FVBÒV•7FFRæÖöFRÓÓÒÖöFS°¢&WGW&âÆ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'6VvÖVçBG·6VÆV7FVBò'6VÆV7FVB"¢"'Ò"FF×V’ÖÖöFSÒ"G¶ÖöFWÒ"G¶f–Æ&ÆRbbÆö6¶VBò""¢&F—6&ÆVB'Ò&–×&W76VCÒ"G·6VÆV7FVGÒ#âG¶Æ&VÇÒG¶f–Æ&ÆRò""¢#Ç6ÖÆÃå6ööãÂ÷6ÖÆÃâ'ÓÂö'WGFöãæ°§Ð ¦gVæ7F–öâ6W76–öä6öç6öÆR‡6W76–öâ’°¢–b‡6W76–öâç7FFRÓÓÒ4U54”ôåõ5DDU2ä”DÄR’&WGW&â"#°¢6öç7BF&vWBÒ6W76–öâç7V3òæÖöFRÓÓÒ'F–ÖR"ò6W76–öâç7V2æGW&F–öå6V6öæG2¢6W76–öâç7V3òç&WWF—F–öç3°¢6öç7B—4×7–æ2Ò6W76–öâç7V3òæÖöFRÓÓÒ&×7–æ2#°¢ÆWBÖWG&–2Ò6W76–öâç7V3òæÖöFRÓÓÒ&×W6–2 ¢òG¶×W6–56æ6†÷Còæ6ö×ÆWFVEG&6·2óòÒòG¶×W6–56æ6†÷CòçG&6´6÷VçBóòÒG&6·2+rG¶f÷&ÖDGW&F–öâ‚†×W6–56æ6†÷Còæ7W'&VçEF–ÖRóò’¢—ÒòG¶f÷&ÖDGW&F–öâ‚†×W6–56æ6†÷CòæGW&F–öâóò’¢—Ö ¢¢—4×7–æ0¢òG¶f÷&ÖDGW&F–öâ†×7–æ56æ6†÷Còç÷6—F–öä×2óò—ÒòG¶f÷&ÖDGW&F–öâ†×7–æ56æ6†÷CòæGW&F–öä×2óò—ÒG¶×7–æ56æ6†÷Còç&W7F–ærò"+r$U5B"¢×7–æ56æ6†÷Còæ7F—fRò+rG¶×7–æ56æ6†÷Bæ7F—fRçG—WÒG¶W66T‡FÖÂ†×7–æ56æ6†÷Bæ7F—fRææÖR—Ö¢"+r”DÄR'Ö ¢¢6W76–öâç7V3òæÖöFRÓÓÒ'F–ÖR"òG´ÖF‚ç&÷VæB‡6W76–öâæVÆ6VE6V6öæG2—ÒòG·F&vWGÒ6V6öæG6¢G·6W76–öâæ6ö×ÆWFVD7–6ÆW7ÒòG·F&vWGÒ&WWF—F–öç6°¢–b‡6W76–öâç7FFRÓÓÒ4U54”ôåõ5DDU2ä4õTåDDõtâ’ÖWG&–2Ò7F'F–ær–âG´ÖF‚æ6V–Â‡6W76–öâæ6÷VçFF÷vå&VÖ–æ–ær—Ö°¢–b‡6W76–öâç7FFRÓÓÒ4U54”ôåõ5DDU2åU4TB’ÖWG&–2ÒW6VB+rG¶ÖWG&–7Ö°¢–b‡6W76–öâç7FFRÓÓÒ4U54”ôåõ5DDU2å%Tää”ärbb6W76–öâæ7–6ÆUW6U&VÖ–æ–ærâ’ÖWG&–2Ò&W7F–ærG´ÖF‚æ6V–Â‡6W76–öâæ7–6ÆUW6U&VÖ–æ–ær—×2+rG¶ÖWG&–7Ö°¢6öç7B&öw&W72ÒÖF‚ç&÷VæB‚‡6W76–öâç7V3òæÖöFRÓÓÒ&×W6–2"ò×W6–56æ6†÷Còç&öw&W72óò¢—4×7–æ2ò×7–æ56æ6†÷Còç&öw&W72óò¢6W76–öâç&öw&W72’¢“°¢6öç7BG&–ÆÂÒ&W6öÇfTG&–ÆÂ‡6W76–öâç7V3òæG&–ÆÄ–B“°¢6öç7BG&6´Æ&VÂÒ²&×W6–2"Â&×7–æ2%Òæ–æ6ÇVFW2‡6W76–öâç7V3òæÖöFR’bb×W6–56æ6†÷Còæ7W'&VçEG&6²ò+rG¶W66T‡FÖÂ†×W6–56æ6†÷Bæ7W'&VçEG&6²æF—7Æ”æÖR—Ö¢"#°¢6öç7B7F÷&ÆRÒµ4U54”ôåõ5DDU2å$U$”ärÂ4U54”ôåõ5DDU2ä$ÔTBÂ4U54”ôåõ5DDU2ä4õTåDDõtâÂ4U54”ôåõ5DDU2å%Tää”ärÂ4U54”ôåõ5DDU2åU4TBÂ4U54”ôåõ5DDU2äU%$õ%Òæ–æ6ÇVFW2‡6W76–öâç7FFR“°¢&WGW&â ¢Ç6V7F–öâ6Æ73Ò&Ö6&B6W76–öâÖ6öç6öÆR"&–ÖÆ&VÃÒ$7F—fR6W76–öâ#à¢ÆF—b6Æ73Ò&6öç6öÆRÖ†VF–ær#ãÆF—cãÇ7â6Æ73Ò&W–V'&÷r#å4U54”ôãÂ÷7ããÆƒ#âG·6W76–öâç7FFWÓÂöƒ#ãÇâG¶—4×7–æ2ò$Õ5”ä2F–ÖVÆ–æR"¢G¶W66T‡FÖÂ†G&–ÆÃòææÖRóò$Æö6Â6W76–öâ"—Ò+rG·6W76–öâç7V3òç&æFöÔ÷&FW"ò%&æFöÒ÷&FW""¢%6WVVçF–Â'ÖÒG·G&6´Æ&VÇÓÂ÷ãÂöF—cãÇ7â6Æ73Ò'6–×VÆF–öâ×–ÆÂ#âG¶—4×7–æ2ò%F–ÖVÆ–æR6–×VÆF–öâ"¢6W76–öâç7V3òæÖöFRÓÓÒ&×W6–2"ò$Æö6ÂVF–ò"¢%6–×VÆF–öâ'ÓÂ÷7ããÂöF—cà¢Ç7G&öær6Æ73Ò'6W76–öâÖÖWG&–2#âG¶ÖWG&–7ÓÂ÷7G&öæsà¢G¶—4×7–æ2òÇ6Æ73Ò&†VÇW"×FW‡B#å&ö&÷BÆVBG²‚†×7–æ56æ6†÷Còç&ö&÷DÆVD×2óò3’ò’çFôf—†VBƒ2—×2+rÆææVB&ö&÷B7VW2&RF—7Æ–VBöæÇ’æBæWfW"G&ç6Ö—GFVBãÂ÷æ¢"'Ð¢ÆF—b6Æ73Ò'&öw&W72×G&6²"&öÆSÒ'&öw&W76&""&–ÖÆ&VÃÒ%6W76–öâ&öw&W72"&–×fÇVVÖ–ãÒ#"&–×fÇVVÖƒÒ#"&–×fÇVVæ÷sÒ"G·&öw&W77Ò#ãÇ7â7G–ÆSÒ'v–GFƒ¢G·&öw&W77ÒR#ãÂ÷7ããÂöF—cà¢ÆF—b6Æ73Ò&6öç6öÆRÖ7F–öç2#à¢Æ'WGFöâG—SÒ&'WGFöâ"FFÖ6öÖÖæCÒ'W6R"G·6W76–öâç7FFRÓÓÒ4U54”ôåõ5DDU2å%Tää”ärò""¢&F—6&ÆVB'ÓåW6SÂö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"FFÖ6öÖÖæCÒ'&W7VÖR"G·6W76–öâç7FFRÓÓÒ4U54”ôåõ5DDU2åU4TBò""¢&F—6&ÆVB'Óå&W7VÖSÂö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"6Æ73Ò'7F÷Ö'WGFöâ"FFÖ6öÖÖæCÒ'7F÷"G·7F÷&ÆRò""¢&F—6&ÆVB'Óå7F÷Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"FFÖ6öÖÖæCÒ'&W6WB"Gµµ4U54”ôåõ5DDU2ä4ôÕÄUDTBÂ4U54”ôåõ5DDU2äU%$õ%Òæ–æ6ÇVFW2‡6W76–öâç7FFR’ò""¢&F—6&ÆVB'ÓäæWr6W76–öãÂö'WGFöãà¢ÂöF—cà¢Â÷6V7F–öãæ°§Ð ¦gVæ7F–öâfö–6T6öçG&öÄ6&B‡6W76–öâ’°¢6öç7B7W÷'FVBÒfö–6T6öçG&öÆÆW"ç7W÷'FVC°¢6öç7BVæ&ÆVBÒ7W÷'FVBbbV•7FFRçfö–6TVæ&ÆVC°¢6öç7BVæF–ærÒVæ&ÆVBbbV•7FFRçfö–6UVæF–æu7F'Bbb6W76–öâç7FFRÓÓÒ4U54”ôåõ5DDU2ä”DÄS°¢&WGW&â ¢Ç6V7F–öâ6Æ73Ò&Ö6&Bfö–6RÖ6&B"&–ÖÆ&VÆÆVF'“Ò'fö–6R×F—FÆR#à¢ÆF—b6Æ73Ò'6V7F–öâÖ†VF–ær#ãÆF—cãÇ7â6Æ73Ò&W–V'&÷r#äõD”ôäÂ+rôäR4ôÔÔäCÂ÷7ããÆƒ"–CÒ'fö–6R×F—FÆR#åfö–6R6öçG&öÇ3Âöƒ#ãÇâG·7W÷'FVBò%&W72Æ—7FVâÂF†Vâ6’öæRW†7B6öÖÖæBâ"¢%7VV6‚&V6övæ—F–öâ—2æ÷Bf–Æ&ÆR–âF†—2'&÷w6W"â'ÓÂ÷ãÂöF—cãÇ7â6Æ73Ò'fö–6R×7FFRfö–6RÒG¶W66T‡FÖÂ‡fö–6U7FGW2—Ò#âG¶Væ&ÆVBòW66T‡FÖÂ‡fö–6U7FGW2’¢$öfb'ÓÂ÷7ããÂöF—cà¢ÆF—b6Æ73Ò'fö–6RÖ7F–öç2#à¢G¶Væ&ÆV@¢òÆ'WGFöâG—SÒ&'WGFöâ"FF×fö–6RÖÆ—7FVâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G·fö–6T6öçG&öÆÆW"æÆ—7FVæ–ærò&F—6&ÆVB"¢"'ÓâG·fö–6T6öçG&öÆÆW"æÆ—7FVæ–ærò$Æ—7FVæ–æ~(
+b"¢$Æ—7FVâf÷"6öÖÖæB'ÓÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"FF×fö–6RÖF—6&ÆSåGW&âöfcÂö'WGFöãæ ¢¢Æ'WGFöâG—SÒ&'WGFöâ"FF×fö–6RÖVæ&ÆR6Æ73Ò'&–Ö'’Ö'WGFöâ"G·7W÷'FVBò""¢&F—6&ÆVB'ÓåGW&âöâfö–6SÂö'WGFöãæÐ¢ÂöF—cà¢Ç6Æ73Ò'fö–6RÖÖW76vR"&öÆSÒ'7FGW2"&–ÖÆ—fSÒ'öÆ—FR#âG¶W66T‡FÖÂ‡fö–6TÖW76vR—ÓÂ÷à¢G·VæF–æròÆF—b6Æ73Ò'fö–6RÖ6öæf—&Ò"&öÆSÒ&ÆW'B#ãÆF—cãÇ7G&öæsä6öæf—&Ò6W76–öâ7F'CÂ÷7G&öæsãÇ7ãåfö–6RæWfW"7F'G2F†R&ö&÷B÷"6–×VÆF–öâv—F†÷WBF†—2F÷V6‚6öæf—&ÖF–öâãÂ÷7ããÂöF—cãÆ'WGFöâG—SÒ&'WGFöâ"FF×fö–6RÖ6öæf—&Ò×7F'B6Æ73Ò'&–Ö'’Ö'WGFöâ#ä6öæf—&Ò7F'CÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"FF×fö–6RÖ6æ6VÂ×7F'Cä6æ6VÃÂö'WGFöããÂöF—cæ¢"'Ð¢ÆFWF–Ç3ãÇ7VÖÖ'“ä6öÖÖæG2æB&—f7“Â÷7VÖÖ'“ãÇãÇ7G&öæså7F'C£Â÷7G&öæsâ(	Äæ÷f7F'N(	Ò+rÇ7G&öæsåW6S£Â÷7G&öæsâ(	Äæ÷fW6^(	Ò+rÇ7G&öæså&W7VÖS£Â÷7G&öæsâ(	Äæ÷f&W7VÖ^(	Ò+rÇ7G&öæså7F÷£Â÷7G&öæsâ(	Å7F÷(	Ò÷"(	Äæ÷fVÖW&vVæ7’7F÷(	ÒãÂ÷ãÇäæ÷f&–ÖR7F÷&W2æòVF–ò÷"G&ç67&—B†—7F÷'’â–÷W"'&÷w6W"÷"7VV6‚&÷f–FW"Ö’&ö6W727VV6‚öæÆ–æRâ–÷R6â¶VWfö–6RöfbæBW6RWfW'’F÷V6‚6öçG&öÂãÂ÷ãÂöFWF–Ç3à¢Â÷6V7F–öãæ°§Ð ¦gVæ7F–öâ6WGW6&B‡6W76–öâ’°¢6öç7BÆö6¶VBÒ6W76–öâç7FFRÓÒ4U54”ôåõ5DDU2ä”DÄS°¢6öç7BÖ÷VçDÆ&VÂÒV•7FFRæÖöFRÓÓÒ'F–ÖR"ò$GW&F–öâ‡2’"¢$6÷VçB#°¢6öç7B6VÆV7FVDG&–ÆÂÒ&W6öÇfTG&–ÆÂ‡V•7FFRæG&–ÆÄ–B“°¢6öç7B×W6–2Ò6VÆV7FVD×W6–57VÖÖ'’‚“°¢6öç7B×7–æ2Ò6VÆV7FVD×7–æ2‚“°¢6öç7B6÷W&6T÷F–öç2Ò°¢âââ‡V•7FFRçV–6µG&6´–G2æÆVæwF‚ò¶Æ÷F–öâfÇVSÒ'V–6²"G·V•7FFRçÆ–Æ—7D–Bò""¢'6VÆV7FVB'ÓåV–6²×W6–2+rG·V•7FFRçV–6µG&6´–G2æÆVæwF‡ÒG&6·3Âö÷F–öãæÒ¢µÒ’À¢ââçÆ–Æ—7D66†RæÖ‚‡Æ–Æ—7B’ÓâÆ÷F–öâfÇVSÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò"G·V•7FFRçÆ–Æ—7D–BÓÓÒÆ–Æ—7Bæ–Bò'6VÆV7FVB"¢"'ÓâG¶W66T‡FÖÂ‡Æ–Æ—7BææÖR—Ò+rG·Æ–Æ—7Bæ—FV×2æÆVæwF‡ÒG&6·3Âö÷F–öãæ’À¢Òæ¦ö–â‚""“°¢6öç7B×W6–4f÷&ÒÒ ¢Æf÷&Ò–CÒ'6W76–öâÖf÷&Ò"6Æ73Ò'6W76–öâÖf÷&Ò×W6–2×6W76–öâÖf÷&Ò#à¢ÆÆ&VÃãÇ7ãä×W6–26÷W&6SÂ÷7ããÇ6VÆV7BæÖSÒ&×W6–56÷W&6R"G¶Æö6¶VBò&F—6&ÆVB"¢"'Ò&WV—&VCâG·6÷W&6T÷F–öç2ÇÂsÆ÷F–öâfÇVSÒ"#äæò×W6–26fVCÂö÷F–öãâwÓÂ÷6VÆV7CãÂöÆ&VÃà¢ÆF—b6Æ73Ò&×W6–2×6÷W&6R×7VÖÖ'’#ãÇ7G&öæsâG¶W66T‡FÖÂ†×W6–2æÆ&VÂ—ÓÂ÷7G&öæsãÇ7ãâG¶×W6–2æ6÷VçGÒG&6²G¶×W6–2æ6÷VçBÓÓÒò""¢'2'Ò+rG¶f÷&ÖDGW&F–öâ†×W6–2æGW&F–öä×2—ÓÂ÷7ããÂöF—cà¢Æ6Æ73Ò&ÖævRÖ×W6–2ÖÆ–æ²"‡&VcÒ"6×W6–2#äÖævR×W6–3Âöà¢Æ'WGFöâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ'7V&Ö—B"G¶Æö6¶VBÇÂ×W6–2æ6÷VçBÓÓÒò&F—6&ÆVB"¢"'Óå7F'B×W6–26W76–öãÂö'WGFöãà¢Âöf÷&Óæ°¢6öç7B×7–æ4÷F–öç2ÒG&6´66†Ræf–ÇFW"‚‡G&6²’Óâ×7–æ466†Rç6öÖR‚†GF6†ÖVçB’ÓâGF6†ÖVçBæ–BÓÓÒG&6²æ×7–æ4GF6†ÖVçD–B’¢æÖ‚‡G&6²’ÓâÆ÷F–öâfÇVSÒ"G¶W66T‡FÖÂ‡G&6²æ–B—Ò"G·V•7FFRæ×7–æ5G&6´–BÓÓÒG&6²æ–Bò'6VÆV7FVB"¢"'ÓâG¶W66T‡FÖÂ‡G&6²æF—7Æ”æÖR—ÓÂö÷F–öãæ’æ¦ö–â‚""“°¢6öç7B×7–æ4f÷&ÒÒ ¢Æf÷&Ò–CÒ'6W76–öâÖf÷&Ò"6Æ73Ò'6W76–öâÖf÷&Ò×W6–2×6W76–öâÖf÷&Ò#à¢ÆÆ&VÃãÇ7ãåfÆ–FFVBF–ÖVÆ–æSÂ÷7ããÇ6VÆV7BæÖSÒ&×7–æ5G&6²"G¶Æö6¶VBò&F—6&ÆVB"¢"'Ò&WV—&VCâG¶×7–æ4÷F–öç2ÇÂsÆ÷F–öâfÇVSÒ"#äæòfÆ–FFVBÕ5”ä2F–ÖVÆ–æSÂö÷F–öãâwÓÂ÷6VÆV7CãÂöÆ&VÃà¢ÆÆ&VÃãÇ7ãå&ö&÷BÆVB‡2“Â÷7ããÆ–çWBæÖSÒ'&ö&÷DÆVB"G—SÒ&çVÖ&W""Ö–ãÒ#"ÖƒÒ#R"7FWÒ#ã"fÇVSÒ"G·V•7FFRç&ö&÷DÆVE6V6öæG7Ò"G¶Æö6¶VBò&F—6&ÆVB"¢"'Ò&WV—&VCãÂöÆ&VÃà¢ÆF—b6Æ73Ò&×W6–2×6÷W&6R×7VÖÖ'’#ãÇ7G&öæsâG¶W66T‡FÖÂ†×7–æ2çG&6³òæF—7Æ”æÖRóò$æòF–ÖVÆ–æR6VÆV7FVB"—ÓÂ÷7G&öæsãÇ7ãâG¶×7–æ2æGF6†ÖVçBòG¶×7–æ2æGF6†ÖVçBçfÆ–FF–öå&V6V—Bç7VÖÖ'’æ7VW7Ò7VW2+rG¶f÷&ÖDGW&F–öâ†×7–æ2æGF6†ÖVçBçfÆ–FF–öå&V6V—Bç7VÖÖ'’æGW&F–öä×2—Ö¢$GF6‚âÕ5”ä2f–ÆRf—'7B'ÓÂ÷7ããÂöF—cà¢Æ6Æ73Ò&ÖævRÖ×W6–2ÖÆ–æ²"‡&VcÒ"6×7–æ2#äÖævRÕ5”ä3Âöà¢Æ'WGFöâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ'7V&Ö—B"G¶Æö6¶VBÇÂ×7–æ2æGF6†ÖVçBò&F—6&ÆVB"¢"'Óå7F'BÕ5”ä26–×VÆF–öãÂö'WGFöãà¢Âöf÷&Óæ°¢6öç7B7FæF&Df÷&ÒÒ ¢Æf÷&Ò–CÒ'6W76–öâÖf÷&Ò"6Æ73Ò'6W76–öâÖf÷&Ò#à¢ÆÆ&VÃãÇ7ãâG¶Ö÷VçDÆ&VÇÓÂ÷7ããÆ–çWBæÖSÒ&Ö÷VçB"G—SÒ&çVÖ&W""Ö–ãÒ#"ÖƒÒ#3c"fÇVSÒ"G·V•7FFRæÖ÷VçGÒ"G¶Æö6¶VBò&F—6&ÆVB"¢"'Ò&WV—&VCãÂöÆ&VÃà¢ÆÆ&VÃãÇ7ãåW6R‡2“Â÷7ããÆ–çWBæÖSÒ'W6R"G—SÒ&çVÖ&W""Ö–ãÒ#"ÖƒÒ#3"7FWÒ#"fÇVSÒ"G·V•7FFRçW6U6V6öæG7Ò"G¶Æö6¶VBò&F—6&ÆVB"¢"'Ò&WV—&VCãÂöÆ&VÃà¢ÆÆ&VÃãÇ7ãä6÷VçFF÷vãÂ÷7ããÇ6VÆV7BæÖSÒ&6÷VçFF÷vâ"G¶Æö6¶VBò&F—6&ÆVB"¢"'ÓãÆ÷F–öâfÇVSÒ#2"G·V•7FFRæ6÷VçFF÷vå6V6öæG2ÓÓÒ2ò'6VÆV7FVB"¢"'Óã26V6öæG3Âö÷F–öããÆ÷F–öâfÇVSÒ#R"G·V•7FFRæ6÷VçFF÷vå6V6öæG2ÓÓÒRò'6VÆV7FVB"¢"'ÓãR6V6öæG3Âö÷F–öããÆ÷F–öâfÇVSÒ#"G·V•7FFRæ6÷VçFF÷vå6V6öæG2ÓÓÒò'6VÆV7FVB"¢"'ÓäæöæSÂö÷F–öããÂ÷6VÆV7CãÂöÆ&VÃà¢Æ'WGFöâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ'7V&Ö—B"G¶Æö6¶VBò&F—6&ÆVB"¢"'Óå7F'BG'’'VãÂö'WGFöãà¢Âöf÷&Óæ°¢&WGW&â ¢Ç6V7F–öâ6Æ73Ò&Ö6&B6WGWÖ6&B"&–ÖÆ&VÆÆVF'“Ò'6WGW×F—FÆR#à¢ÆF—b6Æ73Ò'6V7F–öâÖ†VF–ær#ãÆF—cãÇ7â6Æ73Ò&W–V'&÷r#åT”4²E$”ä”äsÂ÷7ããÆƒ"–CÒ'6WGW×F—FÆR#å6W76–öâ6WGWÂöƒ#ãÂöF—cãÇ7â6Æ73Ò'6–×VÆF–öâ×–ÆÂ#äG'’'VãÂ÷7ããÂöF—cà ¢ÆF—b6Æ73Ò&6öçG&öÂÖw&÷W#à¢Ç7â6Æ73Ò&6öçG&öÂÖÆ&VÂ#äF–ff–7VÇG’ÆWfVÃÂ÷7ãà¢ÆF—b6Æ73Ò&ÆWfVÂ×6VÆV7F÷""&öÆSÒ&w&÷W"&–ÖÆ&VÃÒ$F–ff–7VÇG’ÆWfVÂ#à¢Gµ³Â"Â5ÒæÖ‚†ÆWfVÂ’ÓâÆ'WGFöâG—SÒ&'WGFöâ"FFÖÆWfVÃÒ"G¶ÆWfVÇÒ"6Æ73Ò&ÆWfVÂÖ'WGFöâG·V•7FFRæÆWfVÂÓÓÒÆWfVÂò'6VÆV7FVB"¢"'Ò"&–×&W76VCÒ"G·V•7FFRæÆWfVÂÓÓÒÆWfVÇÒ"G¶Æö6¶VBò&F—6&ÆVB"¢"'ÓâG¶ÆWfVÇÓÂö'WGFöãæ’æ¦ö–â‚""—Ð¢ÂöF—cà¢ÂöF—cà ¢ÆF—b6Æ73Ò&ÖöFR×6VÆV7F÷""&öÆSÒ&w&÷W"&–ÖÆ&VÃÒ%G&–æ–ærÖöFR#à¢G¶ÖöFT'WGFöâ‚'&W2"Â%&W2"ÂG'VRÂÆö6¶VB—Ð¢G¶ÖöFT'WGFöâ‚'F–ÖR"Â%F–ÖR"ÂG'VRÂÆö6¶VB—Ð¢G¶ÖöFT'WGFöâ‚&×W6–2"Â$×W6–2"ÂG'VRÂÆö6¶VB—Ð¢G¶ÖöFT'WGFöâ‚&×7–æ2"Â$Õ5”ä2"ÂG'VRÂÆö6¶VB—Ð¢ÂöF—cà ¢G·V•7FFRæÖöFRÓÓÒ&×W6–2"ò×W6–4f÷&Ò¢V•7FFRæÖöFRÓÓÒ&×7–æ2"ò×7–æ4f÷&Ò¢7FæF&Df÷&×Ð¢Ç6Æ73Ò&†VÇW"×FW‡B#âG·V•7FFRæÖöFRÓÓÒ&×7–æ2"ò$Õ5”ä26öçG&öÇ2F†RG&–ÆÂF–ÖVÆ–æRg&öÒfÆ–FFVB7VW2â"¢6VÆV7FVC¢Ç7G&öæsâG¶W66T‡FÖÂ‡6VÆV7FVDG&–ÆÃòææÖRóò$6†ö÷6RG&–ÆÂ"—ÓÂ÷7G&öæsââG·V•7FFRæÖöFRÓÓÒ&×W6–2"ò$VF–ò7F—2öâF†—2FWf–6RæB6ö×ÆWFW2WFöÖF–6ÆÇ’â"¢%W6W2F†R6æöæ–6ÂÆ–fV7–6ÆRâ'ÖÒ6VæG2æò&ö&÷B6öÖÖæG2æB&V6÷&G2¦W&òF—7F6†VB&ÆÇ2ãÂ÷à¢G²‡V•7FFRæÖöFRÓÓÒ&×7–æ2"ò×7–æ4ÖW76vR¢×W6–4ÖW76vR’òÇ6Æ73Ò&7W7FöÒÖÖW76vR"&öÆSÒ'7FGW2#âG¶W66T‡FÖÂ‡V•7FFRæÖöFRÓÓÒ&×7–æ2"ò×7–æ4ÖW76vR¢×W6–4ÖW76vR—ÓÂ÷æ¢"'Ð¢Â÷6V7F–öãæ°§Ð ¦gVæ7F–öâG&–ÆÄ6&B†G&–ÆÂÂÆö6¶VB’°¢6öç7B7FW2ÒG&–ÆÂç&öw&×5·V•7FFRæÆWfVÅÒç7FW2æf–ÇFW"‚‡7FW’Óâ7FWæVæ&ÆVB“°¢6öç7BF÷G2Ò7FW2ç6Æ–6RƒÂ‚’æÖ‚‡7FW’Óâ°¢6öç7B&ÆÂÒ7FWçf&–çG5³Ó°¢6öç7B¶–æBÒ&ÆÂæ†V–v‡BÂò'6W'fR"¢&ÆÂçG—RÓÓÒ&&6²"ò&&6²"¢'F÷#°¢&WGW&âÆ’6Æ73Ò&&ÆÂÖF÷BG¶¶–æGÒ#ãÂö“æ°¢Ò’æ¦ö–â‚""“°¢6öç7B6VÆV7FVBÒV•7FFRæG&–ÆÄ–BÓÓÒG&–ÆÂæ–C°¢&WGW&âÆ'WGFöâ6Æ73Ò&G&–ÆÂ×F–ÆRG·6VÆV7FVBò'6VÆV7FVB"¢"'Ò"G—SÒ&'WGFöâ"FFÖG&–ÆÂÖ–CÒ"G¶W66T‡FÖÂ†G&–ÆÂæ–B—Ò"&–×&W76VCÒ"G·6VÆV7FVGÒ"G¶Æö6¶VBò&F—6&ÆVB"¢"'ÓãÇ7ããÇ7G&öæsâG¶W66T‡FÖÂ†G&–ÆÂææÖR—ÓÂ÷7G&öæsâG·&æFöÔ÷&FW$f÷"†G&–ÆÂ’òsÇ6ÖÆÂ6Æ73Ò'&æFöÒ×Fr#å&æFöÓÂ÷6ÖÆÃâr¢"'ÓÂ÷7ããÇ7â6Æ73Ò&&ÆÂÖFWF–Â#ãÇ7â6Æ73Ò&&ÆÂÖF÷G2#âG¶F÷G7ÓÂ÷7ãâG·7FW2æÆVæwF‡Ò&ÆÂG·7FW2æÆVæwF‚ÓÓÒò""¢'2'ÓÂ÷7ããÂö'WGFöãæ°§Ð ¦gVæ7F–öâG&–ÆÄÆ–'&'’‡6W76–öâ’°¢6öç7BÆö6¶VBÒ6W76–öâç7FFRÓÒ4U54”ôåõ5DDU2ä”DÄS°¢6öç7BG&–ÆÇ2ÒvWD'V–ÇF–äG&–ÆÇ2‡V•7FFRæ6FVv÷'’“°¢6öç7B6VÆV7FVBÒvWD'V–ÇF–äG&–ÆÂ‡V•7FFRæG&–ÆÄ–B“°¢6öç7B7F—fU7FW2Ò6VÆV7FVCòç&öw&×3òå·V•7FFRæÆWfVÅÓòç7FW3òæf–ÇFW"‚‡7FW’Óâ7FWæVæ&ÆVB’æÆVæwF‚óò°¢6öç7B&æFöÒÒ&æFöÔ÷&FW$f÷"‡6VÆV7FVB“°¢&WGW&â ¢Ç6V7F–öâ–CÒ&G&–ÆÂ×æVÂÖ'V–ÇF–â"6Æ73Ò&Ö6&BÆ–'&'’Ö6&B"&öÆSÒ'F'æVÂ"F&–æFWƒÒ#"&–ÖÆ&VÆÆVF'“Ò&G&–ÆÂ×F"Ö'V–ÇF–â"&–Ö†–FFVãÒ"G·V•7FFRæG&–ÆÅF"ÓÒ&'V–ÇF–â'Ò"G·V•7FFRæG&–ÆÅF"ÓÒ&'V–ÇF–â"ò&†–FFVâ"¢"'Óà¢ÆF—b6Æ73Ò'6V7F–öâÖ†VF–ær#ãÆF—cãÆƒ"–CÒ&Æ–'&'’×F—FÆR#ä'V–ÇBÖ–âG&–ÆÇ3Âöƒ#ãÇâG´%T”ÅD”åôE$”ÄÅ2æÆVæwF‡ÒG&–ÆÇ2+rÆWfVÂG·V•7FFRæÆWfVÇÓÂ÷ãÂöF—cãÆF—b6Æ73Ò&Æ–'&'’Ö†VF–ærÖ7F–öç2#ãÆ'WGFöâ6Æ73Ò'6ÖÆÂÖ'WGFöâG·&æFöÒò&7F—fR"¢"'Ò"G—SÒ&'WGFöâ"FFÖ'V–ÇF–âÖ÷&FW"G¶Æö6¶VBÇÂ6VÆV7FVBÇÂ7F—fU7FW2Â"ò&F—6&ÆVB"¢"'ÓâG·&æFöÒò%&æFöÒ÷&FW""¢%6WVVçF–Â'ÓÂö'WGFöããÆ'WGFöâ6Æ73Ò'6ÖÆÂÖ'WGFöâ"G—SÒ&'WGFöâ"FFÖ'V–ÇF–â×&W6WBG¶Æö6¶VBÇÂö&¦V7Bæ¶W—2†'V–ÇF–å&VfW&Væ6W2’æÆVæwF‚ò&F—6&ÆVB"¢"'Óå&W6WB6WGF–æw3Âö'WGFöããÂöF—cãÂöF—cà¢G¶'V–ÇF–äÖW76vRòÇ6Æ73Ò&†VÇW"×FW‡B"&öÆSÒ'7FGW2#âG¶W66T‡FÖÂ†'V–ÇF–äÖW76vR—ÓÂ÷æ¢"'Ð¢ÆF—b6Æ73Ò'–ÆÂ×&÷r"&öÆSÒ&w&÷W"&–ÖÆ&VÃÒ$G&–ÆÂ6FVv÷'’#âG´%T”ÅD”åôu$õU2æÖ‚‡²–BÂÆ&VÂÂ6÷VçBÒ’ÓâÆ'WGFöâG—SÒ&'WGFöâ"FFÖ6FVv÷'“Ò"G¶–GÒ"6Æ73Ò'–ÆÂG·V•7FFRæ6FVv÷'’ÓÓÒ–Bò'6VÆV7FVB"¢"'Ò"&–×&W76VCÒ"G·V•7FFRæ6FVv÷'’ÓÓÒ–GÒ"G¶Æö6¶VBò&F—6&ÆVB"¢"'ÓâG¶Æ&VÇÒÇ6ÖÆÃâG¶6÷VçGÓÂ÷6ÖÆÃãÂö'WGFöãæ’æ¦ö–â‚""—ÓÂöF—cà¢ÆF—b6Æ73Ò&G&–ÆÂÖw&–B#âG¶G&–ÆÇ2æÖ‚†G&–ÆÂ’ÓâG&–ÆÄ6&B†G&–ÆÂÂÆö6¶VB’’æ¦ö–â‚""—ÓÂöF—cà¢Â÷6V7F–öãæ°§Ð ¦gVæ7F–öâ7W7FöÔG&–ÆÄ6&B†G&–ÆÂÂÆö6¶VBÂ–æFW‚Âw&÷WÆVæwF‚’°¢6öç7B&öw&ÒÒ&öw&Ôf÷$G&–ÆÂ†G&–ÆÂ“°¢6öç7B7FW2Ò&öw&Óòç7FW3òæf–ÇFW"‚‡7FW’Óâ7FWæVæ&ÆVB’óòµÓ°¢6öç7B6VÆV7FVBÒV•7FFRæG&–ÆÄ–BÓÓÒG&–ÆÂæ–C°¢&WGW&â ¢Æ'F–6ÆR6Æ73Ò&7W7FöÒÖG&–ÆÂÖ6&BG·6VÆV7FVBò'6VÆV7FVB"¢"'Ò#à¢Æ'WGFöâ6Æ73Ò&7W7FöÒÖG&–ÆÂ×6VÆV7B"G—SÒ&'WGFöâ"FFÖ7W7FöÒ×6VÆV7CÒ"G¶W66T‡FÖÂ†G&–ÆÂæ–B—Ò"&–×&W76VCÒ"G·6VÆV7FVGÒ"G¶Æö6¶VBò&F—6&ÆVB"¢"'Óà¢Ç7G&öæsâG¶W66T‡FÖÂ†G&–ÆÂææÖR—ÓÂ÷7G&öæsà¢Ç7ãâG·7FW2æÆVæwF‡Ò&ÆÂG·7FW2æÆVæwF‚ÓÓÒò""¢'2'Ò+rG¶W66T‡FÖÂ†G&–ÆÂç&ö&÷E÷6—F–öâ—ÓÂ÷7ãà¢Âö'WGFöãà¢ÆF—b6Æ73Ò&7W7FöÒÖG&–ÆÂÖ7F–öç2#à¢G·V•7FFRæ7W7FöÔ'&ævRòÆ'WGFöâG—SÒ&'WGFöâ"FFÖ7W7FöÒÖÖ÷fSÒ"G¶W66T‡FÖÂ†G&–ÆÂæ–B—Ò"FFÖF—&V7F–öãÒ"Ó"&–ÖÆ&VÃÒ$Ö÷fRG¶W66T‡FÖÂ†G&–ÆÂææÖR—ÒW"G¶Æö6¶VBÇÂ–æFW‚ÓÓÒò&F—6&ÆVB"¢"'Óî(iÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"FFÖ7W7FöÒÖÖ÷fSÒ"G¶W66T‡FÖÂ†G&–ÆÂæ–B—Ò"FFÖF—&V7F–öãÒ#"&–ÖÆ&VÃÒ$Ö÷fRG¶W66T‡FÖÂ†G&–ÆÂææÖR—ÒF÷vâ"G¶Æö6¶VBÇÂ–æFW‚ÓÓÒw&÷WÆVæwF‚Òò&F—6&ÆVB"¢"'Óî(i3Âö'WGFöãæ¢"'Ð¢Æ'WGFöâ6Æ73Ò&ÖævRÖ'WGFöâ"G—SÒ&'WGFöâ"FFÖ7W7FöÒÖVF—CÒ"G¶W66T‡FÖÂ†G&–ÆÂæ–B—Ò"&–ÖÆ&VÃÒ$ÖævRG¶W66T‡FÖÂ†G&–ÆÂææÖR—Ò"G¶Æö6¶VBò&F—6&ÆVB"¢"'Óî)ÈãÂö'WGFöãà¢ÂöF—cà¢Âö'F–6ÆSæ°§Ð ¦gVæ7F–öâ7W7FöÔG&–ÆÇ2‡6W76–öâ’°¢6öç7BÆö6¶VBÒ6W76–öâç7FFRÓÒ4U54”ôåõ5DDU2ä”DÄS°¢6öç7Bw&÷WG&–ÆÇ2Ò7W7FöÔ66†Ræf–ÇFW"‚†G&–ÆÂ’ÓâG&–ÆÂæw&÷WÓÓÒV•7FFRæw&÷W“°¢6öç7B6÷VçG2Òö&¦V7Bæg&öÔVçG&–W2„5U5DôÕôu$õU2æÖ‚†w&÷W’Óâ¶w&÷WÂ7W7FöÔ66†Ræf–ÇFW"‚†G&–ÆÂ’ÓâG&–ÆÂæw&÷WÓÓÒw&÷W’æÆVæwF…Ò’“°¢&WGW&â ¢Ç6V7F–öâ–CÒ&G&–ÆÂ×æVÂÖ7W7FöÒ"6Æ73Ò&Ö6&BÆ–'&'’Ö6&B"&öÆSÒ'F'æVÂ"F&–æFWƒÒ#"&–ÖÆ&VÆÆVF'“Ò&G&–ÆÂ×F"Ö7W7FöÒ"&–Ö†–FFVãÒ"G·V•7FFRæG&–ÆÅF"ÓÒ&7W7FöÒ'Ò"G·V•7FFRæG&–ÆÅF"ÓÒ&7W7FöÒ"ò&†–FFVâ"¢"'Óà¢ÆF—b6Æ73Ò'6V7F–öâÖ†VF–ær#ãÆF—cãÆƒ"–CÒ&7W7FöÒ×F—FÆR#ä×’G&–ÆÇ3Âöƒ#ãÇâG¶7W7FöÔ66†RæÆVæwF‡ÒG&–ÆÂG¶7W7FöÔ66†RæÆVæwF‚ÓÓÒò""¢'2'ÓÂ÷ãÂöF—cãÂöF—cà¢ÆF—b6Æ73Ò&7W7FöÒ×FööÆ&"#à¢Æ'WGFöâG—SÒ&'WGFöâ"FFÖ7W7FöÒÖ'&ævR6Æ73Ò'6ÖÆÂÖ'WGFöâG·V•7FFRæ7W7FöÔ'&ævRò&7F—fR"¢"'Ò"G¶Æö6¶VBÇÂw&÷WG&–ÆÇ2æÆVæwF‚Â"ò&F—6&ÆVB"¢"'ÓâG·V•7FFRæ7W7FöÔ'&ævRò$FöæR"¢$'&ævR'ÓÂö'WGFöãà¢Æ'WGFöâ–CÒ&7W7FöÒÖW‡÷'BÖÆÂ"G—SÒ&'WGFöâ"6Æ73Ò'6ÖÆÂÖ'WGFöâ"G¶Æö6¶VBÇÂ7W7FöÔ66†RæÆVæwF‚ÓÓÒò&F—6&ÆVB"¢"'ÓäW‡÷'BÆÃÂö'WGFöãà¢ÆÆ&VÂ6Æ73Ò'6ÖÆÂÖ'WGFöâ–×÷'BÖ'WGFöâG¶Æö6¶VBò&F—6&ÆVB"¢"'Ò#ä–×÷'CÆ–çWB–CÒ&7W7FöÒÖ–×÷'B"G—SÒ&f–ÆR"66WCÒ&Æ–6F–öâö§6öâÂæ§6öâ"G¶Æö6¶VBò&F—6&ÆVB"¢"'ÓãÂöÆ&VÃà¢ÂöF—cà¢ÆF—b6Æ73Ò'–ÆÂ×&÷r"&öÆSÒ&w&÷W"&–ÖÆ&VÃÒ$7W7FöÒG&–ÆÂw&÷W#âG´5U5DôÕôu$õU2æÖ‚†w&÷W’ÓâÆ'WGFöâG—SÒ&'WGFöâ"FFÖw&÷WÒ"G¶w&÷WÒ"6Æ73Ò'–ÆÂG·V•7FFRæw&÷WÓÓÒw&÷Wò'6VÆV7FVB"¢"'Ò"&–×&W76VCÒ"G·V•7FFRæw&÷WÓÓÒw&÷WÒ"G¶Æö6¶VBò&F—6&ÆVB"¢"'Óäw&÷WG¶w&÷WÒÇ6ÖÆÃâG¶6÷VçG5¶w&÷W×ÓÂ÷6ÖÆÃãÂö'WGFöãæ’æ¦ö–â‚""—ÓÂöF—cà¢G¶7W7FöÔÖW76vRòÇ6Æ73Ò&7W7FöÒÖÖW76vR"&öÆSÒ'7FGW2#âG¶W66T‡FÖÂ†7W7FöÔÖW76vR—ÓÂ÷æ¢"'Ð¢ÆF—b6Æ73Ò&7W7FöÒÖG&–ÆÂÖw&–B#âG¶w&÷WG&–ÆÇ2æÖ‚†G&–ÆÂÂ–æFW‚’Óâ7W7FöÔG&–ÆÄ6&B†G&–ÆÂÂÆö6¶VBÂ–æFW‚Âw&÷WG&–ÆÇ2æÆVæwF‚’’æ¦ö–â‚""—ÓÂöF—cà¢G¶w&÷WG&–ÆÇ2æÆVæwF‚ÓÓÒòÆF—b6Æ73Ò&V×G’ÖÆ–'&'’#ãÇ7G&öæsäw&÷WG·V•7FFRæw&÷WÒ—2V×G“Â÷7G&öæsãÇ7ãä7&VFRG&–ÆÂ†W&R÷"–×÷'Bæ÷f&–ÖRG&–ÆÂf–ÆRãÂ÷7ããÂöF—cæ¢"'Ð¢Æ'WGFöâ6Æ73Ò&æWrÖG&–ÆÂ"G—SÒ&'WGFöâ"FFÖ7W7FöÒÖæWrG¶Æö6¶VBò&F—6&ÆVB"¢"'ÓãÇ7ãîûÈ³Â÷7ããÇ7G&öæsäæWrG&–ÆÃÂ÷7G&öæsãÇ6ÖÆÃäw&÷WG·V•7FFRæw&÷WÓÂ÷6ÖÆÃãÂö'WGFöãà¢Â÷6V7F–öãæ°§Ð ¦gVæ7F–öâG&–ÆÄÆ–'&'•F'2‚’°¢6öç7B6VÆV7FVD'V–ÇF–âÒV•7FFRæG&–ÆÅF"ÓÓÒ&'V–ÇF–â#°¢&WGW&âÆF—b6Æ73Ò&G&–ÆÂÖÆ–'&'’×F'2"&öÆSÒ'F&Æ—7B"&–ÖÆ&VÃÒ$G&–ÆÂÆ–'&'’#à¢Æ'WGFöâ–CÒ&G&–ÆÂ×F"Ö'V–ÇF–â"G—SÒ&'WGFöâ"&öÆSÒ'F""&–Ö6öçG&öÇ3Ò&G&–ÆÂ×æVÂÖ'V–ÇF–â"&–×6VÆV7FVCÒ"G·6VÆV7FVD'V–ÇF–çÒ"F&–æFWƒÒ"G·6VÆV7FVD'V–ÇF–âò#"¢"Ó'Ò"FFÖG&–ÆÂ×F#Ò&'V–ÇF–â#ä'V–ÇBÖ–âG&–ÆÇ2Ç6ÖÆÃâG´%T”ÅD”åôE$”ÄÅ2æÆVæwF‡ÓÂ÷6ÖÆÃãÂö'WGFöãà¢Æ'WGFöâ–CÒ&G&–ÆÂ×F"Ö7W7FöÒ"G—SÒ&'WGFöâ"&öÆSÒ'F""&–Ö6öçG&öÇ3Ò&G&–ÆÂ×æVÂÖ7W7FöÒ"&–×6VÆV7FVCÒ"G²6VÆV7FVD'V–ÇF–çÒ"F&–æFWƒÒ"G·6VÆV7FVD'V–ÇF–âò"Ó"¢#'Ò"FFÖG&–ÆÂ×F#Ò&7W7FöÒ#ä×’G&–ÆÇ2Ç6ÖÆÃâG¶7W7FöÔ66†RæÆVæwF‡ÓÂ÷6ÖÆÃãÂö'WGFöãà¢ÂöF—cæ°§Ð ¦gVæ7F–öâÆ–Æ—7D6&B‡Æ–Æ—7B’°¢6öç7B÷&FW&VBÒ²ââçÆ–Æ—7Bæ—FV×5Òç6÷'B‚†Â"’Óâæ÷&FW"Ò"æ÷&FW"“°¢6öç7BGW&F–öä×2Ò÷&FW&VBç&VGV6R‚‡F÷FÂÂ—FVÒ’ÓâF÷FÂ²‡G&6´66†Ræf–æB‚‡G&6²’ÓâG&6²æ–BÓÓÒ—FVÒçG&6´–B“òæGW&F–öä×2óò’Â“°¢6öç7B—FV×2Ò÷&FW&VBæÖ‚†—FVÒÂ–æFW‚’Óâ°¢6öç7BG&6²ÒG&6´66†Ræf–æB‚†VçG'’’ÓâVçG'’æ–BÓÓÒ—FVÒçG&6´–B“°¢&WGW&âÆÆ“ãÆF—cãÇ7G&öæsâG¶W66T‡FÖÂ‡G&6³òæF—7Æ”æÖRóò$Ö—76–ærG&6²"—ÓÂ÷7G&öæsãÇ7ãâG·G&6²òf÷&ÖDGW&F–öâ‡G&6²æGW&F–öä×2’¢%Væf–Æ&ÆR'ÓÂ÷7ããÂöF—cãÆF—b6Æ73Ò&×W6–2×&÷rÖ7F–öç2#ãÆ'WGFöâG—SÒ&'WGFöâ"FF×Æ–Æ—7BÖÖ÷fSÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò"FFÖ–æFWƒÒ"G¶–æFW‡Ò"FFÖF—&V7F–öãÒ"Ó"G¶–æFW‚ÓÓÒò&F—6&ÆVB"¢"'Ò&–ÖÆ&VÃÒ$Ö÷fRG&6²W#î(iÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"FF×Æ–Æ—7BÖÖ÷fSÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò"FFÖ–æFWƒÒ"G¶–æFW‡Ò"FFÖF—&V7F–öãÒ#"G¶–æFW‚ÓÓÒ÷&FW&VBæÆVæwF‚Òò&F—6&ÆVB"¢"'Ò&–ÖÆ&VÃÒ$Ö÷fRG&6²F÷vâ#î(i3Âö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"FF×Æ–Æ—7B×&VÖ÷fSÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò"FFÖ–æFWƒÒ"G¶–æFW‡Ò"&–ÖÆ&VÃÒ%&VÖ÷fRG&6²#ì9sÂö'WGFöããÂöF—cãÂöÆ“æ°¢Ò’æ¦ö–â‚""“°¢&WGW&âÆ'F–6ÆR6Æ73Ò&Ö6&BÆ–Æ—7BÖ6&B#à¢Æf÷&ÒFF×Æ–Æ—7B×&VæÖSÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò"6Æ73Ò'Æ–Æ—7BÖ†VF–ær#ãÆÆ&VÃãÇ7ãåÆ–Æ—7BæÖSÂ÷7ããÆ–çWBæÖSÒ&æÖR"Ö†ÆVæwFƒÒ#ƒ"fÇVSÒ"G¶W66T‡FÖÂ‡Æ–Æ—7BææÖR—Ò"&WV—&VCãÂöÆ&VÃãÆ'WGFöâG—SÒ'7V&Ö—B#å6fRæÖSÂö'WGFöããÂöf÷&Óà¢ÇâG¶÷&FW&VBæÆVæwF‡ÒG&6²G¶÷&FW&VBæÆVæwF‚ÓÓÒò""¢'2'Ò+rG¶f÷&ÖDGW&F–öâ†GW&F–öä×2—ÓÂ÷à¢ÆöÂ6Æ73Ò'Æ–Æ—7BÖ—FV×2#âG¶—FV×7ÓÂööÃà¢ÆF—b6Æ73Ò'Æ–Æ—7BÖFB#ãÇ6VÆV7BFF×Æ–Æ—7BÖFB×6VÆV7CÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò"&–ÖÆ&VÃÒ%G&6²FòFB#âG·G&6´66†RæÖ‚‡G&6²’ÓâÆ÷F–öâfÇVSÒ"G¶W66T‡FÖÂ‡G&6²æ–B—Ò#âG¶W66T‡FÖÂ‡G&6²æF—7Æ”æÖR—ÓÂö÷F–öãæ’æ¦ö–â‚""—ÓÂ÷6VÆV7CãÆ'WGFöâG—SÒ&'WGFöâ"FF×Æ–Æ—7BÖFCÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò"G·G&6´66†RæÆVæwF‚ò""¢&F—6&ÆVB'ÓäFBG&6³Âö'WGFöããÂöF—cà¢ÆF—b6Æ73Ò'Æ–Æ—7BÖ7F–öç2#ãÆ'WGFöâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ&'WGFöâ"FF×Æ–Æ—7B×W6SÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò#åW6R–âG&–æ–æsÂö'WGFöããÆ'WGFöâ6Æ73Ò&FævW"Ö'WGFöâ"G—SÒ&'WGFöâ"FF×Æ–Æ—7BÖFVÆWFSÒ"G¶W66T‡FÖÂ‡Æ–Æ—7Bæ–B—Ò#äFVÆWFRÆ–Æ—7CÂö'WGFöããÂöF—cà¢Âö'F–6ÆSæ°§Ð ¦7–æ2gVæ7F–öâ×W6–5f–Wr‚’°¢v—B&Vg&W6„×W6–466†R‚“°¢6öç7BG&6µ&÷w2ÒG&6´66†RæÖ‚‡G&6²’ÓâÆ'F–6ÆR6Æ73Ò'G&6²×&÷r#à¢Æ–çWBG—SÒ&6†V6¶&÷‚"FF×V–6²×G&6³Ò"G¶W66T‡FÖÂ‡G&6²æ–B—Ò"&–ÖÆ&VÃÒ%6VÆV7BG¶W66T‡FÖÂ‡G&6²æF—7Æ”æÖR—Òf÷"V–6²×W6–2"G·V•7FFRçV–6µG&6´–G2æ–æ6ÇVFW2‡G&6²æ–B’ò&6†V6¶VB"¢"'Óà¢ÆF—b6Æ73Ò'G&6²Ö6÷’#ãÇ7G&öæsâG¶W66T‡FÖÂ‡G&6²æF—7Æ”æÖR—ÓÂ÷7G&öæsãÇ7ãâG¶f÷&ÖDGW&F–öâ‡G&6²æGW&F–öä×2—Ò+rG¶f÷&ÖD'—FW2‡G&6²æ'—FU6—¦R—Ò+r7F÷&VBÆö6ÆÇ“Â÷7ããÂöF—cà¢Æf÷&ÒFF×G&6²×&VæÖSÒ"G¶W66T‡FÖÂ‡G&6²æ–B—Ò"6Æ73Ò'G&6²×&VæÖR#ãÆ–çWBæÖSÒ&æÖR"fÇVSÒ"G¶W66T‡FÖÂ‡G&6²æF—7Æ”æÖR—Ò"Ö†ÆVæwFƒÒ#ƒ"&–ÖÆ&VÃÒ%&VæÖRG¶W66T‡FÖÂ‡G&6²æF—7Æ”æÖR—Ò#ãÆ'WGFöâG—SÒ'7V&Ö—B#å&VæÖSÂö'WGFöããÂöf÷&Óà¢Æ'WGFöâ6Æ73Ò&FævW"Ö'WGFöâ"G—SÒ&'WGFöâ"FF×G&6²ÖFVÆWFSÒ"G¶W66T‡FÖÂ‡G&6²æ–B—Ò#äFVÆWFSÂö'WGFöãà¢Âö'F–6ÆSæ’æ¦ö–â‚""“°¢&WGW&âÆF—b6Æ73Ò'vRÖ†VF–ær#ãÆ‡&VcÒ"7G&–â"6Æ73Ò&&6²ÖÆ–æ²#î(iG&–æ–æsÂöãÇ7â6Æ73Ò&W–V'&÷r#äÄô4ÂÕU4”3Â÷7ããÆƒä×W6–2Æ–'&'“ÂöƒãÇä–×÷'BVF–òöæ6RÂ'V–ÆBÆ–Æ—7G2Â÷"6VÆV7BfWrG&6·2f÷"V–6²×W6–2âVF–ò&VÖ–ç2–âF†—2'&÷w6W"æB6âÆ’v—F†÷WB–çFW&æWB÷"v’Ôf’ãÂ÷ãÂöF—cà¢G·7F÷&vTæ÷F–6RòÆF—b6Æ73Ò&æ÷F–6R"&öÆSÒ&ÆW'B#âG¶W66T‡FÖÂ‡7F÷&vTæ÷F–6R—ÓÂöF—cæ¢"'Ð¢Ç6V7F–öâ6Æ73Ò&Ö6&B×W6–2Ö–×÷'BÖ6&B#ãÆF—cãÆƒ#åG&6·3Âöƒ#ãÇâG·G&6´66†RæÆVæwF‡Ò7F÷&VB+rGWÆ–6FRf–ÆW2&R6¶—VB'’6öçFVçB–FVçF—G“Â÷ãÂöF—cãÆÆ&VÂ6Æ73Ò'&–Ö'’Ö'WGFöâ×W6–2Ö–×÷'B#ä–×÷'BVF–óÆ–çWB–CÒ&×W6–2Ö–×÷'B"G—SÒ&f–ÆR"66WCÒ&VF–òò¢Âæ×2ÂæÓFÂçvbÂæövrÂæ÷W2ÂæfÆ2Âæ2"×VÇF—ÆSãÂöÆ&VÃãÂ÷6V7F–öãà¢G¶×W6–4ÖW76vRòÇ6Æ73Ò&æ÷F–6R×W6–2Öæ÷F–6R"&öÆSÒ'7FGW2#âG¶W66T‡FÖÂ†×W6–4ÖW76vR—ÓÂ÷æ¢"'Ð¢Ç6V7F–öâ6Æ73Ò&×W6–2×G&6²ÖÆ—7B"&–ÖÆ&VÃÒ%7F÷&VBG&6·2#âG·G&6µ&÷w2ÇÂsÆF—b6Æ73Ò&Ö6&BV×G’ÖÆ–'&'’#ãÇ7G&öæsäæò×W6–27F÷&VB–WCÂ÷7G&öæsãÇ7ãä–×÷'BVF–òf–ÆW2g&öÒF†—2FWf–6Râæ÷f&–ÖR7F÷&W2F†VÒÆö6ÆÇ’æBFöW2æ÷BWÆöBF†VÒãÂ÷7ããÂöF—câwÓÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò&Ö6&BV–6²Ö×W6–2Ö6&B#ãÆF—cãÆƒ#åV–6²×W6–3Âöƒ#ãÇå6VÆV7BG&6·2&÷fRf÷"öæRÖöfbG&–æ–ærVWVRãÂ÷ãÂöF—cãÆF—cãÆ'WGFöâ–CÒ'V–6²Ö×W6–2×W6R"6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ&'WGFöâ"G·V•7FFRçV–6µG&6´–G2æÆVæwF‚ò""¢&F—6&ÆVB'ÓåW6RG·V•7FFRçV–6µG&6´–G2æÆVæwF‡Ò6VÆV7FVCÂö'WGFöããÂöF—cãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò&Ö6&BÆ–Æ—7BÖ7&VFR#ãÆF—cãÆƒ#äæWrÆ–Æ—7CÂöƒ#ãÇä7&VFR&WW6&ÆRÆ–Æ—7Bg&öÒF†RG&6·27W'&VçFÇ’6VÆV7FVBf÷"V–6²×W6–2ãÂ÷ãÂöF—cãÆf÷&Ò–CÒ'Æ–Æ—7BÖ7&VFR#ãÆ–çWBæÖSÒ&æÖR"Ö†ÆVæwFƒÒ#ƒ"Æ6V†öÆFW#Ò%Æ–Æ—7BæÖR"&WV—&VCãÆ'WGFöâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ'7V&Ö—B"G·V•7FFRçV–6µG&6´–G2æÆVæwF‚ò""¢&F—6&ÆVB'Óä7&VFRg&öÒ6VÆV7FVCÂö'WGFöããÂöf÷&ÓãÂ÷6V7F–öãà¢ÆF—b6Æ73Ò'Æ–Æ—7BÖw&–B#âG·Æ–Æ—7D66†RæÖ‡Æ–Æ—7D6&B’æ¦ö–â‚""—ÓÂöF—cæ°§Ð ¦gVæ7F–öâ×7–æ4—77VTÆ—7B‚’°¢–b‚×7–æ4—77VW2æÆVæwF‚’&WGW&â"#°¢&WGW&âÇ6V7F–öâ6Æ73Ò&Ö6&B×7–æ2Ö—77VW2"&–ÖÆ&VÃÒ$Õ5”ä2fÆ–FF–öâ&W7VÇG2#ãÆƒ#åfÆ–FF–öâFWF–Ç3Âöƒ#ãÇVÃâG¶×7–æ4—77VW2æÖ‚†—FVÒ’ÓâÆÆ’6Æ73Ò"G¶—FVÒç6WfW&—G’ÓÓÒ$U%$õ""ò&×7–æ2ÖW'&÷""¢&×7–æ2×v&æ–ær'Ò#ãÇ7G&öæsâG¶W66T‡FÖÂ†—FVÒæ6öFR—ÓÂ÷7G&öæsãÇ7ãâG¶—FVÒæÆ–æRòÆ–æRG¶—FVÒæÆ–æWÒ+r¢"'ÒG¶W66T‡FÖÂ†—FVÒç6V7F–öâóò$Õ5”ä2"—Ò+rG¶W66T‡FÖÂ†—FVÒæÖW76vR—ÓÂ÷7ããÂöÆ“æ’æ¦ö–â‚""—ÓÂ÷VÃãÂ÷6V7F–öãæ°§Ð ¦7–æ2gVæ7F–öâ×7–æ5f–Wr‚’°¢v—B&Vg&W6„×W6–466†R‚“°¢v—B&Vg&W6„×7–æ466†R‚“°¢6öç7BGF6†ÖVçG2Ò×7–æ466†RæÖ‚†GF6†ÖVçB’Óâ°¢6öç7BG&6²ÒG&6´66†Ræf–æB‚†—FVÒ’Óâ—FVÒæ–BÓÓÒGF6†ÖVçBçG&6´–B“°¢6öç7B7VÖÖ'’ÒGF6†ÖVçBçfÆ–FF–öå&V6V—Bç7VÖÖ'“°¢&WGW&âÆ'F–6ÆR6Æ73Ò&Ö6&B×7–æ2ÖGF6†ÖVçBÖ6&B#à¢ÆF—cãÇ7â6Æ73Ò&W–V'&÷r#ådÄ”DDTBcÂ÷7ããÆƒ#âG¶W66T‡FÖÂ‡G&6³òæF—7Æ”æÖRóò$Ö—76–ærVF–ò"—ÓÂöƒ#ãÇâG¶W66T‡FÖÂ†GF6†ÖVçBç6÷W&6Tf–ÆVæÖR—Ò+rG·7VÖÖ'’æ7VW7Ò7VW2+rG¶f÷&ÖDGW&F–öâ‡7VÖÖ'’æGW&F–öä×2—Ò+rG·7VÖÖ'’çv&æ–æw7Òv&æ–ærG·7VÖÖ'’çv&æ–æw2ÓÓÒò""¢'2'ÓÂ÷ãÂöF—cà¢ÆF—b6Æ73Ò&×7–æ2Ö6&BÖ7F–öç2#ãÆ'WGFöâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ&'WGFöâ"FFÖ×7–æ2×W6SÒ"G¶W66T‡FÖÂ‡G&6³òæ–Bóò""—Ò"G·G&6²ò""¢&F—6&ÆVB'ÓåW6R–âG&–æ–æsÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"FFÖ×7–æ2ÖW‡÷'CÒ"G¶W66T‡FÖÂ†GF6†ÖVçBæ–B—Ò#äW‡÷'B6÷W&6SÂö'WGFöããÆ'WGFöâ6Æ73Ò&FævW"Ö'WGFöâ"G—SÒ&'WGFöâ"FFÖ×7–æ2×&VÖ÷fSÒ"G¶W66T‡FÖÂ†GF6†ÖVçBçG&6´–B—Ò#å&VÖ÷fSÂö'WGFöããÂöF—cà¢Âö'F–6ÆSæ°¢Ò’æ¦ö–â‚""“°¢6öç7BG&6´÷F–öç2ÒG&6´66†RæÖ‚‡G&6²’ÓâÆ÷F–öâfÇVSÒ"G¶W66T‡FÖÂ‡G&6²æ–B—Ò#âG¶W66T‡FÖÂ‡G&6²æF—7Æ”æÖR—Ò+rG¶f÷&ÖDGW&F–öâ‡G&6²æGW&F–öä×2—ÓÂö÷F–öãæ’æ¦ö–â‚""“°¢&WGW&âÆF—b6Æ73Ò'vRÖ†VF–ær#ãÆ‡&VcÒ"7G&–â"6Æ73Ò&&6²ÖÆ–æ²#î(iG&–æ–æsÂöãÇ7â6Æ73Ò&W–V'&÷r#äe$õ¤Tâdõ$ÔBcÂ÷7ããÆƒäÕ5”ä2F–ÖVÆ–æW3ÂöƒãÇåfÆ–FFRF–ÖVÆ–æRv–ç7B—G2W†7BÆö6ÂVF–òf–ÆRÂF†Vâ6–×VÆFR7–æ6‡&öæ—¦VB7VW2âæ÷f&–ÖRæWfW"&W—'2f–ÆR6–ÆVçFÇ’æB6VæG2æò&ö&÷B6öÖÖæG2–âF†—2&VÆV6RãÂ÷ãÂöF—cà¢G·7F÷&vTæ÷F–6RòÆF—b6Æ73Ò&æ÷F–6R"&öÆSÒ&ÆW'B#âG¶W66T‡FÖÂ‡7F÷&vTæ÷F–6R—ÓÂöF—cæ¢"'Ð¢Ç6V7F–öâ6Æ73Ò&Ö6&B×7–æ2Ö–×÷'BÖ6&B#ãÆF—cãÆƒ#åfÆ–FFRæBGF6ƒÂöƒ#ãÇåF†R6VÆV7FVBG&6¾(	—24„Ó#Sb–FVçF—G’æBÖV7W&VBGW&F–öâ×W7BÖF6‚F†RÕ5”ä2f–ÆRãÂ÷ãÂöF—cãÆf÷&Ò–CÒ&×7–æ2Ö–×÷'BÖf÷&Ò#ãÆÆ&VÃãÇ7ãäVF–òG&6³Â÷7ããÇ6VÆV7BæÖSÒ'G&6´–B"&WV—&VCâG·G&6´÷F–öç2ÇÂsÆ÷F–öâfÇVSÒ"#ä–×÷'BVF–ò–â×W6–2f—'7CÂö÷F–öãâwÓÂ÷6VÆV7CãÂöÆ&VÃãÆÆ&VÂ6Æ73Ò&f–ÆRÖ'WGFöâ#ä6†ö÷6RÕ5”ä3Æ–çWBæÖSÒ&×7–æ4f–ÆR"G—SÒ&f–ÆR"66WCÒ"æ–æ’Âæ×7–æ2ÇFW‡B÷Æ–â"&WV—&VCãÂöÆ&VÃãÆ'WGFöâ6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ'7V&Ö—B"G·G&6´66†RæÆVæwF‚ò""¢&F—6&ÆVB'ÓåfÆ–FFRæBGF6ƒÂö'WGFöããÂöf÷&ÓãÂ÷6V7F–öãà¢G¶×7–æ4ÖW76vRòÇ6Æ73Ò&æ÷F–6R×W6–2Öæ÷F–6R"&öÆSÒ'7FGW2#âG¶W66T‡FÖÂ†×7–æ4ÖW76vR—ÓÂ÷æ¢"'Ð¢G¶×7–æ4—77VTÆ—7B‚—Ð¢Ç6V7F–öâ6Æ73Ò&×7–æ2ÖÆ—7B"&–ÖÆ&VÃÒ%fÆ–FFVBÕ5”ä2F–ÖVÆ–æW2#âG¶GF6†ÖVçG2ÇÂsÆF—b6Æ73Ò&Ö6&BV×G’ÖÆ–'&'’#ãÇ7G&öæsäæòfÆ–FFVBF–ÖVÆ–æR–WCÂ÷7G&öæsãÇ7ãä–×÷'BVF–ò–â×W6–2ÂF†VâGF6‚—G2ÖF6†–ærÕ5”ä2cf–ÆR†W&RãÂ÷7ããÂöF—câwÓÂ÷6V7F–öãæ°§Ð ¦7–æ2gVæ7F–öâG&–åf–Wr‚’°¢v—B&öÖ—6RæÆÂ…·&Vg&W6„7W7FöÔ66†R‚’Â&Vg&W6„'V–ÇF–å&VfW&Væ6W2‚’Â&Vg&W6„6Æ–'&F–öå&öf–ÆR‚’Â&Vg&W6„×W6–466†R‚•Ò“°¢v—B&Vg&W6„×7–æ466†R‚“°¢6öç7B6W76–öâÒ6öçG&öÆÆW"ç6æ6†÷B‚“°¢&WGW&âÆF—b6Æ73Ò'G&–æ–ær×67&VVâ#âG¶6öææV7F–öä6&B‚—ÒG¶6Æ–'&F–öä6&B‚—ÒG·6WGW6&B‡6W76–öâ—ÒG·fö–6T6öçG&öÄ6&B‡6W76–öâ—ÒG·6W76–öä6öç6öÆR‡6W76–öâ—ÒG¶G&–ÆÄÆ–'&'•F'2‚—ÒG¶G&–ÆÄÆ–'&'’‡6W76–öâ—ÒG¶7W7FöÔG&–ÆÇ2‡6W76–öâ—ÓÂöF—cæ°§Ð ¦7–æ2gVæ7F–öâFFf–Wr‚’°¢v—B&Vg&W6„7W7FöÔ66†R‚“°¢6öç7B&V6÷&G2Ò†v—B7F÷&RævWDÆÂ‚'6W76–öå&V6÷&G2"’’ç6÷'B‚†Â"’Óâ7G&–ær†"ç7F'FVDB’æÆö6ÆT6ö×&R…7G&–ær†ç7F'FVDB’’“°¢6öç7B&÷w2Ò&V6÷&G2æÆVæwF€¢ò&V6÷&G2æÖ‚‡&V6÷&B’ÓâÆÆ“ãÆF—cãÇ7G&öæsâG¶W66T‡FÖÂ‡&V6÷&BæÖöFRçFõWW$66R‚’—ÓÂ÷7G&öæsãÇ7ãâG¶W66T‡FÖÂ‡&V6÷&Bæ÷WF6öÖR—ÓÂ÷7ããÂöF—cãÇ7ãâG¶W66T‡FÖÂ‡&W6öÇfTG&–ÆÂ‡&V6÷&BæG&–ÆÄ–B“òææÖRóò$Æö6ÂG&–ÆÂ"—Ò+rG·&V6÷&Bæ6ö×ÆWFVD7–6ÆW7Ò7–6ÆW2+rG·&V6÷&BæGW&F–öå6V6öæG7×3Â÷7ããÇF–ÖSâG¶W66T‡FÖÂ†æWrFFR‡&V6÷&Bç7F'FVDB’çFôÆö6ÆU7G&–ær‚’—ÓÂ÷F–ÖSãÂöÆ“æ’æ¦ö–â‚""¢¢ÆÆ’6Æ73Ò&V×G’×&÷r#äæòÆö6Â6W76–öç2&V6÷&FVB–WBãÂöÆ“æ°¢6öç7BÖ–w&F–öä6&BÒÖ–w&F–öå&Wf–WròÇ6V7F–öâ6Æ73Ò&Ö6&BÖ–w&F–öâ×&Wf–Wr"&–ÖÆ&VÃÒ$æ÷fÇW2Ö–w&F–öâ&Wf–Wr#à¢ÆF—b6Æ73Ò'6V7F–öâÖ†VF–ær#ãÆF—cãÇ7â6Æ73Ò&W–V'&÷r#ådÄ”DDTB$Ud”UsÂ÷7ããÆƒ#âG¶Ö–w&F–öå&Wf–WræÇ&VG”Ö–w&FVBò$Ç&VG’Ö–w&FVB"¢G¶Ö–w&F–öå&Wf–WræG&–ÆÇ7Ò7W7FöÒG&–ÆÂG¶Ö–w&F–öå&Wf–WræG&–ÆÇ2ÓÓÒò""¢'2'Ò&VG–ÓÂöƒ#ãÇâG¶Ö–w&F–öå&Wf–Wrç&÷w7Ò55b&÷w2+rG¶f÷&ÖD'—FW2†Ö–w&F–öå&Wf–Wræ'—FW2—Ò+rG¶Ö–w&F–öå&Wf–WræW†6ÇVFVE&÷w7Ò'V–ÇBÖ–â&÷rG¶Ö–w&F–öå&Wf–WræW†6ÇVFVE&÷w2ÓÓÒò""¢'2'ÒW†6ÇVFVCÂ÷ãÂöF—cãÂöF—cà¢ÆF—b6Æ73Ò'6†&RÖw&÷W×7VÖÖ'’#ãÇ7ãäw&÷WÇ7G&öæsâG¶Ö–w&F–öå&Wf–Wræw&÷W2äÓÂ÷7G&öæsãÂ÷7ããÇ7ãäw&÷W"Ç7G&öæsâG¶Ö–w&F–öå&Wf–Wræw&÷W2ä'ÓÂ÷7G&öæsãÂ÷7ããÇ7ãäw&÷W2Ç7G&öæsâG¶Ö–w&F–öå&Wf–Wræw&÷W2ä7ÓÂ÷7G&öæsãÂ÷7ããÂöF—cà¢G¶Ö–w&F–öå&Wf–WrææÖW2æÆVæwF‚òÇVÂ6Æ73Ò'6†&RÖæÖRÖÆ—7B#âG¶Ö–w&F–öå&Wf–WrææÖW2ç6Æ–6RƒÂ‚’æÖ‚†æÖR’ÓâÆÆ“âG¶W66T‡FÖÂ†æÖR—ÓÂöÆ“æ’æ¦ö–â‚""—ÒG¶Ö–w&F–öå&Wf–WrææÖW2æÆVæwF‚â‚òÆÆ“â²G¶Ö–w&F–öå&Wf–WrææÖW2æÆVæwF‚Ò‡ÒÖ÷&SÂöÆ“æ¢"'ÓÂ÷VÃæ¢"'Ð¢G¶Ö–w&F–öå&Wf–Wrçv&æ–æw2æÆVæwF‚òÇVÂ6Æ73Ò&Ö–w&F–öâÖÖW76vW2Ö–w&F–öâ×v&æ–æw2#âG¶Ö–w&F–öå&Wf–Wrçv&æ–æw2æÖ‚‡v&æ–ær’ÓâÆÆ“âG¶W66T‡FÖÂ‡v&æ–ær—ÓÂöÆ“æ’æ¦ö–â‚""—ÓÂ÷VÃæ¢"'Ð¢G¶Ö–w&F–öå&Wf–WræW'&÷'2æÆVæwF‚òÇVÂ6Æ73Ò&Ö–w&F–öâÖÖW76vW2Ö–w&F–öâÖW'&÷'2#âG¶Ö–w&F–öå&Wf–WræW'&÷'2æÖ‚†W'&÷"’ÓâÆÆ“âG¶W'&÷"æÆ–æRòÆ–æRG¶W'&÷"æÆ–æWÓ¢¢"'ÒG¶W66T‡FÖÂ†W'&÷"æÖW76vR—ÓÂöÆ“æ’æ¦ö–â‚""—ÓÂ÷VÃæ¢"'Ð¢ÆF—b6Æ73Ò'6†&RÖ7F–öç2#âG¶Ö–w&F–öå&Wf–Wræ6ä6öÖÖ—BòÆ'WGFöâ–CÒ&Ö–w&F–öâÖ6öæf—&Ò"6Æ73Ò'&–Ö'’Ö'WGFöâ"G—SÒ&'WGFöâ#ä–×÷'BG¶Ö–w&F–öå&Wf–WræG&–ÆÇ7ÒG&–ÆÂG¶Ö–w&F–öå&Wf–WræG&–ÆÇ2ÓÓÒò""¢'2'ÓÂö'WGFöãæ¢"'ÓÆ'WGFöâ–CÒ&Ö–w&F–öâÖ6æ6VÂ"G—SÒ&'WGFöâ#ä6Æ÷6R&Wf–WsÂö'WGFöããÂöF—cà¢Ç6Æ73Ò&†VÇW"×FW‡B#åF†R&Wf–Wr6†ævVBæ÷F†–ærâ–×÷'BFG2fÆ–FFVBG&–ÆÇ2FöÖ–6ÆÇ’Â&V6÷&G2&V6V—BÂæBæWfW"VF—G2–÷W"æ÷fÇW2f–ÆRãÂ÷à¢Â÷6V7F–öãæ¢"#°¢&WGW&â ¢ÆF—b6Æ73Ò'vRÖ†VF–ær#ãÆ‡&VcÒ"7G&–â"6Æ73Ò&&6²ÖÆ–æ²#î(iG&–æ–æsÂöãÇ7â6Æ73Ò&W–V'&÷r#äÄô4ÂÔd•%5CÂ÷7ããÆƒäFFæB&V6÷fW'“ÂöƒãÂöF—cà¢G·7F÷&vTæ÷F–6RòÆF—b6Æ73Ò&æ÷F–6R"&öÆSÒ&ÆW'B#âG¶W66T‡FÖÂ‡7F÷&vTæ÷F–6R—ÓÂöF—cæ¢"'Ð¢ÆF—b6Æ73Ò&FFÖÆ–÷WB#à¢Ç6V7F–öâ6Æ73Ò&Ö6&B#ãÆF—b6Æ73Ò'6V7F–öâÖ†VF–ær#ãÆF—cãÆƒ#å6W76–öâ†—7F÷'“Âöƒ#ãÇâG·&V6÷&G2æÆVæwF‡Ò6fVCÂ÷ãÂöF—cãÂöF—cãÇVÂ6Æ73Ò&†—7F÷'’ÖÆ—7B#âG·&÷w7ÓÂ÷VÃãÂ÷6V7F–öãà¢Ç6V7F–öâ6Æ73Ò&Ö6&B&V6÷fW'’Ö6&B#ãÆƒ#ä&6·WæB&W7F÷&SÂöƒ#ãÇå&W7F÷&RfÆ–FFW2F†R6ö×ÆWFRf–ÆR&Vf÷&RFöÖ–6ÆÇ’&WÆ6–ærÆö6Â6öÆÆV7F–öç2ãÂ÷ãÆF—b6Æ73Ò&&6·WÖ7F–öç2#ãÆ'WMtß«h‘éì¶»§q«^u•¥Ù”ÑÉ…¹ÍÁ…É•¹ÐÁ±…¸ÍÕ•ÍÑ¥½¹Ì‰…Í•½¹±ä½¸Í•ÍÍ¥½¸É•½É‘ÌÍ…Ù•½¸Ñ¡¥Ì‘•Ù¥”¸ð½Àøð½‘¥Øø(€€€€‘íÍÑ½É…•9½Ñ¥”€ü€ñ‘¥Ø±…ÍÌô‰¹½Ñ¥”ˆÉ½±”ô‰…±•ÉÐˆø‘í•Í…Á•!Ñµ°¡ÍÑ½É…•9½Ñ¥”¥ôð½‘¥Øù€€è€ˆ‰ô(€€€€ñ‘¥Ø±…ÍÌô‰ÍÑ…Ñ¥ÍÑ¥Ìµ‰½Õ¹‘…ÉäˆøñÍÑÉ½¹œùÑ¥Ù¥Ñä…¹…±åÑ¥ÏŠQ¹½ÐÍ­¥±°Í½É¥¹œð½ÍÑÉ½¹œøñÍÁ…¸ùM¥µÕ±…Ñ¥½¸É•½É‘Ì‘¼¹½ÐÁÉ½Ù”Á¡åÍ¥…°‰…±°‘•±¥Ù•Éä½ÈÁ±…å¥¹œÁ•É™½Éµ…¹”¸9½Ñ¡¥¹œ¥ÌÕÁ±½…‘•¸ð½ÍÁ…¸øð½‘¥Øø(€€€€ñ‘¥Ø±…ÍÌô‰ÍÑ…Ñ¥ÍÑ¥ÌµÁ•É¥½ˆÉ½±”ô‰É½ÕÀˆ…É¥„µ±…‰•°ô‰MÑ…Ñ¥ÍÑ¥ÌÁ•É¥½ˆø‘ímlÜ°€ˆÜ‘…åÌ‰t°lÌÀ°€ˆÌÀ‘…åÌ‰t°l‰…±°ˆ°€‰±°‰ut¹µ…À ¡mÙ…±Õ”°±…‰•±t¤€ôø€ñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ‘…Ñ„µÍÑ…Ñ¥ÍÑ¥ÌµÁ•É¥½ôˆ‘íÙ…±Õ•ôˆ±…ÍÌôˆ‘íMÑÉ¥¹œ¡Õ¥MÑ…Ñ”¹ÍÑ…Ñ¥ÍÑ¥ÍA•É¥½¤€ôôôMÑÉ¥¹œ¡Ù…±Õ”¤€ü€‰Í•±•Ñ•ˆ€è€ˆ‰ôˆ…É¥„µÁÉ•ÍÍ•ôˆ‘íMÑÉ¥¹œ¡Õ¥MÑ…Ñ”¹ÍÑ…Ñ¥ÍÑ¥ÍA•É¥½¤€ôôôMÑÉ¥¹œ¡Ù…±Õ”¥ôˆø‘í±…‰•±ôð½‰ÕÑÑ½¸ù€¤¹©½¥¸ ˆˆ¥ôð½‘¥Øø(€€€€ñÍ•Ñ¥½¸±…ÍÌô‰ÍÑ…Ñ¥ÍÑ¥ÌµÍÕµµ…Éäˆ…É¥„µ±…‰•°ô‰QÉ…¥¹¥¹œ…Ñ¥Ù¥ÑäÍÕµµ…Éäˆø(€€€€€€ñ…ÉÑ¥±”øñÍÁ…¸ùM•ÍÍ¥½¹Ìð½ÍÁ…¸øñÍÑÉ½¹œø‘íÍÕµµ…Éä¹Í•ÍÍ¥½¹Íôð½ÍÑÉ½¹œøð½…ÉÑ¥±”ø(€€€€€€ñ…ÉÑ¥±”øñÍÁ…¸ùQÉ…¥¹¥¹œÑ¥µ”ð½ÍÁ…¸øñÍÑÉ½¹œø‘í™½Éµ…ÑQÉ…¥¹¥¹Q¥µ”¡ÍÕµµ…Éä¹‘ÕÉ…Ñ¥½¹M•½¹‘Ì¥ôð½ÍÑÉ½¹œøð½…ÉÑ¥±”ø(€€€€€€ñ…ÉÑ¥±”øñÍÁ…¸ù½µÁ±•Ñ•å±•Ìð½ÍÁ…¸øñÍÑÉ½¹œø‘íÍÕµµ…Éä¹½µÁ±•Ñ•‘å±•Íôð½ÍÑÉ½¹œøð½…ÉÑ¥±”ø(€€€€€€ñ…ÉÑ¥±”øñÍÁ…¸ù½µÁ±•Ñ¥½¸ð½ÍÁ…¸øñÍÑÉ½¹œø‘íÍÕµµ…Éä¹½µÁ±•Ñ¥½¹I…Ñ•ô”ð½ÍÑÉ½¹œøð½…ÉÑ¥±”ø(€€€€€€ñ…ÉÑ¥±”øñÍÁ…¸ùÑ¥Ù”‘…åÌð½ÍÁ…¸øñÍÑÉ½¹œø‘íÍÕµµ…Éä¹…Ñ¥Ù•…åÍôð½ÍÑÉ½¹œøð½…ÉÑ¥±”ø(€€€€€€ñ…ÉÑ¥±”øñÍÁ…¸ùÕÉÉ•¹ÐÍÑÉ•…¬ð½ÍÁ…¸øñÍÑÉ½¹œø‘íÍÕµµ…Éä¹ÕÉÉ•¹ÑMÑÉ•…­ô‘…ä‘íÍÕµµ…Éä¹ÕÉÉ•¹ÑMÑÉ•…¬€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ôð½ÍÑÉ½¹œøð½…ÉÑ¥±”ø(€€€€ð½Í•Ñ¥½¸ø(€€€€ñ‘¥Ø±…ÍÌô‰ÍÑ…Ñ¥ÍÑ¥ÌµÉ¥ˆø(€€€€€€ñÍ•Ñ¥½¸±…ÍÌô‰…ÁÀµ…ÉÑÉ•¹µ…Éˆøñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸µ¡•…‘¥¹œˆøñ‘¥Øøñ ÈùÑ¥Ù¥ÑäÑÉ•¹ð½ ÈøñÀù1…Ñ•ÍÐ€ÄÐ…Ñ¥Ù”‘…åÌ¥¸Ñ¡¥ÌÁ•É¥½ð½Àøð½‘¥Øøð½‘¥Øøñ½°±…ÍÌô‰ÑÉ•¹µ¡…ÉÐˆø‘íÑÉ•¹‘ôð½½°øð½Í•Ñ¥½¸ø(€€€€€€ñÍ•Ñ¥½¸±…ÍÌô‰…ÁÀµ…Éˆøñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸µ¡•…‘¥¹œˆøñ‘¥Øøñ Èù5½‘”µ¥àð½ ÈøñÀùM¡…É”½˜±½…°Í•ÍÍ¥½¹Ìð½Àøð½‘¥Øøð½‘¥Øøñ‘¥Ø±…ÍÌô‰µ½‘”µÍÑ…Ðµ±¥ÍÐˆø‘íµ½‘•Íôð½‘¥Øøð½Í•Ñ¥½¸ø(€€€€€€ñÍ•Ñ¥½¸±…ÍÌô‰…ÁÀµ…Éˆøñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸µ¡•…‘¥¹œˆøñ‘¥Øøñ Èù5½ÍÐÕÍ•‘É¥±±Ìð½ ÈøñÀùI…¹­•‰äÍ•ÍÍ¥½¹Ìð½Àøð½‘¥Øøð½‘¥Øøñ½°±…ÍÌô‰‘É¥±°µÍÑ…Ðµ±¥ÍÐˆø‘í‘É¥±±Íôð½½°øð½Í•Ñ¥½¸ø(€€€€€€ñÍ•Ñ¥½¸±…ÍÌô‰…ÁÀµ…ÉÕ¥‘…¹”µ…Éˆøñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸µ¡•…‘¥¹œˆøñ‘¥Øøñ Èù‘…ÁÑ¥Ù”Á±…¸Õ¥‘…¹”ð½ ÈøñÀùIÕ±”µ‰…Í•…¹•áÁ±…¥¹…‰±”ð½Àøð½‘¥Øøð½‘¥Øøñ‘¥Ø±…ÍÌô‰Õ¥‘…¹”µ±¥ÍÐˆø‘íÕ¥‘…¹•ôð½‘¥Øøð½Í•Ñ¥½¸ø(€€€€ð½‘¥Øù€ì)ô()…Íå¹Œ™Õ¹Ñ¥½¸Í¡…É¥¹Y¥•Ü ¤ì(€…Ý…¥ÐÉ•™É•Í¡ÕÍÑ½µ…¡” ¤ì(€½¹ÍÐ…Ù…¥±…‰±•%‘Ì€ô¹•ÜM•Ð¡ÕÍÑ½µ…¡”¹µ…À ¡‘É¥±°¤€ôø‘É¥±°¹¥¤¤ì(€Õ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì€ôÕ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì¹™¥±Ñ•È ¡¥¤€ôø…Ù…¥±…‰±•%‘Ì¹¡…Ì¡¥¤¤ì(€½¹ÍÐÍ•±•Ñ•€ô¹•ÜM•Ð¡Õ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì¤ì(€½¹ÍÐÉ½ÝÌ€ôÕÍÑ½µ…¡”¹±•¹Ñ (€€€€üÕÍÑ½µ…¡”¹µ…À ¡‘É¥±°¤€ôø€ñ±…‰•°±…ÍÌô‰Í¡…É”µ‘É¥±°µÉ½Üˆøñ¥¹ÁÕÐÑåÁ”ô‰¡•­‰½àˆ‘…Ñ„µÍ¡…É”µ‘É¥±°ôˆ‘í•Í…Á•!Ñµ°¡‘É¥±°¹¥¥ôˆ€‘íÍ•±•Ñ•¹¡…Ì¡‘É¥±°¹¥¤€ü€‰¡•­•ˆ€è€ˆ‰ôøñÍÁ…¸øñÍÑÉ½¹œø‘í•Í…Á•!Ñµ°¡‘É¥±°¹¹…µ”¥ôð½ÍÑÉ½¹œøñÍµ…±°ùÉ½ÕÀ€‘í•Í…Á•!Ñµ°¡‘É¥±°¹É½ÕÀ¥ôƒ
+Ü€‘ílÄ°€È°€Ít¹™¥±Ñ•È ¡±•Ù•°¤€ôø‘É¥±°¹ÁÉ½É…µÍm±•Ù•±t¤¹±•¹Ñ¡ô±•Ù•°‘ílÄ°€È°€Ít¹™¥±Ñ•È ¡±•Ù•°¤€ôø‘É¥±°¹ÁÉ½É…µÍm±•Ù•±t¤¹±•¹Ñ €ôôô€Ä€ü€ˆˆ€è€‰Ì‰ôð½Íµ…±°øð½ÍÁ…¸øñˆø‘í•Í…Á•!Ñµ°¡‘É¥±°¹Í½ÕÉ”¥ôð½ˆøð½±…‰•°ù€¤¹©½¥¸ ˆˆ¤(€€€€è€œñ‘¥Ø±…ÍÌô‰•µÁÑäµ±¥‰É…ÉäˆøñÍÑÉ½¹œù9¼ÕÍÑ½´‘É¥±±ÌÑ¼Í¡…É”ð½ÍÑÉ½¹œøñÍÁ…¸ùÉ•…Ñ”„‘É¥±°¥¸QÉ…¥¹¥¹œ°Ñ¡•¸É•ÑÕÉ¸¡•É”Ñ¼µ…­”„Ù•ÉÍ¥½¹•Á…¬¸ð½ÍÁ…¸øñ„±…ÍÌô‰µ…¹…”µµÕÍ¥Œµ±¥¹¬ˆ¡É•˜ôˆÑÉ…¥¸ˆù¼Ñ¼QÉ…¥¹¥¹œð½„øð½‘¥Øøœì(€½¹ÍÐÁÉ•Ù¥•Ü€ôÍ¡…É¥¹%µÁ½ÉÑAÉ•Ù¥•Üü¹ÍÕµµ…Éäì(€½¹ÍÐÁÉ•Ù¥•Ý…É€ôÁÉ•Ù¥•Ü€ü€ñÍ•Ñ¥½¸±…ÍÌô‰…ÁÀµ…ÉÍ¡…É”µÁÉ•Ù¥•Üµ…Éˆ…É¥„µ±…‰•°ô‰Y…±¥‘…Ñ•¥µÁ½ÉÐÁÉ•Ù¥•Üˆø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸µ¡•…‘¥¹œˆøñ‘¥ØøñÍÁ…¸±…ÍÌô‰•å•‰É½ÜˆùY1%QAIY%\ð½ÍÁ…¸øñ Èø‘í•Í…Á•!Ñµ°¡ÁÉ•Ù¥•Ü¹Ñ¥Ñ±”¥ôð½ ÈøñÀø‘íÁÉ•Ù¥•Ü¹‘É¥±±Íô‘É¥±°‘íÁÉ•Ù¥•Ü¹‘É¥±±Ì€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ôƒ
+Ü€‘íÁÉ•Ù¥•Ü¹ÁÉ½É…µÍô±•Ù•°ÁÉ½É…µÌƒ
+Ü€‘íÁÉ•Ù¥•Ü¹ÍÑ•ÁÍôÍÑ•ÁÌƒ
+Ü€‘í™½Éµ…Ñ	åÑ•Ì¡ÁÉ•Ù¥•Ü¹‰åÑ•Ì¥ôð½Àøð½‘¥Øøð½‘¥Øø(€€€€€€‘íÁÉ•Ù¥•Ü¹¹½Ñ”€ü€ñÀ±…ÍÌô‰Í¡…É”µ¹½Ñ”ˆø‘í•Í…Á•!Ñµ°¡ÁÉ•Ù¥•Ü¹¹½Ñ”¥ôð½Àù€€è€ˆ‰ô(€€€€€€ñ‘¥Ø±…ÍÌô‰Í¡…É”µÉ½ÕÀµÍÕµµ…ÉäˆøñÍÁ…¸ùÉ½ÕÀ€ñÍÑÉ½¹œø‘íÁÉ•Ù¥•Ü¹É½ÕÁÌ¹ôð½ÍÑÉ½¹œøð½ÍÁ…¸øñÍÁ…¸ùÉ½ÕÀ€ñÍÑÉ½¹œø‘íÁÉ•Ù¥•Ü¹É½ÕÁÌ¹	ôð½ÍÑÉ½¹œøð½ÍÁ…¸øñÍÁ…¸ùÉ½ÕÀ€ñÍÑÉ½¹œø‘íÁÉ•Ù¥•Ü¹É½ÕÁÌ¹ôð½ÍÑÉ½¹œøð½ÍÁ…¸øð½‘¥Øø(€€€€€€ñÕ°±…ÍÌô‰Í¡…É”µ¹…µ”µ±¥ÍÐˆø‘íÁÉ•Ù¥•Ü¹¹…µ•Ì¹Í±¥” À°€à¤¹µ…À ¡¹…µ”¤€ôø€ñ±¤ø‘í•Í…Á•!Ñµ°¡¹…µ”¥ôð½±¤ù€¤¹©½¥¸ ˆˆ¥ô‘íÁÉ•Ù¥•Ü¹¹…µ•Ì¹±•¹Ñ €ø€à€ü€ñ±¤ø¬€‘íÁÉ•Ù¥•Ü¹¹…µ•Ì¹±•¹Ñ €´€áôµ½É”ð½±¤ù€€è€ˆ‰ôð½Õ°ø(€€€€€€ñ‘¥Ø±…ÍÌô‰Í¡…É”µ…Ñ¥½¹Ìˆøñ‰ÕÑÑ½¸¥ô‰Í¡…É”µ¥µÁ½ÉÐµ½¹™¥É´ˆ±…ÍÌô‰ÁÉ¥µ…Éäµ‰ÕÑÑ½¸ˆÑåÁ”ô‰‰ÕÑÑ½¸ˆù%µÁ½ÉÐ€‘íÁÉ•Ù¥•Ü¹‘É¥±±Íô‘É¥±°‘íÁÉ•Ù¥•Ü¹‘É¥±±Ì€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ôð½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸¥ô‰Í¡…É”µ¥µÁ½ÉÐµ±•…ÈˆÑåÁ”ô‰‰ÕÑÑ½¸ˆù…¹•°ÁÉ•Ù¥•Üð½‰ÕÑÑ½¸øð½‘¥Øø(€€€€€€ñÀ±…ÍÌô‰¡•±Á•ÈµÑ•áÐˆù9½Ñ¡¥¹œ¡…Ì‰••¸¥µÁ½ÉÑ•å•Ð¸9…µ•Ì…¹¥‘•¹Ñ¥Ñ¥•Ì…É”É•Í½±Ù•Í…™•±ä½¹±ä…™Ñ•Èå½Ô½¹™¥É´¸ð½Àø(€€€€ð½Í•Ñ¥½¸ù€€è€ˆˆì(€É•ÑÕÉ¸€ñ‘¥Ø±…ÍÌô‰Á…”µ¡•…‘¥¹œÍ¡…É¥¹œµ¡•…‘¥¹œˆøñ„¡É•˜ôˆÑÉ…¥¸ˆ±…ÍÌô‰‰…¬µ±¥¹¬ˆûŠ@QÉ…¥¹¥¹œð½„øñÍÁ…¸±…ÍÌô‰•å•‰É½ÜˆùaA1%%Pƒ
+ÜYIM%=9ƒ
+Ü1=0µ%IMPð½ÍÁ…¸øñ ÄùM¡…É”ÕÍÑ½´‘É¥±±Ìð½ ÄøñÀùÉ•…Ñ”„Ù…±¥‘…Ñ•9½Ù„AÉ¥µ”‘É¥±°Á…¬°Í…Ù”¥Ð…Ì„™¥±”°½È½Á•¸å½ÕÈ‘•Ù¥—ŠeÌÍ¡…É”Í¡••Ð¸%µÁ½ÉÐ…±Ý…åÌÍ¡½ÝÌ„ÁÉ•Ù¥•Ü‰•™½É”¡…¹¥¹œ±½…°‘…Ñ„¸ð½Àøð½‘¥Øø(€€€€‘íÍÑ½É…•9½Ñ¥”€ü€ñ‘¥Ø±…ÍÌô‰¹½Ñ¥”ˆÉ½±”ô‰…±•ÉÐˆø‘í•Í…Á•!Ñµ°¡ÍÑ½É…•9½Ñ¥”¥ôð½‘¥Øù€€è€ˆ‰ô(€€€€ñ‘¥Ø±…ÍÌô‰Í¡…É¥¹œµ‰½Õ¹‘…ÉäˆøñÍÑÉ½¹œùe½Ô¡½½Í”Ý¡•¸‘…Ñ„±•…Ù•ÌÑ¡¥Ì‘•Ù¥”ð½ÍÑÉ½¹œøñÍÁ…¸ù9½Ù„AÉ¥µ”¡…Ì¹¼Í¡…É¥¹œ…½Õ¹Ð½È‰…­É½Õ¹ÕÁ±½…¸Q¡”ÍåÍÑ•´Í¡…É”‰ÕÑÑ½¸Í•¹‘Ì„™¥±”½¹±äÑ¼Ñ¡”‘•ÍÑ¥¹…Ñ¥½¸å½ÔÍ•±•Ð¸ð½ÍÁ…¸øð½‘¥Øø(€€€€‘íÍ¡…É¥¹5•ÍÍ…”€ü€ñÀ±…ÍÌô‰¹½Ñ¥”Í¡…É¥¹œµ¹½Ñ¥”ˆÉ½±”ô‰ÍÑ…ÑÕÌˆø‘í•Í…Á•!Ñµ°¡Í¡…É¥¹5•ÍÍ…”¥ôð½Àù€€è€ˆ‰ô(€€€€ñ‘¥Ø±…ÍÌô‰Í¡…É¥¹œµ±…å½ÕÐˆø(€€€€€€ñÍ•Ñ¥½¸±…ÍÌô‰…ÁÀµ…ÉÍ¡…É”µÉ•…Ñ”µ…Éˆøñ‘¥Ø±…ÍÌô‰Í•Ñ¥½¸µ¡•…‘¥¹œˆøñ‘¥Øøñ ÈùÉ•…Ñ”„‘É¥±°Á…¬ð½ ÈøñÀø‘íÕ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì¹±•¹Ñ¡ô½˜€‘íÕÍÑ½µ…¡”¹±•¹Ñ¡ôÍ•±•Ñ•ð½Àøð½‘¥Øøñ‘¥Ø±…ÍÌô‰Í¡…É”µÍ•±•Ñ¥½¸µ…Ñ¥½¹Ìˆøñ‰ÕÑÑ½¸‘…Ñ„µÍ¡…É”µÍ•±•Ðµ…±°ÑåÁ”ô‰‰ÕÑÑ½¸ˆ€‘íÕÍÑ½µ…¡”¹±•¹Ñ €ü€ˆˆ€è€‰‘¥Í…‰±•‰ôùM•±•Ð…±°ð½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸‘…Ñ„µÍ¡…É”µ±•…ÈÑåÁ”ô‰‰ÕÑÑ½¸ˆ€‘íÕ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì¹±•¹Ñ €ü€ˆˆ€è€‰‘¥Í…‰±•‰ôù±•…Èð½‰ÕÑÑ½¸øð½‘¥Øøð½‘¥Øø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í¡…É”µ‘É¥±°µ±¥ÍÐˆø‘íÉ½ÝÍôð½‘¥Øø(€€€€€€€€ñ™½É´¥ô‰Í¡…É”µÉ•…Ñ”µ™½É´ˆ±…ÍÌô‰Í¡…É”µµ•Ñ…‘…Ñ„ˆøñ±…‰•°øñÍÁ…¸ùA…¬Ñ¥Ñ±”ð½ÍÁ…¸øñ¥¹ÁÕÐ¹…µ”ô‰Ñ¥Ñ±”ˆµ…á±•¹Ñ ôˆàÀˆÙ…±Õ”ôˆ‘í•Í…Á•!Ñµ°¡Õ¥MÑ…Ñ”¹Í¡…É¥¹Q¥Ñ±”¥ôˆÉ•ÅÕ¥É•øð½±…‰•°øñ±…‰•°øñÍÁ…¸ù=ÁÑ¥½¹…°¹½Ñ”ð½ÍÁ…¸øñÑ•áÑ…É•„¹…µ”ô‰¹½Ñ”ˆµ…á±•¹Ñ ôˆÈàÀˆÉ½ÝÌôˆÌˆÁ±…•¡½±‘•Èô‰]¡…ÐÍ¡½Õ±Ñ¡”É•¥Á¥•¹Ð­¹½Üüˆø‘í•Í…Á•!Ñµ°¡Õ¥MÑ…Ñ”¹Í¡…É¥¹9½Ñ”¥ôð½Ñ•áÑ…É•„øð½±…‰•°øð½™½É´ø(€€€€€€€€ñ‘¥Ø±…ÍÌô‰Í¡…É”µ…Ñ¥½¹Ìˆøñ‰ÕÑÑ½¸‘…Ñ„µÍ¡…É”µ‘½Ý¹±½…±…ÍÌô‰ÁÉ¥µ…Éäµ‰ÕÑÑ½¸ˆÑåÁ”ô‰‰ÕÑÑ½¸ˆ€‘íÕ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì¹±•¹Ñ €ü€ˆˆ€è€‰‘¥Í…‰±•‰ôù½Ý¹±½…Á…¬ð½‰ÕÑÑ½¸øñ‰ÕÑÑ½¸‘…Ñ„µÍ¡…É”µ¹…Ñ¥Ù”ÑåÁ”ô‰‰ÕÑÑ½¸ˆ€‘íÕ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì¹±•¹Ñ €˜˜…Á…‰¥±¥Ñ¥•Ì¹Ý•‰M¡…É”€ü€ˆˆ€è€‰‘¥Í…‰±•‰ôùM¡…É”Ý¥Ñ ‘•Ù¥—Š˜ð½‰ÕÑÑ½¸øð½‘¥Øø(€€€€€€€€ñÀ±…ÍÌô‰¡•±Á•ÈµÑ•áÐˆø‘í…Á…‰¥±¥Ñ¥•Ì¹Ý•‰M¡…É”€ü€‰e½ÕÈ‰É½ÝÍ•ÈÁÉ½Ù¥‘•Ì„ÍåÍÑ•´Í¡…É”Í¡••Ð¸ˆ€è€‰MåÍÑ•´Í¡…É¥¹œ¥ÌÕ¹…Ù…¥±…‰±”¡•É”ì‘½Ý¹±½…‘¥¹œÑ¡”Í…µ”Ù…±¥‘…Ñ•Á…¬…±Ý…åÌÝ½É­Ì¸‰ôð½Àø(€€€€€€ð½Í•Ñ¥½¸ø(€€€€€€ñÍ•Ñ¥½¸±…ÍÌô‰…ÁÀµ…ÉÍ¡…É”µ¥µÁ½ÉÐµ…Éˆøñ‘¥Øøñ ÈùAÉ•Ù¥•Ü…¸¥¹½µ¥¹œÁ…¬ð½ ÈøñÀùM•±•Ð„€ñ½‘”ø¹¹½Ù„µÍ¡…É”¹©Í½¸ð½½‘”ø™¥±”¸9½Ù„AÉ¥µ”Ù…±¥‘…Ñ•Ì¥ÑÌÙ•ÉÍ¥½¸°Í¥é”°‘É¥±°ÑåÁ•Ì°¥‘•¹Ñ¥Ñ¥•Ì°…¹•Ù•Éä‰…±°Á…É…µ•Ñ•È‰•™½É”Í¡½Ý¥¹œÑ¡”½¹™¥Éµ…Ñ¥½¸ÍÑ•À¸ð½Àøð½‘¥Øøñ±…‰•°±…ÍÌô‰™¥±”µ‰ÕÑÑ½¸ˆù¡½½Í”‘É¥±°Á…¬ñ¥¹ÁÕÐ¥ô‰Í¡…É”µ¥µÁ½ÉÐµ™¥±”ˆÑåÁ”ô‰™¥±”ˆ…•ÁÐô‰…ÁÁ±¥…Ñ¥½¸½©Í½¸°¹©Í½¸°¹¹½Ù„µÍ¡…É”¹©Í½¸ˆøð½±…‰•°øñÍµ…±°ù5…á¥µÕ´™¥±”Í¥é”è€‘í™½Éµ…Ñ	åÑ•Ì¡5a}M!I}	eQL¥ôð½Íµ…±°øð½Í•Ñ¥½¸ø(€€€€€€‘íÁÉ•Ù¥•Ý…É‘ô(€€€€ð½‘¥Øù€ì)ô()™Õ¹Ñ¥½¸½Ù•ÉÙ¥•Ü ¤ì(€É•ÑÕÉ¸€ñ‘¥Ø±…ÍÌô‰Á…”µ¡•…‘¥¹œˆøñ„¡É•˜ôˆÑÉ…¥¸ˆ±…ÍÌô‰‰…¬µ±¥¹¬ˆûŠ@QÉ…¥¹¥¹œð½„øñÍÁ…¸±…ÍÌô‰•å•‰É½Üˆù	=UPð½ÍÁ…¸øñ Äù9½Ù„AÉ¥µ”ð½ ÄøñÀù9½Ù„QÉ…¥¹•ËŠeÌÁÉ…Ñ¥…°ÍÑÉÕÑÕÉ”Ý¥Ñ 9½Ù„A±ÕÌµ½‘•Ì°‰Õ¥±Ð½¸½¹”±½…°µ™¥ÉÍÐÍ…™•Ñä…É¡¥Ñ•ÑÕÉ”¸ð½Àøð½‘¥Øøñ‘¥Ø±…ÍÌô‰¥¹™¼µÉ¥ˆøñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆøÌÐ‰Õ¥±Ðµ¥¸‘É¥±±Ìð½ÍÑÉ½¹œøñÀùQ¡”Ù•É¥™¥•QÉ…¥¹•È…Ñ…±½Õ”°Ñ¡É•”±•Ù•±Ì°I•ÁÌ°Q¥µ”°¡¥ÍÑ½Éä°‰…­ÕÀ°…¹É•½Ù•Éä…É”…Ù…¥±…‰±”¥¸Í¥µÕ±…Ñ¥½¸¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆùÕÍÑ½´‘É¥±°•‘¥Ñ½Èð½ÍÑÉ½¹œøñÀù	Õ¥±1•Ù•±Ì€ÇŠLÌÝ¥Ñ ½É‘•É•ÍÑ•ÁÌ°‰…±°Ù…É¥…¹ÑÌ°ÍÁ¥¸°ÍÁ••°Á±…•µ•¹Ð°Ñ•µÁ¼°Í…ÑÑ•È°…¹„…±¥‰É…Ñ•Ñ…‰±”ÁÉ•Ù¥•Ü¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆùÕ¥‘•…±¥‰É…Ñ¥½¸ð½ÍÑÉ½¹œøñÀùMÑ…¹‘…É…¹½µÁ±•Ñ”½‰Í•ÉÙ…Ñ¥½¸Á±…¹Ì°±½…°ÁÉ½™¥±•Ì°¥µÁ½ÉÐ½•áÁ½ÉÐ°…¹EÕ¥¬¡•¬…É”…Ù…¥±…‰±”Ý¥Ñ¡½ÕÐÉ½‰½Ð½µµ…¹‘Ì¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆù1½…°5ÕÍ¥Œð½ÍÑÉ½¹œøñÀùMÑ½É”‘•‘ÕÁ±¥…Ñ•…Õ‘¥¼°‰Õ¥±Á±…å±¥ÍÑÌ°ÕÍ”EÕ¥¬5ÕÍ¥Œ°…¹ÉÕ¸…ÕÑ½µ…Ñ¥…±±ä½µÁ±•Ñ¥¹œ5ÕÍ¥ŒÍ•ÍÍ¥½¹Ì½™™±¥¹”¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆù5Me9ØÄð½ÍÑÉ½¹œøñÀùY…±¥‘…Ñ”•á…Ð…Õ‘¥¼¥‘•¹Ñ¥Ñä°…ÑÑ… Ñ¥µ•±¥¹•Ì…Ñ½µ¥…±±ä°…¹Í¥µÕ±…Ñ”Õ•ÌÝ¥Ñ …‘©ÕÍÑ…‰±”I½‰½Ð1•…Ý¥Ñ¡½ÕÐÑÉ…¹ÍÁ½ÉÐ¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆù1½…°ÍÑ…Ñ¥ÍÑ¥Ìð½ÍÑÉ½¹œøñÀùI•Ù¥•Ü…Ñ¥Ù¥ÑäÑÉ•¹‘Ì°µ½‘”µ¥à°‘É¥±°ÕÍ”°…¹•áÁ±…¥¹…‰±”Á±…¸Õ¥‘…¹”Ý¥Ñ¡½ÕÐÕÁ±½…‘¥¹œÑÉ…¥¹¥¹œ¡¥ÍÑ½Éä¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆùY•ÉÍ¥½¹•Í¡…É¥¹œð½ÍÑÉ½¹œøñÀùÉ•…Ñ”Ù…±¥‘…Ñ•ÕÍÑ½´µ‘É¥±°Á…­Ì°ÕÍ”•áÁ±¥¥Ð‘•Ù¥”Í¡…É¥¹œ°…¹ÁÉ•Ù¥•Ü•Ù•Éä¥¹½µ¥¹œ™¥±”‰•™½É”¥µÁ½ÉÐ¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù%¹Ñ•É…Ñ•ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆùMÑ…‰±”Ù½¥”½µµ…¹‘Ìð½ÍÑÉ½¹œøñÀùUÍ”½ÁÑ¥½¹…°ÁÉ•ÍÌµÑ¼µ±¥ÍÑ•¸ÍÑ…ÉÐ°Á…ÕÍ”°É•ÍÕµ”°…¹ÍÑ½À½µµ…¹‘Ì°Ý¥Ñ Ñ½Õ ½¹™¥Éµ…Ñ¥½¸‰•™½É”•Ù•ÉäÍÁ½­•¸ÍÑ…ÉÐ¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ ÈùY•É¥™¥•¥¸Í¥µÕ±…Ñ¥½¸ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆùI½‰½ÐÍ…™•ÑäÍÑ…¬ð½ÍÑÉ½¹œøñÀùAÉ½Ñ½½°•¹½‘¥¹œ°…ÕÑ¡•¹Ñ¥…Ñ¥½¸°Í•É¥…±¥é•ÝÉ¥Ñ•Ì°ÅÕ•Õ”…¹•±±…Ñ¥½¸°…¹ÁÉ¥½É¥ÑäMÑ½ÀÁ…ÍÌ™…­”µ‘•Ù¥”Ñ•ÍÑÌ¸	±Õ•Ñ½½Ñ ÍÑ…åÌ½™˜Õ¹Ñ¥°Á¡åÍ¥…°Ñ•ÍÑÌÁ…ÍÌ¸ð½Àøð½…ÉÑ¥±”øñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…Éˆøñ Èù=Á•¸Í½ÕÉ”ð½ ÈøñÍÑÉ½¹œ±…ÍÌô‰±…É”µÙ…±Õ”ˆùA0´Ì¸Àµ½Èµ±…Ñ•Èð½ÍÑÉ½¹œøñÀù9½Ù„AÉ¥µ”½µ•ÌÝ¥Ñ¡½ÕÐÝ…ÉÉ…¹Ñä¸5½‘¥™¥•¹•ÑÝ½É¬Ù•ÉÍ¥½¹ÌµÕÍÐ½™™•È½ÉÉ•ÍÁ½¹‘¥¹œÍ½ÕÉ”¸€ñ„¡É•˜ô‰¡ÑÑÁÌè¼½¥Ñ¡Õˆ¹½´½Í¡¥µÕÉ…¹µ½¹¬½¹½Ù„µÁÉ¥µ”ˆÑ…É•Ðô‰}‰±…¹¬ˆÉ•°ô‰¹½½Á•¹•È¹½É•™•ÉÉ•ÈˆùY¥•ÜÍ½ÕÉ”…¹±¥•¹Í”ð½„ø¸ð½Àøð½…ÉÑ¥±”øð½‘¥Øù€ì)ô()™Õ¹Ñ¥½¸…Á…‰¥±¥ÑåY¥•Ü ¤ì(€É•ÑÕÉ¸€ñ‘¥Ø±…ÍÌô‰Á…”µ¡•…‘¥¹œˆøñ„¡É•˜ôˆÑÉ…¥¸ˆ±…ÍÌô‰‰…¬µ±¥¹¬ˆûŠ@QÉ…¥¹¥¹œð½„øñÍÁ…¸±…ÍÌô‰•å•‰É½Üˆù%9=MQ%Lð½ÍÁ…¸øñ Äù	É½ÝÍ•È…Á…‰¥±¥Ñ¥•Ìð½ Äøð½‘¥Øøñ‘¥Ø±…ÍÌô‰¥¹™¼µÉ¥ˆø‘í=‰©•Ð¹•¹ÑÉ¥•Ì¡…Á…‰¥±¥Ñ¥•Ì¤¹µ…À ¡m¹…µ”°…Ù…¥±…‰±•t¤€ôø€ñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…É…Á…‰¥±¥ÑäµÉ½ÜˆøñÍÁ…¸ø‘í•Í…Á•!Ñµ°¡¹…µ”¥ôð½ÍÁ…¸øñÍÑÉ½¹œ±…ÍÌôˆ‘í…Ù…¥±…‰±”€ü€‰…Ù…¥±…‰±”ˆ€è€‰Õ¹…Ù…¥±…‰±”‰ôˆø‘í…Ù…¥±…‰±”€ü€‰Ù…¥±…‰±”ˆ€è€‰U¹…Ù…¥±…‰±”‰ôð½ÍÑÉ½¹œøð½…ÉÑ¥±”ù€¤¹©½¥¸ ˆˆ¥ôð½‘¥Øù€ì)ô()™Õ¹Ñ¥½¸É½…‘µ…À ¤ì(€½¹ÍÐÉ•±•…Í•Ì€ômlˆÀ¸Äˆ°€‰½Õ¹‘…Ñ¥½¸ˆ°€‰ÁÀÍ¡•±°°±½…°‘…Ñ„°‘É¥±±Ì°…±¥‰É…Ñ¥½¸°…¹Í…™”Í•ÍÍ¥½¹Ì‰t°lˆÀ¸Èˆ°€‰5ÕÍ¥Œˆ°€‰MÑ½É•ÑÉ…­Ì°Á±…å±¥ÍÑÌ°…¹EÕ¥¬5ÕÍ¥Œ‰t°lˆÀ¸Ìˆ°€‰5Me9ˆ°€‰Y…±¥‘…Ñ¥½¸°Í¥µÕ±…Ñ¥½¸°…¹Í…™”Íå¹¡É½¹¥é…Ñ¥½¸‰t°lˆÀ¸Ðˆ°€‰%¹Í¥¡ÑÌˆ°€‰1½…°ÍÑ…Ñ¥ÍÑ¥Ì…¹•áÁ±…¥¹…‰±”Á±…¸Õ¥‘…¹”‰t°lˆÀ¸Ôˆ°€‰½¹¹•Ñ•ˆ°€‰Y•ÉÍ¥½¹•‘É¥±°Í¡…É¥¹œ…¹ÍÑ…‰±”°½ÁÑ¥½¹…°Ù½¥”½µµ…¹‘Ì‰t°lˆÀ¸Øˆ°€‰I½‰½Ðˆ°€‰M…™•Ñä•á•ÕÑ½È…¹¡…É‘Ý…É”Ù•É¥™¥…Ñ¥½¸‰•™½É”±¥Ù”½¹ÑÉ½°‰t°lˆÀ¸Üˆ°€‰5¥É…Ñ¥½¸ˆ°€‰AÉ•Ù¥•Ý•…¹…Ñ½µ¥Œ9½Ù„A±ÕÌÕÍÑ½´µ‘É¥±°µ¥É…Ñ¥½¸‰t°lˆÀ¸àˆ°€‰Q¡•µ•Ìˆ°€‰ÕÑ¼°1¥¡Ð°…É¬°…¹½ÕÉÐ…ÁÁ•…É…¹”¡½¥•Ì‰t°lˆÀ¸äˆ°€‰A±…•µ•¹Ðˆ°€‰%¹Ñ•É…Ñ¥Ù”‘É…œ°Ñ…À°…¹­•å‰½…É‰…±°Ñ…É•Ñ¥¹œ‰utì(€É•ÑÕÉ¸€ñ‘¥Ø±…ÍÌô‰Á…”µ¡•…‘¥¹œˆøñ„¡É•˜ôˆÑÉ…¥¸ˆ±…ÍÌô‰‰…¬µ±¥¹¬ˆûŠ@QÉ…¥¹¥¹œð½„øñÍÁ…¸±…ÍÌô‰•å•‰É½Üˆù)]11=\ð½ÍÁ…¸øñ ÄùI½…‘µ…Àð½ Äøð½‘¥Øøñ‘¥Ø±…ÍÌô‰¥¹™¼µÉ¥ˆø‘íÉ•±•…Í•Ì¹µ…À ¡mÙ•ÉÍ¥½¸°¹…µ”°‘•ÍÉ¥ÁÑ¥½¹t¤€ôø€ñ…ÉÑ¥±”±…ÍÌô‰…ÁÀµ…ÉˆøñÍÁ…¸±…ÍÌô‰É•±•…Í”µ¹Õµ‰•Èˆø‘íÙ•ÉÍ¥½¹ôð½ÍÁ…¸øñ Èø‘í¹…µ•ôð½ ÈøñÀø‘í‘•ÍÉ¥ÁÑ¥½¹ôð½Àøð½…ÉÑ¥±”ù€¤¹©½¥¸ ˆˆ¥ôð½‘¥Øù€ì)ô()½¹ÍÐÉ•¹‘•É•ÉÌ€ôìÑÉ…¥¸èÑÉ…¥¹Y¥•Ü°µÕÍ¥ŒèµÕÍ¥Y¥•Ü°µÍå¹ŒèµÍå¹Y¥•Ü°ÍÑ…Ñ¥ÍÑ¥ÌèÍÑ…Ñ¥ÍÑ¥ÍY¥•Ü°Í¡…É¥¹œèÍ¡…É¥¹Y¥•Ü°‘…Ñ„è‘…Ñ…Y¥•Ü°½Ù•ÉÙ¥•Ü°…Á…‰¥±¥Ñ¥•Ìè…Á…‰¥±¥ÑåY¥•Ü°É½…‘µ…Àôì()…Íå¹Œ™Õ¹Ñ¥½¸É•¹‘•È¡É½ÕÑ”¤ì(€…Ñ¥Ù•I½ÕÑ”€ôÉ½ÕÑ”ì(€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µµ•¹ÔµÉ½ÕÑ•tˆ¤¹™½É…  ¡±¥¹¬¤€ôø±¥¹¬¹Ñ½±•ÑÑÉ¥‰ÕÑ” ‰…É¥„µÕÉÉ•¹Ðˆ°±¥¹¬¹‘…Ñ…Í•Ð¹µ•¹ÕI½ÕÑ”€ôôôÉ½ÕÑ”¤¤ì(€Ù¥•Ü¹¥¹¹•É!Q50€ô…Ý…¥ÐÉ•¹‘•É•ÉÍmÉ½ÕÑ•t ¤ì(€‘½Õµ•¹Ð¹Ñ¥Ñ±”€ô9½Ù„AÉ¥µ”ƒ
+Ü€‘íÉ½ÕÑ•lÁt¹Ñ½UÁÁ•É…Í” ¥ô‘íÉ½ÕÑ”¹Í±¥” Ä¥õ€ì(€‰¥¹‘I½ÕÑ•Ñ¥½¹Ì¡É½ÕÑ”¤ì(€±½Í•5•¹Ô ¤ì)ô()™Õ¹Ñ¥½¸‘½Ý¹±½…‘)Í½¸¡Á…å±½…°™¥±•¹…µ”¤ì(€½¹ÍÐÕÉ°€ôUI0¹É•…Ñ•=‰©•ÑUI0¡¹•Ü	±½ˆ¡m€‘í)M=8¹ÍÑÉ¥¹¥™ä¡Á…å±½…°¹Õ±°°€È¥õq¹t°ìÑåÁ”è€‰…ÁÁ±¥…Ñ¥½¸½©Í½¸ˆô¤¤ì(€½¹ÍÐ±¥¹¬€ô‘½Õµ•¹Ð¹É•…Ñ•±•µ•¹Ð ‰„ˆ¤ì(€±¥¹¬¹¡É•˜€ôÕÉ°ì(€±¥¹¬¹‘½Ý¹±½…€ô™¥±•¹…µ”ì(€±¥¹¬¹±¥¬ ¤ì(€Í•ÑQ¥µ•½ÕÐ  ¤€ôøUI0¹É•Ù½­•=‰©•ÑUI0¡ÕÉ°¤°€À¤ì)ô()™Õ¹Ñ¥½¸‘½Ý¹±½…‘Q•áÐ¡Ñ•áÐ°™¥±•¹…µ”¤ì(€½¹ÍÐÕÉ°€ôUI0¹É•…Ñ•=‰©•ÑUI0¡¹•Ü	±½ˆ¡mÑ•áÑt°ìÑåÁ”è€‰Ñ•áÐ½Á±…¥¸í¡…ÉÍ•ÐõÕÑ˜´àˆô¤¤ì(€½¹ÍÐ±¥¹¬€ô‘½Õµ•¹Ð¹É•…Ñ•±•µ•¹Ð ‰„ˆ¤ì(€±¥¹¬¹¡É•˜€ôÕÉ°ì(€±¥¹¬¹‘½Ý¹±½…€ô™¥±•¹…µ”ì(€±¥¹¬¹±¥¬ ¤ì(€Í•ÑQ¥µ•½ÕÐ  ¤€ôøUI0¹É•Ù½­•=‰©•ÑUI0¡ÕÉ°¤°€À¤ì)ô()™Õ¹Ñ¥½¸½Á•¹É¥±±¥…±½œ¡‘É¥±°€ô¹Õ±°¤ì(€‘É¥±±½É´¹É•Í•Ð ¤ì(€‘É¥±±½É´¹•±•µ•¹ÑÌ¹¥¹Ù…±Õ”€ô‘É¥±°ü¹¥€üü€ˆˆì(€‘É¥±±½É´¹•±•µ•¹ÑÌ¹¹…µ”¹Ù…±Õ”€ô‘É¥±°ü¹¹…µ”€üü€ˆˆì(€‘É¥±±½É´¹•±•µ•¹ÑÌ¹É½ÕÀ¹Ù…±Õ”€ô‘É¥±°ü¹É½ÕÀ€üüÕ¥MÑ…Ñ”¹É½ÕÀì(€‘É¥±±½É´¹•±•µ•¹ÑÌ¹É½‰½ÑA½Í¥Ñ¥½¸¹Ù…±Õ”€ô‘É¥±°ü¹É½‰½ÑA½Í¥Ñ¥½¸€üü€‰µ¥‘‘±”ˆì(€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ‘¥…±½œµÑ¥Ñ±”ˆ¤¹Ñ•áÑ½¹Ñ•¹Ð€ô‘É¥±°€ü€‰5…¹…”‘É¥±°ˆ€è€‰9•Ü‘É¥±°ˆì(€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ•‘¥Ðµ…Ñ¥½¹Ìˆ¤¹¡¥‘‘•¸€ô€…‘É¥±°ì(€‘É¥±±¥…±½I•ÍÕ±Ð¹Ñ•áÑ½¹Ñ•¹Ð€ô€ˆˆì(€‘É¥±±¥…±½œ¹Í¡½Ý5½‘…° ¤ì(€‘É¥±±½É´¹•±•µ•¹ÑÌ¹¹…µ”¹™½ÕÌ ¤ì)ô()™Õ¹Ñ¥½¸‰¥¹‘I½ÕÑ•Ñ¥½¹Ì¡É½ÕÑ”¤ì(€¥˜€¡É½ÕÑ”€ôôô€‰Í¡…É¥¹œˆ¤ì(€€€½¹ÍÐÑ¥Ñ±•%¹ÁÕÐ€ô‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ¡…É”µÉ•…Ñ”µ™½É´m¹…µ”õÑ¥Ñ±•tˆ¤ì(€€€½¹ÍÐ¹½Ñ•%¹ÁÕÐ€ô‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ¡…É”µÉ•…Ñ”µ™½É´m¹…µ”õ¹½Ñ•tˆ¤ì(€€€Ñ¥Ñ±•%¹ÁÕÐü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¥¹ÁÕÐˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹Í¡…É¥¹Q¥Ñ±”€ôÑ¥Ñ±•%¹ÁÕÐ¹Ù…±Õ”ìô¤ì(€€€¹½Ñ•%¹ÁÕÐü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¥¹ÁÕÐˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹Í¡…É¥¹9½Ñ”€ô¹½Ñ•%¹ÁÕÐ¹Ù…±Õ”ìô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÍ¡…É”µ‘É¥±±tˆ¤¹™½É…  ¡¥¹ÁÕÐ¤€ôø¥¹ÁÕÐ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°€ ¤€ôøì(€€€€€½¹ÍÐ¡½Í•¸€ô¹•ÜM•Ð¡Õ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì¤ì(€€€€€¥˜€¡¥¹ÁÕÐ¹¡•­•¤¡½Í•¸¹…‘¡¥¹ÁÕÐ¹‘…Ñ…Í•Ð¹Í¡…É•É¥±°¤ì•±Í”¡½Í•¸¹‘•±•Ñ”¡¥¹ÁÕÐ¹‘…Ñ…Í•Ð¹Í¡…É•É¥±°¤ì(€€€€€Õ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì€ôÕÍÑ½µ…¡”¹™¥±Ñ•È ¡‘É¥±°¤€ôø¡½Í•¸¹¡…Ì¡‘É¥±°¹¥¤¤¹µ…À ¡‘É¥±°¤€ôø‘É¥±°¹¥¤ì(€€€€€Ù½¥É•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÍ¡…É”µÍ•±•Ðµ…±±té¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì€ôÕÍÑ½µ…¡”¹µ…À ¡‘É¥±°¤€ôø‘É¥±°¹¥¤ì(€€€€€Ù½¥É•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÍ¡…É”µ±•…Été¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì€ômtì(€€€€€Ù½¥É•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÍ¡…É”µ‘½Ý¹±½…‘té¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ‰Õ¹‘±”€ô…Ý…¥ÐÍ¡…É¥¹M•ÉÙ¥”¹É•…Ñ”¡ì¥‘ÌèÕ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì°Ñ¥Ñ±”èÕ¥MÑ…Ñ”¹Í¡…É¥¹Q¥Ñ±”°¹½Ñ”èÕ¥MÑ…Ñ”¹Í¡…É¥¹9½Ñ”ô¤ì(€€€€€€€‘½Ý¹±½…‘)Í½¸¡‰Õ¹‘±”¹Á…å±½…°‰Õ¹‘±”¹™¥±•¹…µ”¤ì(€€€€€€€Í¡…É¥¹5•ÍÍ…”€ô½Ý¹±½…‘•€‘í‰Õ¹‘±”¹ÍÕµµ…Éä¹‘É¥±±ÍôÙ…±¥‘…Ñ•‘É¥±°‘í‰Õ¹‘±”¹ÍÕµµ…Éä¹‘É¥±±Ì€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô…Ì€‘í‰Õ¹‘±”¹™¥±•¹…µ•ô¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ìÍ¡…É¥¹5•ÍÍ…”€ôM¡…É”Á…¬‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÍ¡…É”µ¹…Ñ¥Ù•té¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ‰Õ¹‘±”€ô…Ý…¥ÐÍ¡…É¥¹M•ÉÙ¥”¹É•…Ñ”¡ì¥‘ÌèÕ¥MÑ…Ñ”¹Í¡…É¥¹É¥±±%‘Ì°Ñ¥Ñ±”èÕ¥MÑ…Ñ”¹Í¡…É¥¹Q¥Ñ±”°¹½Ñ”èÕ¥MÑ…Ñ”¹Í¡…É¥¹9½Ñ”ô¤ì(€€€€€€€…Ý…¥ÐÍ¡…É¥¹M•ÉÙ¥”¹Í¡…É”¡‰Õ¹‘±”¤ì(€€€€€€€Í¡…É¥¹5•ÍÍ…”€ôM¡…É•€‘í‰Õ¹‘±”¹™¥±•¹…µ•ôÑ¡É½Õ Ñ¡”‘•Ù¥”Í¡…É”Í¡••Ð¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€Í¡…É¥¹5•ÍÍ…”€ô•ÉÉ½È¹¹…µ”€ôôô€‰‰½ÉÑÉÉ½Èˆ€ü€‰M¡…É¥¹œ…¹•±±•ì¹¼™¥±”Ý…ÌÍ•¹Ð‰ä9½Ù„AÉ¥µ”¸ˆ€èMåÍÑ•´Í¡…É¥¹œ‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ¡…É”µ¥µÁ½ÉÐµ™¥±”ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ™¥±”€ô•Ù•¹Ð¹Ñ…É•Ð¹™¥±•Ìü¹lÁtì(€€€€€€€¥˜€ …™¥±”¤É•ÑÕÉ¸ì(€€€€€€€¥˜€¡™¥±”¹Í¥é”€ø5a}M!I}	eQL¤Ñ¡É½Ü¹•ÜÉÉ½È ‰¥±”•á••‘ÌÑ¡”€Ä5Í…™•Ñä±¥µ¥Ðˆ¤ì(€€€€€€€½¹ÍÐÁ…å±½…€ô)M=8¹Á…ÉÍ”¡…Ý…¥Ð™¥±”¹Ñ•áÐ ¤¤ì(€€€€€€€½¹ÍÐÍÕµµ…Éä€ôÍ¡…É¥¹M•ÉÙ¥”¹ÁÉ•Ù¥•Ü¡Á…å±½…¤ì(€€€€€€€Í¡…É¥¹%µÁ½ÉÑAÉ•Ù¥•Ü€ôìÁ…å±½…°ÍÕµµ…Éä°™¥±•¹…µ”è™¥±”¹¹…µ”ôì(€€€€€€€Í¡…É¥¹5•ÍÍ…”€ôY…±¥‘…Ñ•€‘í™¥±”¹¹…µ•ô¸I•Ù¥•ÜÑ¡”ÁÉ•Ù¥•Ü‰•™½É”¥µÁ½ÉÑ¥¹œ¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€Í¡…É¥¹%µÁ½ÉÑAÉ•Ù¥•Ü€ô¹Õ±°ì(€€€€€€€Í¡…É¥¹5•ÍÍ…”€ô%µÁ½ÉÐÁÉ•Ù¥•Ü‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ¡…É”µ¥µÁ½ÉÐµ±•…Èˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Í¡…É¥¹%µÁ½ÉÑAÉ•Ù¥•Ü€ô¹Õ±°ì(€€€€€Í¡…É¥¹5•ÍÍ…”€ô€‰%µÁ½ÉÐÁÉ•Ù¥•Ü…¹•±±•ì¹¼±½…°‘…Ñ„¡…¹•¸ˆì(€€€€€Ù½¥É•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ¡…É”µ¥µÁ½ÉÐµ½¹™¥É´ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€¥˜€ …Í¡…É¥¹%µÁ½ÉÑAÉ•Ù¥•Ü¤É•ÑÕÉ¸ì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥ÐÍ¡…É¥¹M•ÉÙ¥”¹¥µÁ½ÉÐ¡Í¡…É¥¹%µÁ½ÉÑAÉ•Ù¥•Ü¹Á…å±½…¤ì(€€€€€€€Í¡…É¥¹5•ÍÍ…”€ô%µÁ½ÉÑ•€‘íÉ•ÍÕ±Ð¹…‘‘•‘ô‘É¥±°‘íÉ•ÍÕ±Ð¹…‘‘•€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô¸½¹™±¥Ñ¥¹œ¥‘•¹Ñ¥Ñ¥•Ì…¹¹…µ•ÌÝ•É”É•Í½±Ù•Í…™•±ä¹€ì(€€€€€€€Í¡…É¥¹%µÁ½ÉÑAÉ•Ù¥•Ü€ô¹Õ±°ì(€€€€€€€…Ý…¥ÐÉ•™É•Í¡ÕÍÑ½µ…¡” ¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ìÍ¡…É¥¹5•ÍÍ…”€ô%µÁ½ÉÐ‰±½­•Ý¥Ñ¡½ÕÐ¡…¹•Ìè€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰Í¡…É¥¹œˆ¤ì(€€€ô¤ì(€ô(€¥˜€¡É½ÕÑ”€ôôô€‰ÍÑ…Ñ¥ÍÑ¥Ìˆ¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÍÑ…Ñ¥ÍÑ¥ÌµÁ•É¥½‘tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹ÍÑ…Ñ¥ÍÑ¥ÍA•É¥½€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹ÍÑ…Ñ¥ÍÑ¥ÍA•É¥½€ôôô€‰…±°ˆ€ü€‰…±°ˆ€è9Õµ‰•È¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹ÍÑ…Ñ¥ÍÑ¥ÍA•É¥½¤ì(€€€€€Ù½¥É•¹‘•È ‰ÍÑ…Ñ¥ÍÑ¥Ìˆ¤ì(€€€ô¤¤ì(€ô(€¥˜€¡É½ÕÑ”€ôôô€‰ÑÉ…¥¸ˆ¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÙ½¥”µ•¹…‰±•tˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹Ù½¥•¹…‰±•€ôÑÉÕ”ì(€€€€€Ù½¥•MÑ…ÑÕÌ€ô€‰É•…‘äˆì(€€€€€Ù½¥•5•ÍÍ…”€ô€‰Y½¥”¥ÌÉ•…‘ä¸Q…À1¥ÍÑ•¸…¹Í…ä½¹”½µµ…¹¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÙ½¥”µ‘¥Í…‰±•tˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€Ù½¥•½¹ÑÉ½±±•È¹…¹•° ¤ì(€€€€€Õ¥MÑ…Ñ”¹Ù½¥•¹…‰±•€ô™…±Í”ì(€€€€€Õ¥MÑ…Ñ”¹Ù½¥•A•¹‘¥¹MÑ…ÉÐ€ô™…±Í”ì(€€€€€Ù½¥•MÑ…ÑÕÌ€ô€‰É•…‘äˆì(€€€€€Ù½¥•5•ÍÍ…”€ô€‰Y½¥”½¹ÑÉ½±Ì…É”½™˜¸Q½Õ ½¹ÑÉ½±Ì…±Ý…åÌÉ•µ…¥¸…Ù…¥±…‰±”¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÙ½¥”µ±¥ÍÑ•¹tˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøÙ½¥•½¹ÑÉ½±±•È¹±¥ÍÑ•¸ ¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÙ½¥”µ½¹™¥É´µÍÑ…ÉÑtˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹Ù½¥•A•¹‘¥¹MÑ…ÉÐ€ô™…±Í”ì(€€€€€Ù½¥•MÑ…ÑÕÌ€ô€‰É•…‘äˆì(€€€€€Ù½¥•5•ÍÍ…”€ô€‰MÑ…ÉÐ½¹™¥Éµ•‰äÑ½Õ ¸ˆì(€€€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ•ÍÍ¥½¸µ™½É´ˆ¤ü¹É•ÅÕ•ÍÑMÕ‰µ¥Ð ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÙ½¥”µ…¹•°µÍÑ…ÉÑtˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹Ù½¥•A•¹‘¥¹MÑ…ÉÐ€ô™…±Í”ì(€€€€€Ù½¥•MÑ…ÑÕÌ€ô€‰É•…‘äˆì(€€€€€Ù½¥•5•ÍÍ…”€ô€‰MÁ½­•¸ÍÑ…ÉÐ…¹•±±•¸9½Ñ¡¥¹œ¡…¹•¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µ…±¥‰É…Ñ¥½¸µ½Á•¹tˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôø…±¥‰É…Ñ¥½¹]¥é…É¹½Á•¸¡…±¥‰É…Ñ¥½¹AÉ½™¥±”°™…±Í”¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µ…±¥‰É…Ñ¥½¸µÅÕ¥­tˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôø…±¥‰É…Ñ¥½¹]¥é…É¹½Á•¸¡…±¥‰É…Ñ¥½¹AÉ½™¥±”°ÑÉÕ”¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µ…±¥‰É…Ñ¥½¸µ•áÁ½ÉÑtˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôø‘½Ý¹±½…‘)Í½¸¡…Ý…¥Ð…±¥‰É…Ñ¥½¹M•ÉÙ¥”¹•áÁ½ÉÐ ¤°¹½Ù„µÁÉ¥µ”µ…±¥‰É…Ñ¥½¸´‘í¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¥ô¹©Í½¹€¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µ…±¥‰É…Ñ¥½¸µ¥µÁ½ÉÑtˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ™¥±”€ô•Ù•¹Ð¹Ñ…É•Ð¹™¥±•Ìü¹lÁtì¥˜€ …™¥±”¤É•ÑÕÉ¸ì(€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð…±¥‰É…Ñ¥½¹M•ÉÙ¥”¹¥µÁ½ÉÐ¡)M=8¹Á…ÉÍ”¡…Ý…¥Ð™¥±”¹Ñ•áÐ ¤¤¤ì(€€€€€€€…±¥‰É…Ñ¥½¹AÉ½™¥±”€ôÉ•ÍÕ±Ð¹ÁÉ½™¥±•ÍlÁt€üü¹Õ±°ì(€€€€€€€…±¥‰É…Ñ¥½¹5•ÍÍ…”€ô%µÁ½ÉÑ•€‘íÉ•ÍÕ±Ð¹¥µÁ½ÉÑ•‘ô…±¥‰É…Ñ¥½¸ÁÉ½™¥±”‘íÉ•ÍÕ±Ð¹¥µÁ½ÉÑ•€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì…±¥‰É…Ñ¥½¹5•ÍÍ…”€ô%µÁ½ÉÐ‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µ±•Ù•±tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹±•Ù•°€ô9Õµ‰•È¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹±•Ù•°¤ìÙ½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ìô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µ‘É¥±°µÑ…‰tˆ¤¹™½É…  ¡‰ÕÑÑ½¸°¥¹‘•à°‰ÕÑÑ½¹Ì¤€ôøì(€€€€€‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹‘É¥±±Q…ˆ€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹‘É¥±±Q…ˆìÙ½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ìô¤ì(€€€€€‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰­•å‘½Ý¸ˆ°€¡•Ù•¹Ð¤€ôøì(€€€€€€€¥˜€¡•Ù•¹Ð¹­•ä€„ôô€‰ÉÉ½Ý1•™Ðˆ€˜˜•Ù•¹Ð¹­•ä€„ôô€‰ÉÉ½ÝI¥¡Ðˆ¤É•ÑÕÉ¸ì(€€€€€€€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì(€€€€€€€½¹ÍÐ¹•áÐ€ô‰ÕÑÑ½¹Íl¡¥¹‘•à€¬€¡•Ù•¹Ð¹­•ä€ôôô€‰ÉÉ½ÝI¥¡Ðˆ€ü€Ä€è‰ÕÑÑ½¹Ì¹±•¹Ñ €´€Ä¤¤€”‰ÕÑÑ½¹Ì¹±•¹Ñ¡tì(€€€€€€€Õ¥MÑ…Ñ”¹‘É¥±±Q…ˆ€ô¹•áÐ¹‘…Ñ…Í•Ð¹‘É¥±±Q…ˆì(€€€€€€€Ù½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤¹Ñ¡•¸  ¤€ôø‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È¡m‘…Ñ„µ‘É¥±°µÑ…ˆôˆ‘í¹•áÐ¹‘…Ñ…Í•Ð¹‘É¥±±Q…‰ô‰u€¤ü¹™½ÕÌ ¤¤ì(€€€€€ô¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µ‰Õ¥±Ñ¥¸µ½É‘•Été¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐ‘É¥±°€ô•Ñ	Õ¥±Ñ¥¹É¥±°¡Õ¥MÑ…Ñ”¹‘É¥±±%¤ì(€€€€€¥˜€ …‘É¥±°¤É•ÑÕÉ¸ì(€€€€€½¹ÍÐ¹•áÐ€ô€…É…¹‘½µ=É‘•É½È¡‘É¥±°¤ì(€€€€€‰Õ¥±Ñ¥¹AÉ•™•É•¹•Ì€ô…Ý…¥Ð‰Õ¥±Ñ¥¹AÉ•™•É•¹•ÍM•ÉÙ¥”¹Í•ÑI…¹‘½´¡‘É¥±°°Õ¥MÑ…Ñ”¹±•Ù•°°¹•áÐ¤ì(€€€€€‰Õ¥±Ñ¥¹5•ÍÍ…”€ô€‘í‘É¥±°¹¹…µ•ôƒ
+Ü1•Ù•°€‘íÕ¥MÑ…Ñ”¹±•Ù•±ôè€‘í¹•áÐ€ü€‰É…¹‘½´½É‘•Èˆ€è€‰Í•ÅÕ•¹Ñ¥…°‰ô¹€ì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µ‰Õ¥±Ñ¥¸µÉ•Í•Ñté¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€¥˜€ …±½‰…±Q¡¥Ì¹½¹™¥É´ ‰I•Í•Ð‰Õ¥±Ðµ¥¸Á±…å‰…¬Í•ÑÑ¥¹Ì™½È•Ù•Éä‘É¥±°…¹±•Ù•°üÕÍÑ½´‘É¥±±ÌÝ¥±°¹½Ð¡…¹”¸ˆ¤¤É•ÑÕÉ¸ì(€€€€€‰Õ¥±Ñ¥¹AÉ•™•É•¹•Ì€ô…Ý…¥Ð‰Õ¥±Ñ¥¹AÉ•™•É•¹•ÍM•ÉÙ¥”¹É•Í•Ð ¤ì(€€€€€‰Õ¥±Ñ¥¹5•ÍÍ…”€ô€‰	Õ¥±Ðµ¥¸Á±…å‰…¬Í•ÑÑ¥¹ÌÉ•ÍÑ½É•¸ÕÍÑ½´‘É¥±±ÌÝ•É”¹½Ð¡…¹•¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÕ¤µµ½‘•té¹½Ð é‘¥Í…‰±•¤ˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹µ½‘”€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹Õ¥5½‘”ì(€€€€€Õ¥MÑ…Ñ”¹…µ½Õ¹Ð€ôÕ¥MÑ…Ñ”¹µ½‘”€ôôô€‰Ñ¥µ”ˆ€ü€ØÀ€è€ÄÀì(€€€€€¥˜€¡Õ¥MÑ…Ñ”¹µ½‘”€ôôô€‰µÕÍ¥Œˆ€˜˜€…Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€˜˜Õ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ì¹±•¹Ñ €ôôô€À¤Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ôÁ±…å±¥ÍÑ…¡•lÁtü¹¥€üü¹Õ±°ì(€€€€€¥˜€¡Õ¥MÑ…Ñ”¹µ½‘”€ôôô€‰µÍå¹Œˆ€˜˜€…Õ¥MÑ…Ñ”¹µÍå¹QÉ…­%¤Õ¥MÑ…Ñ”¹µÍå¹QÉ…­%€ôÑÉ…­…¡”¹™¥¹ ¡ÑÉ…¬¤€ôøÑÉ…¬¹µÍå¹ÑÑ…¡µ•¹Ñ%¤ü¹¥€üü¹Õ±°ì(€€€€€µÕÍ¥5•ÍÍ…”€ô€ˆˆì(€€€€€µÍå¹5•ÍÍ…”€ô€ˆˆì(€€€€€Ù½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µ…Ñ•½Éåté¹½Ð é‘¥Í…‰±•¤ˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹…Ñ•½Éä€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹…Ñ•½ÉäìÕ¥MÑ…Ñ”¹‘É¥±±%€ô•Ñ	Õ¥±Ñ¥¹É¥±±Ì¡Õ¥MÑ…Ñ”¹…Ñ•½Éä¥lÁt¹¥ìÙ½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ìô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µ‘É¥±°µ¥‘té¹½Ð é‘¥Í…‰±•¤ˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹‘É¥±±%€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹‘É¥±±%ìÙ½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ìô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÉ½ÕÁté¹½Ð é‘¥Í…‰±•¤ˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹É½ÕÀ€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹É½ÕÀìÕ¥MÑ…Ñ”¹ÕÍÑ½µÉÉ…¹”€ô™…±Í”ìÙ½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ìô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÕÍÑ½´µÍ•±•Ñté¹½Ð é‘¥Í…‰±•¤ˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹‘É¥±±%€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹ÕÍÑ½µM•±•ÐìÙ½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ìô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÕÍÑ½´µ•‘¥Ñté¹½Ð é‘¥Í…‰±•¤ˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôø½Á•¹É¥±±¥…±½œ¡É•Í½±Ù•É¥±°¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹ÕÍÑ½µ‘¥Ð¤¤¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÕÍÑ½´µ¹•Ýté¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôø½Á•¹É¥±±¥…±½œ ¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ‰m‘…Ñ„µÕÍÑ½´µ…ÉÉ…¹•té¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøìÕ¥MÑ…Ñ”¹ÕÍÑ½µÉÉ…¹”€ô€…Õ¥MÑ…Ñ”¹ÕÍÑ½µÉÉ…¹”ìÙ½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ìô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÕÍÑ½´µµ½Ù•té¹½Ð é‘¥Í…‰±•¤ˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹µ½Ù”¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹ÕÍÑ½µ5½Ù”°9Õµ‰•È¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹‘¥É•Ñ¥½¸¤¤ì(€€€€€ÕÍÑ½µ5•ÍÍ…”€ô€‰É¥±°½É‘•ÈÍ…Ù•¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÕÍÑ½´µ•áÁ½ÉÐµ…±°é¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€‘½Ý¹±½…‘)Í½¸¡…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹•áÁ½ÉÐ ¤°¹½Ù„µÁÉ¥µ”µ‘É¥±±Ì´‘í¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤¹Í±¥” À°€ÄÀ¥ô¹©Í½¹€¤ì(€€€€€ÕÍÑ½µ5•ÍÍ…”€ô€‰±°ÕÍÑ½´‘É¥±±Ì•áÁ½ÉÑ•¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÕÍÑ½´µ¥µÁ½ÉÐé¹½Ð é‘¥Í…‰±•¤ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ™¥±”€ô•Ù•¹Ð¹Ñ…É•Ð¹™¥±•Ìü¹lÁtì(€€€€€€€¥˜€ …™¥±”¤É•ÑÕÉ¸ì(€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹¥µÁ½ÉÐ¡)M=8¹Á…ÉÍ”¡…Ý…¥Ð™¥±”¹Ñ•áÐ ¤¤¤ì(€€€€€€€¥˜€¡É•ÍÕ±Ð¹‘É¥±±ÍlÁt¤ì(€€€€€€€€€Õ¥MÑ…Ñ”¹É½ÕÀ€ôÉ•ÍÕ±Ð¹‘É¥±±ÍlÁt¹É½ÕÀì(€€€€€€€€€Õ¥MÑ…Ñ”¹‘É¥±±%€ôÉ•ÍÕ±Ð¹‘É¥±±ÍlÁt¹¥ì(€€€€€€€ô(€€€€€€€ÕÍÑ½µ5•ÍÍ…”€ô%µÁ½ÉÑ•€‘íÉ•ÍÕ±Ð¹…‘‘•‘ô‘É¥±°‘íÉ•ÍÕ±Ð¹…‘‘•€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€ÕÍÑ½µ5•ÍÍ…”€ô%µÁ½ÉÐ‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ•ÍÍ¥½¸µ™½É´ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¥¹ÁÕÐˆ°€¡•Ù•¹Ð¤€ôøì(€€€€€½¹ÍÐ™½É´€ô¹•Ü½Éµ…Ñ„¡•Ù•¹Ð¹ÕÉÉ•¹ÑQ…É•Ð¤ì(€€€€€¥˜€¡™½É´¹¡…Ì ‰…µ½Õ¹Ðˆ¤¤Õ¥MÑ…Ñ”¹…µ½Õ¹Ð€ô9Õµ‰•È¡™½É´¹•Ð ‰…µ½Õ¹Ðˆ¤¤ì(€€€€€¥˜€¡™½É´¹¡…Ì ‰Á…ÕÍ”ˆ¤¤Õ¥MÑ…Ñ”¹Á…ÕÍ•M•½¹‘Ì€ô9Õµ‰•È¡™½É´¹•Ð ‰Á…ÕÍ”ˆ¤¤ì(€€€€€¥˜€¡™½É´¹¡…Ì ‰½Õ¹Ñ‘½Ý¸ˆ¤¤Õ¥MÑ…Ñ”¹½Õ¹Ñ‘½Ý¹M•½¹‘Ì€ô9Õµ‰•È¡™½É´¹•Ð ‰½Õ¹Ñ‘½Ý¸ˆ¤¤ì(€€€€€¥˜€¡™½É´¹¡…Ì ‰É½‰½Ñ1•…ˆ¤¤Õ¥MÑ…Ñ”¹É½‰½Ñ1•…‘M•½¹‘Ì€ô9Õµ‰•È¡™½É´¹•Ð ‰É½‰½Ñ1•…ˆ¤¤ì(€€€€€¥˜€¡•Ù•¹Ð¹Ñ…É•Ð¹¹…µ”€ôôô€‰µÍå¹QÉ…¬ˆ¤ì(€€€€€€€Õ¥MÑ…Ñ”¹µÍå¹QÉ…­%€ô™½É´¹•Ð ‰µÍå¹QÉ…¬ˆ¤ì(€€€€€€€½¹ÍÐ…ÑÑ…¡µ•¹Ð€ôµÍå¹…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôôÑÉ…­…¡”¹™¥¹ ¡ÑÉ…¬¤€ôøÑÉ…¬¹¥€ôôôÕ¥MÑ…Ñ”¹µÍå¹QÉ…­%¤ü¹µÍå¹ÑÑ…¡µ•¹Ñ%¤ì(€€€€€€€Õ¥MÑ…Ñ”¹É½‰½Ñ1•…‘M•½¹‘Ì€ô…ÑÑ…¡µ•¹Ðü¹Á…ÉÍ•ü¹Í•ÍÍ¥½¸ü¹É½‰½Ñ1•…€üüÕ¥MÑ…Ñ”¹É½‰½Ñ1•…‘M•½¹‘Ìì(€€€€€€€Ù½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€€€ô(€€€€€¥˜€¡•Ù•¹Ð¹Ñ…É•Ð¹¹…µ”€ôôô€‰µÕÍ¥M½ÕÉ”ˆ¤ì(€€€€€€€Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ô™½É´¹•Ð ‰µÕÍ¥M½ÕÉ”ˆ¤€ôôô€‰ÅÕ¥¬ˆ€ü¹Õ±°€è™½É´¹•Ð ‰µÕÍ¥M½ÕÉ”ˆ¤ì(€€€€€€€Ù½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€€€ô(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÍ•ÍÍ¥½¸µ™½É´ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰ÍÕ‰µ¥Ðˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì(€€€€€½¹ÍÐ™½É´€ô¹•Ü½Éµ…Ñ„¡•Ù•¹Ð¹ÕÉÉ•¹ÑQ…É•Ð¤ì(€€€€€¥˜€¡Õ¥MÑ…Ñ”¹µ½‘”€ôôô€‰µÍå¹Œˆ¤ì(€€€€€€€Õ¥MÑ…Ñ”¹µÍå¹QÉ…­%€ô™½É´¹•Ð ‰µÍå¹QÉ…¬ˆ¤ì(€€€€€€€Õ¥MÑ…Ñ”¹É½‰½Ñ1•…‘M•½¹‘Ì€ô9Õµ‰•È¡™½É´¹•Ð ‰É½‰½Ñ1•…ˆ¤¤ì(€€€€€€€½¹ÍÐÑÉ…¬€ôÑÉ…­…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôôÕ¥MÑ…Ñ”¹µÍå¹QÉ…­%¤ì(€€€€€€€ÑÉäì(€€€€€€€€€¥˜€ …ÑÉ…¬ü¹µÍå¹ÑÑ…¡µ•¹Ñ%¤Ñ¡É½Ü¹•ÜÉÉ½È ‰¡½½Í”„ÑÉ…¬Ý¥Ñ „Ù…±¥‘…Ñ•5Me9Ñ¥µ•±¥¹”ˆ¤ì(€€€€€€€€€½¹ÍÐ¡•­•€ô…Ý…¥ÐµÍå¹M•ÉÙ¥”¹É•Ù…±¥‘…Ñ”¡ÑÉ…¬¹µÍå¹ÑÑ…¡µ•¹Ñ%¤ì(€€€€€€€€€¥˜€ …¡•­•¹Ù…±¥¤ì(€€€€€€€€€€€µÍå¹%ÍÍÕ•Ì€ô¡•­•¹Ù…±¥‘…Ñ¥½¸¹¥ÍÍÕ•Ìì(€€€€€€€€€€€Ñ¡É½Ü¹•ÜÉÉ½È¡¡•­•¹Ù…±¥‘…Ñ¥½¸¹•ÉÉ½ÉÍlÁtü¹µ•ÍÍ…”€üü€‰5Me9É•Ù…±¥‘…Ñ¥½¸™…¥±•ˆ¤ì(€€€€€€€€€ô(€€€€€€€€€½¹ÍÐÍÁ•Œ€ôÉ•…Ñ•M•ÍÍ¥½¹MÁ•Œ¡ìµ½‘”è€‰µÍå¹Œˆ°±•Ù•°èÕ¥MÑ…Ñ”¹±•Ù•°°µÍå¹ÑÑ…¡µ•¹Ñ%è¡•­•¹…ÑÑ…¡µ•¹Ð¹¥°Á…ÕÍ•M•½¹‘Ìè€Àô¤ì(€€€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô½¹ÑÉ½±±•È¹ÍÑ…ÉÐ¡ÍÁ•Œ°ì½Õ¹Ñ‘½Ý¹M•½¹‘Ìè€Àô¤ì(€€€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ€„ôô€‰aUQˆ¤Ñ¡É½Ü¹•ÜÉÉ½È ‰5Me9Í¥µÕ±…Ñ¥½¸½Õ±¹½ÐÍÑ…ÉÐˆ¤ì(€€€€€€€€€µÍå¹M¥µÕ±…Ñ½È¹ÍÑ…ÉÐ¡¡•­•¹Ù…±¥‘…Ñ¥½¸¹Á…ÉÍ•°ìÉ½‰½Ñ1•…‘M•½¹‘ÌèÕ¥MÑ…Ñ”¹É½‰½Ñ1•…‘M•½¹‘Ìô¤ì(€€€€€€€€€µÍå¹5•ÍÍ…”€ôM¥µÕ±…Ñ¥¹œ€‘íÑÉ…¬¹‘¥ÍÁ±…å9…µ•ô¹€ì(€€€€€€€€€…Ý…¥Ð…Õ‘¥½A±…å•È¹ÍÑ…ÉÐ¡m¡•­•¹ÑÉ…­t¤ì(€€€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€€€µÍå¹5•ÍÍ…”€ô•ÉÉ½È¹µ•ÍÍ…”ì(€€€€€€€€€µÍå¹M¥µÕ±…Ñ½È¹ÍÑ½À ¤ì(€€€€€€€€€¥˜€¡½¹ÑÉ½±±•È¹Í¹…ÁÍ¡½Ð ¤¹ÍÁ•Œü¹µ½‘”€ôôô€‰µÍå¹Œˆ¤½¹ÑÉ½±±•È¹™…¥° ‰5Me9}MQIQ}%1ˆ¤ì(€€€€€€€ô(€€€€€ô•±Í”¥˜€¡Õ¥MÑ…Ñ”¹µ½‘”€ôôô€‰µÕÍ¥Œˆ¤ì(€€€€€€€Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ô™½É´¹•Ð ‰µÕÍ¥M½ÕÉ”ˆ¤€ôôô€‰ÅÕ¥¬ˆ€ü¹Õ±°€è™½É´¹•Ð ‰µÕÍ¥M½ÕÉ”ˆ¤ì(€€€€€€€ÑÉäì(€€€€€€€€€½¹ÍÐÍ•±•Ñ¥½¸€ô…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹É•Í½±Ù”¡ìÁ±…å±¥ÍÑ%èÕ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%°ÅÕ¥­QÉ…­%‘ÌèÕ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ümt€èÕ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ìô¤ì(€€€€€€€€€½¹ÍÐÍÁ•Œ€ôÉ•…Ñ•M•ÍÍ¥½¹MÁ•Œ¡ìµ½‘”è€‰µÕÍ¥Œˆ°±•Ù•°èÕ¥MÑ…Ñ”¹±•Ù•°°‘É¥±±%èÕ¥MÑ…Ñ”¹‘É¥±±%°É…¹‘½µ=É‘•ÈèÉ…¹‘½µ=É‘•É½È¡É•Í½±Ù•É¥±°¡Õ¥MÑ…Ñ”¹‘É¥±±%¤¤°Á±…å±¥ÍÑ%èÕ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%°ÅÕ¥­QÉ…­%‘ÌèÕ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ümt€èÕ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ì°Á…ÕÍ•M•½¹‘Ìè€Àô¤ì(€€€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô½¹ÑÉ½±±•È¹ÍÑ…ÉÐ¡ÍÁ•Œ°ì½Õ¹Ñ‘½Ý¹M•½¹‘Ìè€Àô¤ì(€€€€€€€€€¥˜€¡É•ÍÕ±Ð¹ÍÑ…ÑÕÌ€„ôô€‰aUQˆ¤Ñ¡É½Ü¹•ÜÉÉ½È ‰5ÕÍ¥ŒÍ•ÍÍ¥½¸½Õ±¹½ÐÍÑ…ÉÐˆ¤ì(€€€€€€€€€µÕÍ¥5•ÍÍ…”€ôA±…å¥¹œ€‘íÍ•±•Ñ¥½¸¹±…‰•±ô¹€ì(€€€€€€€€€…Ý…¥Ð…Õ‘¥½A±…å•È¹ÍÑ…ÉÐ¡Í•±•Ñ¥½¸¹ÑÉ…­Ì¤ì(€€€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€€€µÕÍ¥5•ÍÍ…”€ô•ÉÉ½È¹µ•ÍÍ…”ì(€€€€€€€€€¥˜€¡½¹ÑÉ½±±•È¹Í¹…ÁÍ¡½Ð ¤¹ÍÁ•Œü¹µ½‘”€ôôô€‰µÕÍ¥Œˆ¤½¹ÑÉ½±±•È¹™…¥° ‰U%=}MQIQ}%1ˆ¤ì(€€€€€€€ô(€€€€€ô•±Í”ì(€€€€€€€Õ¥MÑ…Ñ”¹…µ½Õ¹Ð€ô9Õµ‰•È¡™½É´¹•Ð ‰…µ½Õ¹Ðˆ¤¤ì(€€€€€€€Õ¥MÑ…Ñ”¹Á…ÕÍ•M•½¹‘Ì€ô9Õµ‰•È¡™½É´¹•Ð ‰Á…ÕÍ”ˆ¤¤ì(€€€€€€€Õ¥MÑ…Ñ”¹½Õ¹Ñ‘½Ý¹M•½¹‘Ì€ô9Õµ‰•È¡™½É´¹•Ð ‰½Õ¹Ñ‘½Ý¸ˆ¤¤ì(€€€€€€€½¹ÍÐÍÁ•Œ€ôÉ•…Ñ•M•ÍÍ¥½¹MÁ•Œ¡ìµ½‘”èÕ¥MÑ…Ñ”¹µ½‘”°±•Ù•°èÕ¥MÑ…Ñ”¹±•Ù•°°‘É¥±±%èÕ¥MÑ…Ñ”¹‘É¥±±%°É…¹‘½µ=É‘•ÈèÉ…¹‘½µ=É‘•É½È¡É•Í½±Ù•É¥±°¡Õ¥MÑ…Ñ”¹‘É¥±±%¤¤°É•Á•Ñ¥Ñ¥½¹ÌèÕ¥MÑ…Ñ”¹µ½‘”€ôôô€‰É•ÁÌˆ€üÕ¥MÑ…Ñ”¹…µ½Õ¹Ð€è€ÄÀ°‘ÕÉ…Ñ¥½¹M•½¹‘ÌèÕ¥MÑ…Ñ”¹µ½‘”€ôôô€‰Ñ¥µ”ˆ€üÕ¥MÑ…Ñ”¹…µ½Õ¹Ð€è€ØÀ°Á…ÕÍ•M•½¹‘ÌèÕ¥MÑ…Ñ”¹Á…ÕÍ•M•½¹‘Ìô¤ì(€€€€€€€½¹ÑÉ½±±•È¹ÍÑ…ÉÐ¡ÍÁ•Œ°ì½Õ¹Ñ‘½Ý¹M•½¹‘ÌèÕ¥MÑ…Ñ”¹½Õ¹Ñ‘½Ý¹M•½¹‘Ìô¤ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µ½µµ…¹‘tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€…Ý…¥Ð•á•ÕÑ•M•ÍÍ¥½¹½µµ…¹¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹½µµ…¹¤ì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€€€ô¤¤ì(€ô((€¥˜€¡É½ÕÑ”€ôôô€‰µÍå¹Œˆ¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆµÍå¹Œµ¥µÁ½ÉÐµ™½É´ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰ÍÕ‰µ¥Ðˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì(€€€€€½¹ÍÐ™½É´€ô¹•Ü½Éµ…Ñ„¡•Ù•¹Ð¹ÕÉÉ•¹ÑQ…É•Ð¤ì(€€€€€½¹ÍÐ™¥±”€ô™½É´¹•Ð ‰µÍå¹¥±”ˆ¤ì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥ÐµÍå¹M•ÉÙ¥”¹…ÑÑ… ¡™¥±”°™½É´¹•Ð ‰ÑÉ…­%ˆ¤¤ì(€€€€€€€µÍå¹%ÍÍÕ•Ì€ôÉ•ÍÕ±Ð¹Ù…±¥‘…Ñ¥½¸¹¥ÍÍÕ•Ìì(€€€€€€€¥˜€ …É•ÍÕ±Ð¹…ÑÑ…¡•¤ì(€€€€€€€€€µÍå¹5•ÍÍ…”€ô9½Ð…ÑÑ…¡•è€‘íÉ•ÍÕ±Ð¹Ù…±¥‘…Ñ¥½¸¹•ÉÉ½ÉÌ¹±•¹Ñ¡ôÙ…±¥‘…Ñ¥½¸•ÉÉ½È‘íÉ•ÍÕ±Ð¹Ù…±¥‘…Ñ¥½¸¹•ÉÉ½ÉÌ¹±•¹Ñ €ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô¹€ì(€€€€€€€ô•±Í”ì(€€€€€€€€€Õ¥MÑ…Ñ”¹µÍå¹QÉ…­%€ôÉ•ÍÕ±Ð¹ÑÉ…¬¹¥ì(€€€€€€€€€Õ¥MÑ…Ñ”¹É½‰½Ñ1•…‘M•½¹‘Ì€ôÉ•ÍÕ±Ð¹…ÑÑ…¡µ•¹Ð¹Á…ÉÍ•¹Í•ÍÍ¥½¸¹É½‰½Ñ1•…ì(€€€€€€€€€µÍå¹5•ÍÍ…”€ôY…±¥‘…Ñ•…¹…ÑÑ…¡•€‘í™¥±”¹¹…µ•ô¹€ì(€€€€€€€ô(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€µÍå¹%ÍÍÕ•Ì€ômtì(€€€€€€€µÍå¹5•ÍÍ…”€ô%µÁ½ÉÐ‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÍå¹Œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µµÍå¹ŒµÕÍ•tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹µ½‘”€ô€‰µÍå¹Œˆì(€€€€€Õ¥MÑ…Ñ”¹µÍå¹QÉ…­%€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹µÍå¹UÍ”ì(€€€€€½¹ÍÐ…ÑÑ…¡µ•¹Ð€ôµÍå¹…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôôÑÉ…­…¡”¹™¥¹ ¡ÑÉ…¬¤€ôøÑÉ…¬¹¥€ôôôÕ¥MÑ…Ñ”¹µÍå¹QÉ…­%¤ü¹µÍå¹ÑÑ…¡µ•¹Ñ%¤ì(€€€€€Õ¥MÑ…Ñ”¹É½‰½Ñ1•…‘M•½¹‘Ì€ô…ÑÑ…¡µ•¹Ðü¹Á…ÉÍ•ü¹Í•ÍÍ¥½¸ü¹É½‰½Ñ1•…€üü€Ä¸Ìì(€€€€€±½…Ñ¥½¸¹¡…Í €ô€ˆÑÉ…¥¸ˆì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µµÍå¹Œµ•áÁ½ÉÑtˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€½¹ÍÐ…ÑÑ…¡µ•¹Ð€ôµÍå¹…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹µÍå¹áÁ½ÉÐ¤ì(€€€€€¥˜€¡…ÑÑ…¡µ•¹Ð¤‘½Ý¹±½…‘Q•áÐ¡…ÑÑ…¡µ•¹Ð¹Í½ÕÉ•Q•áÐ°…ÑÑ…¡µ•¹Ð¹Í½ÕÉ•¥±•¹…µ”¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µµÍå¹ŒµÉ•µ½Ù•tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐÑÉ…¬€ôÑÉ…­…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹µÍå¹I•µ½Ù”¤ì(€€€€€¥˜€ …ÑÉ…¬ñð€…±½‰…±Q¡¥Ì¹½¹™¥É´¡I•µ½Ù”Ñ¡”5Me9Ñ¥µ•±¥¹”™É½´ƒŠp‘íÑÉ…¬¹‘¥ÍÁ±…å9…µ•÷ŠtüQ¡”…Õ‘¥¼Ý¥±°É•µ…¥¸ÍÑ½É•¹€¤¤É•ÑÕÉ¸ì(€€€€€…Ý…¥ÐµÍå¹M•ÉÙ¥”¹É•µ½Ù”¡ÑÉ…¬¹¥¤ì(€€€€€µÍå¹%ÍÍÕ•Ì€ômtì(€€€€€µÍå¹5•ÍÍ…”€ô€‰5Me9Ñ¥µ•±¥¹”É•µ½Ù•ì…Õ‘¥¼É•µ…¥¹ÌÍÑ½É•¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÍå¹Œˆ¤ì(€€€ô¤¤ì(€ô((€¥˜€¡É½ÕÑ”€ôôô€‰µÕÍ¥Œˆ¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆµÕÍ¥Œµ¥µÁ½ÉÐˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹¥µÁ½ÉÑ¥±•Ì¡•Ù•¹Ð¹Ñ…É•Ð¹™¥±•Ì¤ì(€€€€€€€µÕÍ¥5•ÍÍ…”€ô%µÁ½ÉÑ•€‘íÉ•ÍÕ±Ð¹¥µÁ½ÉÑ•¹±•¹Ñ¡ôÑÉ…¬‘íÉ•ÍÕ±Ð¹¥µÁ½ÉÑ•¹±•¹Ñ €ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô‘íÉ•ÍÕ±Ð¹‘ÕÁ±¥…Ñ•Ì¹±•¹Ñ €ü€ìÍ­¥ÁÁ•€‘íÉ•ÍÕ±Ð¹‘ÕÁ±¥…Ñ•Ì¹±•¹Ñ¡ô‘ÕÁ±¥…Ñ”‘íÉ•ÍÕ±Ð¹‘ÕÁ±¥…Ñ•Ì¹±•¹Ñ €ôôô€Ä€ü€ˆˆ€è€‰Ì‰õ€€è€ˆ‰ô¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ìµÕÍ¥5•ÍÍ…”€ô%µÁ½ÉÐ‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÅÕ¥¬µÑÉ…­tˆ¤¹™½É…  ¡¥¹ÁÕÐ¤€ôø¥¹ÁÕÐ¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°€ ¤€ôøì(€€€€€½¹ÍÐÍ•±•Ñ•€ô¹•ÜM•Ð¡Õ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ì¤ì(€€€€€¥¹ÁÕÐ¹¡•­•€üÍ•±•Ñ•¹…‘¡¥¹ÁÕÐ¹‘…Ñ…Í•Ð¹ÅÕ¥­QÉ…¬¤€èÍ•±•Ñ•¹‘•±•Ñ”¡¥¹ÁÕÐ¹‘…Ñ…Í•Ð¹ÅÕ¥­QÉ…¬¤ì(€€€€€Õ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ì€ôÑÉ…­…¡”¹™¥±Ñ•È ¡ÑÉ…¬¤€ôøÍ•±•Ñ•¹¡…Ì¡ÑÉ…¬¹¥¤¤¹µ…À ¡ÑÉ…¬¤€ôøÑÉ…¬¹¥¤ì(€€€€€Ù½¥É•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÅÕ¥¬µµÕÍ¥ŒµÕÍ”ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹µ½‘”€ô€‰µÕÍ¥Œˆì(€€€€€Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ô¹Õ±°ì(€€€€€±½…Ñ¥½¸¹¡…Í €ô€ˆÑÉ…¥¸ˆì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÁ±…å±¥ÍÐµÉ•…Ñ”ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰ÍÕ‰µ¥Ðˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐÁ±…å±¥ÍÐ€ô…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹É•…Ñ•A±…å±¥ÍÐ¡¹•Ü½Éµ…Ñ„¡•Ù•¹Ð¹ÕÉÉ•¹ÑQ…É•Ð¤¹•Ð ‰¹…µ”ˆ¤°Õ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ì¤ì(€€€€€€€Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ôÁ±…å±¥ÍÐ¹¥ì(€€€€€€€µÕÍ¥5•ÍÍ…”€ôÉ•…Ñ•€‘íÁ±…å±¥ÍÐ¹¹…µ•ô¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ìµÕÍ¥5•ÍÍ…”€ô•ÉÉ½È¹µ•ÍÍ…”ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÑÉ…¬µÉ•¹…µ•tˆ¤¹™½É…  ¡™½É´¤€ôø™½É´¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰ÍÕ‰µ¥Ðˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì(€€€€€ÑÉäì…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹É•¹…µ•QÉ…¬¡™½É´¹‘…Ñ…Í•Ð¹ÑÉ…­I•¹…µ”°¹•Ü½Éµ…Ñ„¡™½É´¤¹•Ð ‰¹…µ”ˆ¤¤ìµÕÍ¥5•ÍÍ…”€ô€‰QÉ…¬É•¹…µ•¸ˆìô(€€€€€…Ñ €¡•ÉÉ½È¤ìµÕÍ¥5•ÍÍ…”€ô•ÉÉ½È¹µ•ÍÍ…”ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÑÉ…¬µ‘•±•Ñ•tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐÑÉ…¬€ôÑÉ…­…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹ÑÉ…­•±•Ñ”¤ì(€€€€€¥˜€ …ÑÉ…¬ñð€…±½‰…±Q¡¥Ì¹½¹™¥É´¡•±•Ñ”ƒŠp‘íÑÉ…¬¹‘¥ÍÁ±…å9…µ•÷Št™É½´Ñ¡¥Ì‘•Ù¥”ý€¤¤É•ÑÕÉ¸ì(€€€€€ÑÉäì…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹‘•±•Ñ•QÉ…¬¡ÑÉ…¬¹¥¤ìÕ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ì€ôÕ¥MÑ…Ñ”¹ÅÕ¥­QÉ…­%‘Ì¹™¥±Ñ•È ¡¥¤€ôø¥€„ôôÑÉ…¬¹¥¤ìµÕÍ¥5•ÍÍ…”€ô€‰QÉ…¬‘•±•Ñ•¸ˆìô(€€€€€…Ñ €¡•ÉÉ½È¤ìµÕÍ¥5•ÍÍ…”€ô•ÉÉ½È¹µ•ÍÍ…”ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÁ±…å±¥ÍÐµÉ•¹…µ•tˆ¤¹™½É…  ¡™½É´¤€ôø™½É´¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰ÍÕ‰µ¥Ðˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì(€€€€€½¹ÍÐÁ±…å±¥ÍÐ€ôÁ±…å±¥ÍÑ…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô™½É´¹‘…Ñ…Í•Ð¹Á±…å±¥ÍÑI•¹…µ”¤ì(€€€€€ÑÉäì…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹ÕÁ‘…Ñ•A±…å±¥ÍÐ¡Á±…å±¥ÍÐ¹¥°ì¹…µ”è¹•Ü½Éµ…Ñ„¡™½É´¤¹•Ð ‰¹…µ”ˆ¤°ÑÉ…­%‘Ìèl¸¸¹Á±…å±¥ÍÐ¹¥Ñ•µÍt¹Í½ÉÐ ¡„°ˆ¤€ôø„¹½É‘•È€´ˆ¹½É‘•È¤¹µ…À ¡¥Ñ•´¤€ôø¥Ñ•´¹ÑÉ…­%¤ô¤ìµÕÍ¥5•ÍÍ…”€ô€‰A±…å±¥ÍÐÉ•¹…µ•¸ˆìô(€€€€€…Ñ €¡•ÉÉ½È¤ìµÕÍ¥5•ÍÍ…”€ô•ÉÉ½È¹µ•ÍÍ…”ìô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÁ±…å±¥ÍÐµµ½Ù•tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐÁ±…å±¥ÍÐ€ôÁ±…å±¥ÍÑ…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹Á±…å±¥ÍÑ5½Ù”¤ì(€€€€€½¹ÍÐ¥‘Ì€ôl¸¸¹Á±…å±¥ÍÐ¹¥Ñ•µÍt¹Í½ÉÐ ¡„°ˆ¤€ôø„¹½É‘•È€´ˆ¹½É‘•È¤¹µ…À ¡¥Ñ•´¤€ôø¥Ñ•´¹ÑÉ…­%¤ì(€€€€€½¹ÍÐ™É½´€ô9Õµ‰•È¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹¥¹‘•à¤ì½¹ÍÐÑ¼€ô™É½´€¬9Õµ‰•È¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹‘¥É•Ñ¥½¸¤ì(€€€€€m¥‘Ím™É½µt°¥‘ÍmÑ½ut€ôm¥‘ÍmÑ½t°¥‘Ím™É½µutì(€€€€€…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹ÕÁ‘…Ñ•A±…å±¥ÍÐ¡Á±…å±¥ÍÐ¹¥°ì¹…µ”èÁ±…å±¥ÍÐ¹¹…µ”°ÑÉ…­%‘Ìè¥‘Ìô¤ì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÁ±…å±¥ÍÐµÉ•µ½Ù•tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐÁ±…å±¥ÍÐ€ôÁ±…å±¥ÍÑ…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹Á±…å±¥ÍÑI•µ½Ù”¤ì(€€€€€½¹ÍÐ¥‘Ì€ôl¸¸¹Á±…å±¥ÍÐ¹¥Ñ•µÍt¹Í½ÉÐ ¡„°ˆ¤€ôø„¹½É‘•È€´ˆ¹½É‘•È¤¹µ…À ¡¥Ñ•´¤€ôø¥Ñ•´¹ÑÉ…­%¤ì(€€€€€¥‘Ì¹ÍÁ±¥”¡9Õµ‰•È¡‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹¥¹‘•à¤°€Ä¤ì(€€€€€¥˜€¡¥‘Ì¹±•¹Ñ €ôôô€À¤ìµÕÍ¥5•ÍÍ…”€ô€‰Á±…å±¥ÍÐ¹••‘Ì…Ð±•…ÍÐ½¹”ÑÉ…¬ì‘•±•Ñ”Ñ¡”Á±…å±¥ÍÐ¥¹ÍÑ•…¸ˆì…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ìÉ•ÑÕÉ¸ìô(€€€€€…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹ÕÁ‘…Ñ•A±…å±¥ÍÐ¡Á±…å±¥ÍÐ¹¥°ì¹…µ”èÁ±…å±¥ÍÐ¹¹…µ”°ÑÉ…­%‘Ìè¥‘Ìô¤ì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÁ±…å±¥ÍÐµ…‘‘tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐÁ±…å±¥ÍÐ€ôÁ±…å±¥ÍÑ…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹Á±…å±¥ÍÑ‘¤ì(€€€€€½¹ÍÐÍ•±•Ð€ô‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È¡m‘…Ñ„µÁ±…å±¥ÍÐµ…‘µÍ•±•Ðôˆ‘íML¹•Í…Á”¡Á±…å±¥ÍÐ¹¥¥ô‰u€¤ì(€€€€€½¹ÍÐ¥‘Ì€ôl¸¸¹Á±…å±¥ÍÐ¹¥Ñ•µÍt¹Í½ÉÐ ¡„°ˆ¤€ôø„¹½É‘•È€´ˆ¹½É‘•È¤¹µ…À ¡¥Ñ•´¤€ôø¥Ñ•´¹ÑÉ…­%¤ì(€€€€€¥‘Ì¹ÁÕÍ ¡Í•±•Ð¹Ù…±Õ”¤ì(€€€€€…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹ÕÁ‘…Ñ•A±…å±¥ÍÐ¡Á±…å±¥ÍÐ¹¥°ì¹…µ”èÁ±…å±¥ÍÐ¹¹…µ”°ÑÉ…­%‘Ìè¥‘Ìô¤ì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÁ±…å±¥ÍÐµÕÍ•tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€Õ¥MÑ…Ñ”¹µ½‘”€ô€‰µÕÍ¥Œˆì(€€€€€Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹Á±…å±¥ÍÑUÍ”ì(€€€€€±½…Ñ¥½¸¹¡…Í €ô€ˆÑÉ…¥¸ˆì(€€€ô¤¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½É±° ‰m‘…Ñ„µÁ±…å±¥ÍÐµ‘•±•Ñ•tˆ¤¹™½É…  ¡‰ÕÑÑ½¸¤€ôø‰ÕÑÑ½¸¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐÁ±…å±¥ÍÐ€ôÁ±…å±¥ÍÑ…¡”¹™¥¹ ¡¥Ñ•´¤€ôø¥Ñ•´¹¥€ôôô‰ÕÑÑ½¸¹‘…Ñ…Í•Ð¹Á±…å±¥ÍÑ•±•Ñ”¤ì(€€€€€¥˜€ …Á±…å±¥ÍÐñð€…±½‰…±Q¡¥Ì¹½¹™¥É´¡•±•Ñ”Á±…å±¥ÍÐƒŠp‘íÁ±…å±¥ÍÐ¹¹…µ•÷ŠtüÕ‘¥¼ÑÉ…­ÌÝ¥±°É•µ…¥¸ÍÑ½É•¹€¤¤É•ÑÕÉ¸ì(€€€€€…Ý…¥ÐµÕÍ¥1¥‰É…Éä¹‘•±•Ñ•A±…å±¥ÍÐ¡Á±…å±¥ÍÐ¹¥¤ì(€€€€€¥˜€¡Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ôôôÁ±…å±¥ÍÐ¹¥¤Õ¥MÑ…Ñ”¹Á±…å±¥ÍÑ%€ô¹Õ±°ì(€€€€€µÕÍ¥5•ÍÍ…”€ô€‰A±…å±¥ÍÐ‘•±•Ñ•¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰µÕÍ¥Œˆ¤ì(€€€ô¤¤ì(€ô((€¥˜€¡É½ÕÑ”€ôôô€‰‘…Ñ„ˆ¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆµ¥É…Ñ¥½¸µ™¥±”ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ™¥±”€ô•Ù•¹Ð¹Ñ…É•Ð¹™¥±•Ìü¹lÁtì(€€€€€€€¥˜€ …™¥±”¤É•ÑÕÉ¸ì(€€€€€€€µ¥É…Ñ¥½¹AÉ•Ù¥•Ü€ô…Ý…¥Ð¹½Ù…A±ÕÍ5¥É…Ñ¥½¸¹ÁÉ•Ù¥•Ü¡™¥±”¤ì(€€€€€€€µ¥É…Ñ¥½¹5•ÍÍ…”€ôµ¥É…Ñ¥½¹AÉ•Ù¥•Ü¹…±É•…‘å5¥É…Ñ•(€€€€€€€€€€ü€‰Q¡¥Ì•á…Ð™¥±”Ý…Ì…±É•…‘äµ¥É…Ñ•ì¹¼‘ÕÁ±¥…Ñ”¥µÁ½ÉÐ¥Ì…±±½Ý•¸ˆ(€€€€€€€€€€èµ¥É…Ñ¥½¹AÉ•Ù¥•Ü¹…¹½µµ¥Ð(€€€€€€€€€€€€üY…±¥‘…Ñ•€‘í™¥±”¹¹…µ•ô¸I•Ù¥•ÜÑ¡”ÁÉ•Ù¥•Ü‰•™½É”¥µÁ½ÉÑ¥¹œ¹€(€€€€€€€€€€€€èAÉ•Ù¥•Ü™½Õ¹€‘íµ¥É…Ñ¥½¹AÉ•Ù¥•Ü¹•ÉÉ½ÉÌ¹±•¹Ñ¡ô‰±½­¥¹œ•ÉÉ½È‘íµ¥É…Ñ¥½¹AÉ•Ù¥•Ü¹•ÉÉ½ÉÌ¹±•¹Ñ €ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô¹€ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€µ¥É…Ñ¥½¹AÉ•Ù¥•Ü€ô¹Õ±°ì(€€€€€€€µ¥É…Ñ¥½¹5•ÍÍ…”€ô5¥É…Ñ¥½¸ÁÉ•Ù¥•Ü‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰‘…Ñ„ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆµ¥É…Ñ¥½¸µ…¹•°ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôøì(€€€€€µ¥É…Ñ¥½¹AÉ•Ù¥•Ü€ô¹Õ±°ì(€€€€€µ¥É…Ñ¥½¹5•ÍÍ…”€ô€‰5¥É…Ñ¥½¸ÁÉ•Ù¥•Ü±½Í•ì¹¼±½…°‘…Ñ„¡…¹•¸ˆì(€€€€€Ù½¥É•¹‘•È ‰‘…Ñ„ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆµ¥É…Ñ¥½¸µ½¹™¥É´ˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€¥˜€ …µ¥É…Ñ¥½¹AÉ•Ù¥•Ü¤É•ÑÕÉ¸ì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐÉ•ÍÕ±Ð€ô…Ý…¥Ð¹½Ù…A±ÕÍ5¥É…Ñ¥½¸¹½µµ¥Ð¡µ¥É…Ñ¥½¹AÉ•Ù¥•Ü¤ì(€€€€€€€µ¥É…Ñ¥½¹5•ÍÍ…”€ô5¥É…Ñ¥½¸½µÁ±•Ñ”è¥µÁ½ÉÑ•€‘íÉ•ÍÕ±Ð¹¥µÁ½ÉÑ•‘ôÕÍÑ½´‘É¥±°‘íÉ•ÍÕ±Ð¹¥µÁ½ÉÑ•€ôôô€Ä€ü€ˆˆ€è€‰Ì‰ô¹€ì(€€€€€€€µ¥É…Ñ¥½¹AÉ•Ù¥•Ü€ô¹Õ±°ì(€€€€€€€…Ý…¥ÐÉ•™É•Í¡ÕÍÑ½µ…¡” ¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€µ¥É…Ñ¥½¹5•ÍÍ…”€ô5¥É…Ñ¥½¸‰±½­•Ý¥Ñ¡½ÕÐ¡…¹•Ìè€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰‘…Ñ„ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ•áÁ½ÉÐµ‰…­ÕÀˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€€€€€½¹ÍÐ‰…­ÕÀ€ô…Ý…¥ÐÉ•…Ñ•	…­ÕÀ¡ÍÑ½É”¤ì(€€€€€½¹ÍÐÕÉ°€ôUI0¹É•…Ñ•=‰©•ÑUI0¡¹•Ü	±½ˆ¡m€‘í)M=8¹ÍÑÉ¥¹¥™ä¡‰…­ÕÀ°¹Õ±°°€È¥õq¹t°ìÑåÁ”è€‰…ÁÁ±¥…Ñ¥½¸½©Í½¸ˆô¤¤ì(€€€€€½¹ÍÐ±¥¹¬€ô‘½Õµ•¹Ð¹É•…Ñ•±•µ•¹Ð ‰„ˆ¤ì(€€€€€±¥¹¬¹¡É•˜€ôÕÉ°ì(€€€€€±¥¹¬¹‘½Ý¹±½…€ô¹½Ù„µÁÉ¥µ”µ‰…­ÕÀ´‘í‰…­ÕÀ¹É•…Ñ•‘Ð¹Í±¥” À°€ÄÀ¥ô¹©Í½¹€ì(€€€€€±¥¹¬¹±¥¬ ¤ì(€€€€€UI0¹É•Ù½­•=‰©•ÑUI0¡ÕÉ°¤ì(€€€€€‘…Ñ…5•ÍÍ…”€ô€‰	…­ÕÀ•áÁ½ÉÑ•¸ˆì(€€€€€…Ý…¥ÐÉ•¹‘•È ‰‘…Ñ„ˆ¤ì(€€€ô¤ì(€€€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ¥µÁ½ÉÐµ‰…­ÕÀˆ¤ü¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€€€€€ÑÉäì(€€€€€€€½¹ÍÐ™¥±”€ô•Ù•¹Ð¹Ñ…É•Ð¹™¥±•Ìü¹lÁtì(€€€€€€€¥˜€ …™¥±”¤É•ÑÕÉ¸ì(€€€€€€€½¹ÍÐÉ•ÍÑ½É•€ô…Ý…¥ÐÉ•ÍÑ½É•	…­ÕÀ¡ÍÑ½É”°)M=8¹Á…ÉÍ”¡…Ý…¥Ð™¥±”¹Ñ•áÐ ¤¤¤ì(€€€€€€€‘…Ñ…5•ÍÍ…”€ôI•ÍÑ½É”½µÁ±•Ñ”è€‘íÉ•ÍÑ½É•¹É•ÍÑ½É•‘ôÉ•½É‘Ì¹€ì(€€€€€€€…Ý…¥ÐÉ•™É•Í¡½½Ñ•È ¤ì(€€€€€ô…Ñ €¡•ÉÉ½È¤ì(€€€€€€€‘…Ñ…5•ÍÍ…”€ôI•ÍÑ½É”‰±½­•è€‘í•ÉÉ½È¹µ•ÍÍ…•õ€ì(€€€€€ô(€€€€€…Ý…¥ÐÉ•¹‘•È ‰‘…Ñ„ˆ¤ì(€€€ô¤ì(€ô)ô()™Õ¹Ñ¥½¸½Á•¹5•¹Ô ¤ì(€µ•¹Ô¹±…ÍÍ1¥ÍÐ¹…‘ ‰½Á•¸ˆ¤ì(€µ•¹Ô¹Í•ÑÑÑÉ¥‰ÕÑ” ‰…É¥„µ¡¥‘‘•¸ˆ°€‰™…±Í”ˆ¤ì(€µ•¹Ô¹É•µ½Ù•ÑÑÉ¥‰ÕÑ” ‰¥¹•ÉÐˆ¤ì(€µ•¹ÕQ½±”¹Í•ÑÑÑÉ¥‰ÕÑ” ‰…É¥„µ•áÁ…¹‘•ˆ°€‰ÑÉÕ”ˆ¤ì(€µ•¹ÕMÉ¥´¹¡¥‘‘•¸€ô™…±Í”ì)ô()™Õ¹Ñ¥½¸±½Í•5•¹Ô ¤ì(€µ•¹Ô¹±…ÍÍ1¥ÍÐ¹É•µ½Ù” ‰½Á•¸ˆ¤ì(€µ•¹Ô¹Í•ÑÑÑÉ¥‰ÕÑ” ‰…É¥„µ¡¥‘‘•¸ˆ°€‰ÑÉÕ”ˆ¤ì(€µ•¹Ô¹Í•ÑÑÑÉ¥‰ÕÑ” ‰¥¹•ÉÐˆ°€ˆˆ¤ì(€µ•¹ÕQ½±”¹Í•ÑÑÑÉ¥‰ÕÑ” ‰…É¥„µ•áÁ…¹‘•ˆ°€‰™…±Í”ˆ¤ì(€µ•¹ÕMÉ¥´¹¡¥‘‘•¸€ôÑÉÕ”ì)ô()…Íå¹Œ™Õ¹Ñ¥½¸É•™É•Í¡½½Ñ•È ¤ì(€½¹ÍÐÉ•½É‘Ì€ô…Ý…¥ÐÍÑ½É”¹•Ñ±° ‰Í•ÍÍ¥½¹I•½É‘Ìˆ¤ì(€½¹ÍÐå±•Ì€ôÉ•½É‘Ì¹É•‘Õ” ¡Ñ½Ñ…°°É•½É¤€ôøÑ½Ñ…°€¬€¡9Õµ‰•È¡É•½É¹½µÁ±•Ñ•‘å±•Ì¤ñð€À¤°€À¤ì(€‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÑÉ…¥¹¥¹œµÑ½Ñ…°ˆ¤¹Ñ•áÑ½¹Ñ•¹Ð€ô€‘íÉ•½É‘Ì¹±•¹Ñ¡ôÍ•ÍÍ¥½¸‘íÉ•½É‘Ì¹±•¹Ñ €ôôô€Ä€ü€ˆˆ€è€‰Ì‰ôƒ
+Ü€‘íå±•Íôå±•Í€ì)ô()µ•¹ÕQ½±”¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°½Á•¹5•¹Ô¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆµ•¹Ôµ±½Í”ˆ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°±½Í•5•¹Ô¤ì)µ•¹ÕMÉ¥´¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°±½Í•5•¹Ô¤ì)½¹ÍÐÑ¡•µ•M•±•Ð€ô‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆÑ¡•µ”µÍ•±•Ðˆ¤ì)Ñ¡•µ•M•±•Ð¹Ù…±Õ”€ôÑ¡•µ•½¹ÑÉ½±±•È¹Ù…±Õ”ì)Ñ¡•µ•M•±•Ð¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰¡…¹”ˆ°€ ¤€ôøÑ¡•µ•½¹ÑÉ½±±•È¹Í•Ð¡Ñ¡•µ•M•±•Ð¹Ù…±Õ”¤¤ì)‘½Õµ•¹Ð¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰­•å‘½Ý¸ˆ°€¡•Ù•¹Ð¤€ôøì¥˜€¡•Ù•¹Ð¹­•ä€ôôô€‰Í…Á”ˆ¤±½Í•5•¹Ô ¤ìô¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ‘¥…±½œµ±½Í”ˆ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôø‘É¥±±¥…±½œ¹±½Í” ¤¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ…¹•°ˆ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°€ ¤€ôø‘É¥±±¥…±½œ¹±½Í” ¤¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ•‘¥Ðµ‰…±±Ìˆ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐ¥€ô‘É¥±±½É´¹•±•µ•¹ÑÌ¹¥¹Ù…±Õ”ì(€‘É¥±±¥…±½œ¹±½Í” ¤ì(€ÑÉäì(€€€…Ý…¥Ð‘É¥±±‘¥Ñ½È¹½Á•¸¡¥°Õ¥MÑ…Ñ”¹±•Ù•°¤ì(€ô…Ñ €¡•ÉÉ½È¤ì(€€€‘É¥±±¥…±½I•ÍÕ±Ð¹Ñ•áÑ½¹Ñ•¹Ð€ô•ÉÉ½È¹µ•ÍÍ…”ì(€€€‘É¥±±¥…±½œ¹Í¡½Ý5½‘…° ¤ì(€ô)ô¤ì)‘É¥±±½É´¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰ÍÕ‰µ¥Ðˆ°…Íå¹Œ€¡•Ù•¹Ð¤€ôøì(€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì(€‘É¥±±¥…±½I•ÍÕ±Ð¹Ñ•áÑ½¹Ñ•¹Ð€ô€ˆˆì(€ÑÉäì(€€€½¹ÍÐÙ…±Õ•Ì€ô¹•Ü½Éµ…Ñ„¡‘É¥±±½É´¤ì(€€€½¹ÍÐ¥¹ÁÕÐ€ôì¹…µ”èÙ…±Õ•Ì¹•Ð ‰¹…µ”ˆ¤°É½ÕÀèÙ…±Õ•Ì¹•Ð ‰É½ÕÀˆ¤°É½‰½ÑA½Í¥Ñ¥½¸èÙ…±Õ•Ì¹•Ð ‰É½‰½ÑA½Í¥Ñ¥½¸ˆ¤ôì(€€€½¹ÍÐÍ…Ù•€ôÙ…±Õ•Ì¹•Ð ‰¥ˆ¤€ü…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹ÕÁ‘…Ñ”¡Ù…±Õ•Ì¹•Ð ‰¥ˆ¤°¥¹ÁÕÐ¤€è…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹É•…Ñ”¡¥¹ÁÕÐ¤ì(€€€Õ¥MÑ…Ñ”¹É½ÕÀ€ôÍ…Ù•¹É½ÕÀì(€€€Õ¥MÑ…Ñ”¹‘É¥±±%€ôÍ…Ù•¹¥ì(€€€Õ¥MÑ…Ñ”¹ÕÍÑ½µÉÉ…¹”€ô™…±Í”ì(€€€ÕÍÑ½µ5•ÍÍ…”€ôÙ…±Õ•Ì¹•Ð ‰¥ˆ¤€ü€‰É¥±°¡…¹•ÌÍ…Ù•¸ˆ€è€‰ÕÍÑ½´‘É¥±°É•…Ñ•…¹Í•±•Ñ•¸ˆì(€€€‘É¥±±¥…±½œ¹±½Í” ¤ì(€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€ô…Ñ €¡•ÉÉ½È¤ì(€€€‘É¥±±¥…±½I•ÍÕ±Ð¹Ñ•áÑ½¹Ñ•¹Ð€ô•ÉÉ½È¹µ•ÍÍ…”ì(€ô)ô¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ‘ÕÁ±¥…Ñ”ˆ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€ÑÉäì(€€€½¹ÍÐ½Áä€ô…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹‘ÕÁ±¥…Ñ”¡‘É¥±±½É´¹•±•µ•¹ÑÌ¹¥¹Ù…±Õ”¤ì(€€€Õ¥MÑ…Ñ”¹É½ÕÀ€ô½Áä¹É½ÕÀì(€€€Õ¥MÑ…Ñ”¹‘É¥±±%€ô½Áä¹¥ì(€€€ÕÍÑ½µ5•ÍÍ…”€ô€‰É¥±°‘ÕÁ±¥…Ñ•…¹Í•±•Ñ•¸ˆì(€€€‘É¥±±¥…±½œ¹±½Í” ¤ì(€€€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€ô…Ñ €¡•ÉÉ½È¤ì(€€€‘É¥±±¥…±½I•ÍÕ±Ð¹Ñ•áÑ½¹Ñ•¹Ð€ô•ÉÉ½È¹µ•ÍÍ…”ì(€ô)ô¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ•áÁ½ÉÐµ½¹”ˆ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€ÑÉäì(€€€½¹ÍÐÁ…å±½…€ô…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹•áÁ½ÉÐ¡m‘É¥±±½É´¹•±•µ•¹ÑÌ¹¥¹Ù…±Õ•t¤ì(€€€½¹ÍÐ¹…µ”€ôÁ…å±½…¹‘É¥±±ÍlÁtü¹¹…µ”¹Ñ½1½Ý•É…Í” ¤¹É•Á±…” ½my„µèÀ´åt¬½œ°€ˆ´ˆ¤¹É•Á±…” ½xµð´½œ°€ˆˆ¤ñð€‰ÕÍÑ½´µ‘É¥±°ˆì(€€€‘½Ý¹±½…‘)Í½¸¡Á…å±½…°¹½Ù„µÁÉ¥µ”´‘í¹…µ•ô¹©Í½¹€¤ì(€€€‘É¥±±¥…±½I•ÍÕ±Ð¹Ñ•áÑ½¹Ñ•¹Ð€ô€‰É¥±°•áÁ½ÉÑ•¸ˆì(€ô…Ñ €¡•ÉÉ½È¤ì(€€€‘É¥±±¥…±½I•ÍÕ±Ð¹Ñ•áÑ½¹Ñ•¹Ð€ô•ÉÉ½È¹µ•ÍÍ…”ì(€ô)ô¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‘É¥±°µ‘•±•Ñ”ˆ¤¹…‘‘Ù•¹Ñ1¥ÍÑ•¹•È ‰±¥¬ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐ¥€ô‘É¥±±½É´¹•±•µ•¹ÑÌ¹¥¹Ù…±Õ”ì(€½¹ÍÐ‘É¥±°€ôÉ•Í½±Ù•É¥±°¡¥¤ì(€¥˜€ …‘É¥±°ñð€…±½‰…±Q¡¥Ì¹½¹™¥É´¡•±•Ñ”ƒŠp‘í‘É¥±°¹¹…µ•÷ŠtüQ¡¥Ì…¹¹½Ð‰”Õ¹‘½¹”¹€¤¤É•ÑÕÉ¸ì(€…Ý…¥ÐÕÍÑ½µÉ¥±±M•ÉÙ¥”¹‘•±•Ñ”¡¥¤ì(€¥˜€¡Õ¥MÑ…Ñ”¹‘É¥±±%€ôôô¥¤Õ¥MÑ…Ñ”¹‘É¥±±%€ô	U%1Q%9}I%11MlÁt¹¥ì(€ÕÍÑ½µ5•ÍÍ…”€ô€‰ÕÍÑ½´‘É¥±°‘•±•Ñ•¸ˆì(€‘É¥±±¥…±½œ¹±½Í” ¤ì(€…Ý…¥ÐÉ•¹‘•È ‰ÑÉ…¥¸ˆ¤ì)ô¤ì()…ÁÁI•…‘ä€ôÑÉÕ”ì)É•…Ñ•I½ÕÑ•È¡ì½¹I½ÕÑ”è€¡É½ÕÑ”¤€ôøÙ½¥É•¹‘•È¡É½ÕÑ”¤ô¤¹ÍÑ…ÉÐ ¤ì)‘½Õµ•¹Ð¹ÅÕ•ÉåM•±•Ñ½È ˆ‰Õ¥±µÙ•ÉÍ¥½¸ˆ¤¹Ñ•áÑ½¹Ñ•¹Ð€ô€‰ØÀ¸ÄÜ¸Àµ…¹‘É½¥µÁ…­…”¸Àˆì)…Ý…¥ÐÉ•™É•Í¡½½Ñ•È ¤ì()Í•Ñ%¹Ñ•ÉÙ…°  ¤€ôøì(€¥˜€¡mMMM%=9}MQQL¹=U9Q=]8°MMM%=9}MQQL¹IU99%9t¹¥¹±Õ‘•Ì¡½¹ÑÉ½±±•È¹ÍÑ…Ñ”¤¤ì(€€€½¹ÑÉ½±±•È¹Ñ¥¬ Ä¤ì(€€€¥˜€¡½¹ÑÉ½±±•È¹Í¹…ÁÍ¡½Ð ¤¹ÍÁ•Œü¹µ½‘”€ôôô€‰µÍå¹Œˆ€˜˜µÕÍ¥M¹…ÁÍ¡½Ðü¹ÍÑ…Ñ”€ôôô€‰Á±…å¥¹œˆ¤µÍå¹M¥µÕ±…Ñ½È¹…‘Ù…¹” ¡µÕÍ¥M¹…ÁÍ¡½Ð¹ÕÉÉ•¹ÑQ¥µ”€üü€À¤€¨€ÄÀÀÀ¤ì(€€€¥˜€¡…Ñ¥Ù•I½ÕÑ”€ôôô€‰ÑÉ…¥¸ˆ¤Ù½¥É•¹‘•È ‰ÑÉ…¥¸ˆ¤ì(€ô)ô°€ÄÀÀÀ¤ì()±½‰…±Q¡¥Ì¹9=Y}AI%5}=U9Q%=8€ô=‰©•Ð¹™É••é”¡ì…Á…‰¥±¥Ñ¥•Ì°™•…ÑÕÉ•±…ÌèQUI}1L°ÍÑ½É…”èÍÑ½É”¹­¥¹ô¤ì(

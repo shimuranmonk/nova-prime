@@ -4,6 +4,8 @@
 
 > Update 2026-11-18: Nova Plus visual alignment is implemented before physical testing. The default is light gray/white with coral active states; session mode choices, difficulty, drill categories/cards, fields, and primary actions have larger touch targets, and the menu uses larger scrollable entries. Existing Auto/Dark/Court choices and all Prime-only functions remain. 130 tests, build, 55-file release verification, and browser preview passed. The existing untracked Android ZIP was preserved and is still the earlier UI package; publish a separately versioned package for this visual increment. Live robot control remains disabled and the physical gate has not passed.
 
+> Follow-up 2026-11-18: Training's Built-in drills and My drills sections are now presented as mutually exclusive tabs. Built-in drills opens by default; built-in category/order controls and custom group/manage/import/export controls stay within their own view. Live robot control remains disabled.
+
 > Prepared 2026-11-14 for continuation in a new conversation. This document is the human-readable project record. For a compact agent startup brief, read [CONTINUATION.md](CONTINUATION.md).
 
 > Update 2026-11-16: PR #27 is merged. PR #28 tracks the visual-editor cosmetic revision: stronger direction/X/Y guides, corrected depth ruler, larger touch targets, responsive scrolling, and Test/Add variant/Delete icons on the Active/Serve row with help labels. Check current PR status before repeating repository actions described below. All 130 tests, static build, and 55-file verification passed; five browser viewport checks passed. Real-device touch checks and the physical robot release gate remain pending. Live robot control stays disabled.

@@ -146,6 +146,10 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 .new-drill { display: grid; place-items: center; width: min(180px, 100%); min-height: 96px; margin-top: 11px; border: 1px dashed var(--line-strong); border-radius: 13px; background: var(--surface-soft); color: var(--muted); cursor: pointer; }
 .new-drill span { color: var(--teal); font-size: 1.35rem; }
 .new-drill small { font-size: 0.65rem; }
+.drill-library-tabs { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 15px; background: var(--segmented); }
+.drill-library-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 56px; padding: 10px 14px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--muted); font-weight: 850; cursor: pointer; }
+.drill-library-tabs button[aria-selected="true"] { border-color: var(--teal); background: var(--surface); color: var(--teal-dark); box-shadow: 0 2px 7px rgba(30, 58, 75, 0.1); }
+.drill-library-tabs button small { padding: 3px 7px; border-radius: 999px; background: var(--surface-soft); font-size: 0.72rem; }
 
 .drill-dialog { width: min(540px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; overflow: auto; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: 0 24px 70px rgba(10, 26, 36, 0.28); }
 .drill-dialog::backdrop { background: rgba(10, 26, 36, 0.48); backdrop-filter: blur(2px); }
@@ -507,7 +511,7 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
   .app-shell { width: min(1080px, 100%); padding-inline: 24px; }
   .training-screen { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .training-screen > .setup-card, .training-screen > .voice-card, .training-screen > .session-console { grid-column: 1 / -1; }
-  .training-screen > .library-card { height: 100%; }
+  .training-screen > .library-card { grid-column: 1 / -1; height: auto; }
   .drill-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
