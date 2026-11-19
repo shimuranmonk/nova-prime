@@ -6,13 +6,13 @@ export class ThemeController {
     this.document = documentObject;
     this.storage = storage;
     this.media = matchMedia?.("(prefers-color-scheme: dark)") ?? null;
-    this.value = "auto";
+    this.value = "light";
     this.media?.addEventListener?.("change", () => { if (this.value === "auto") this.#apply(); });
   }
 
   load() {
-    try { this.value = this.#valid(this.storage?.getItem?.(THEME_STORAGE_KEY)) ? this.storage.getItem(THEME_STORAGE_KEY) : "auto"; }
-    catch { this.value = "auto"; }
+    try { this.value = this.#valid(this.storage?.getItem?.(THEME_STORAGE_KEY)) ? this.storage.getItem(THEME_STORAGE_KEY) : "light"; }
+    catch { this.value = "light"; }
     this.#apply();
     return this.value;
   }
@@ -30,7 +30,7 @@ export class ThemeController {
   #apply() {
     this.document?.documentElement?.setAttribute("data-theme", this.value);
     const resolved = this.value === "auto" ? (this.media?.matches ? "dark" : "light") : this.value;
-    const colors = { light: "#eef3f6", dark: "#101b22", court: "#dfe9d9" };
+    const colors = { light: "#f4f5f8", dark: "#101b22", court: "#dfe9d9" };
     this.document?.querySelector?.('meta[name="theme-color"]')?.setAttribute("content", colors[resolved]);
   }
 }

@@ -70,6 +70,7 @@ const uiState = {
   pauseSeconds: 0,
   countdownSeconds: 3,
   category: "basic",
+  drillTab: "builtin",
   group: "A",
   customArrange: false,
   drillId: BUILTIN_DRILLS[0].id,
@@ -460,7 +461,7 @@ function drillLibrary(session) {
   const activeSteps = selected?.programs?.[uiState.level]?.steps?.filter((step) => step.enabled).length ?? 0;
   const random = randomOrderFor(selected);
   return `
-    <section class="app-card library-card" aria-labelledby="library-title">
+    <section id="drill-panel-builtin" class="app-card library-card" role="tabpanel" tabindex="0" aria-labelledby="drill-tab-builtin" aria-hidden="${uiState.drillTab !== "builtin"}" ${uiState.drillTab !== "builtin" ? "hidden" : ""}>
       <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>${BUILTIN_DRILLS.length} drills · level ${uiState.level}</p></div><div class="library-heading-actions"><button class="small-button ${random ? "active" : ""}" type="button" data-builtin-order ${locked || !selected || activeSteps < 2 ? "disabled" : ""}>${random ? "Random order" : "Sequential"}</button><button class="small-button" type="button" data-builtin-reset ${locked || !Object.keys(builtinPreferences).length ? "disabled" : ""}>Reset settings</button></div></div>
       ${builtinMessage ? `<p class="helper-text" role="status">${escapeHtml(builtinMessage)}</p>` : ""}
       <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${label} <small>${count}</small></button>`).join("")}</div>
@@ -490,7 +491,7 @@ function customDrills(session) {
   const groupDrills = customCache.filter((drill) => drill.group === uiState.group);
   const counts = Object.fromEntries(CUSTOM_GROUPS.map((group) => [group, customCache.filter((drill) => drill.group === group).length]));
   return `
-    <section class="app-card library-card" aria-labelledby="custom-title">
+    <section id="drill-panel-custom" class="app-card library-card" role="tabpanel" tabindex="0" aria-labelledby="drill-tab-custom" aria-hidden="${uiState.drillTab !== "custom"}" ${uiState.drillTab !== "custom" ? "hidden" : ""}>
       <div class="section-heading"><div><h2 id="custom-title">My drills</h2><p>${customCache.length} drill${customCache.length === 1 ? "" : "s"}</p></div></div>
       <div class="custom-toolbar">
         <button type="button" data-custom-arrange class="small-button ${uiState.customArrange ? "active" : ""}" ${locked || groupDrills.length < 2 ? "disabled" : ""}>${uiState.customArrange ? "Done" : "Arrange"}</button>
@@ -503,6 +504,14 @@ function customDrills(session) {
       ${groupDrills.length === 0 ? `<div class="empty-library"><strong>Group ${uiState.group} is empty</strong><span>Create a drill here or import a Nova Prime drill file.</span></div>` : ""}
       <button class="new-drill" type="button" data-custom-new ${locked ? "disabled" : ""}><span>＋</span><strong>New drill</strong><small>Group ${uiState.group}</small></button>
     </section>`;
+}
+
+function drillLibraryTabs() {
+  const selectedBuiltin = uiState.drillTab === "builtin";
+  return `<div class="drill-library-tabs" role="tablist" aria-label="Drill library">
+    <button id="drill-tab-builtin" type="button" role="tab" aria-controls="drill-panel-builtin" aria-selected="${selectedBuiltin}" tabindex="${selectedBuiltin ? "0" : "-1"}" data-drill-tab="builtin">Built-in drills <small>${BUILTIN_DRILLS.length}</small></button>
+    <button id="drill-tab-custom" type="button" role="tab" aria-controls="drill-panel-custom" aria-selected="${!selectedBuiltin}" tabindex="${selectedBuiltin ? "-1" : "0"}" data-drill-tab="custom">My drills <small>${customCache.length}</small></button>
+  </div>`;
 }
 
 function playlistCard(playlist) {
@@ -568,7 +577,7 @@ async function trainView() {
   await Promise.all([refreshCustomCache(), refreshBuiltinPreferences(), refreshCalibrationProfile(), refreshMusicCache()]);
   await refreshMsyncCache();
   const session = controller.snapshot();
-  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${voiceControlCard(session)}${sessionConsole(session)}${drillLibrary(session)}${customDrills(session)}</div>`;
+  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${voiceControlCard(session)}${sessionConsole(session)}${drillLibraryTabs()}${drillLibrary(session)}${customDrills(session)}</div>`;
 }
 
 async function dataView() {
@@ -835,6 +844,16 @@ function bindRouteActions(route) {
       await render("train");
     });
     document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
+    document.querySelectorAll("[data-drill-tab]").forEach((button, index, buttons) => {
+      button.addEventListener("click", () => { uiState.drillTab = button.dataset.drillTab; void render("train"); });
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const next = buttons[(index + (event.key === "ArrowRight" ? 1 : buttons.length - 1)) % buttons.length];
+        uiState.drillTab = next.dataset.drillTab;
+        void render("train").then(() => document.querySelector(`[data-drill-tab="${next.dataset.drillTab}"]`)?.focus());
+      });
+    });
     document.querySelector("[data-builtin-order]:not(:disabled)")?.addEventListener("click", async () => {
       const drill = getBuiltinDrill(uiState.drillId);
       if (!drill) return;
