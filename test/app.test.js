@@ -42,6 +42,7 @@ test("mobile loopback HTTP hosting is identified", () => {
 
 test("unknown routes return to training", () => {
   assert.equal(routeFromHash("#train"), "train");
+  assert.equal(routeFromHash("#calibration"), "calibration");
   assert.equal(routeFromHash("#data"), "data");
   assert.equal(routeFromHash("#music"), "music");
   assert.equal(routeFromHash("#statistics"), "statistics");
@@ -61,4 +62,5 @@ test("Statistics has a first-class application route", () => {
 test("Sharing has a first-class application route", () => {
   assert.equal(routeFromHash("#sharing"), "sharing");
 });
+
 
