@@ -68,7 +68,6 @@ const uiState = {
   level: 1,
   amount: 10,
   pauseSeconds: 0,
-  countdownSeconds: 3,
   category: "basic",
   drillTab: "builtin",
   group: "A",
@@ -85,6 +84,7 @@ const uiState = {
   voiceEnabled: false,
   voicePendingStart: false,
 };
+const SESSION_START_COUNTDOWN_SECONDS = 3;
 
 const store = await IndexedDbStore.open().catch((error) => {
   storageNotice = `${error?.message || "Persistent browser storage is unavailable."} This visit uses temporary memory only.`;
@@ -109,7 +109,7 @@ const drillEditor = createDrillEditor({
     uiState.group = saved.group;
     customMessage = "Ball program saved.";
     await refreshCustomCache();
-    if (activeRoute === "train") await render("train");
+    if (["train", "calibration"].includes(activeRoute)) await render(activeRoute);
   },
 });
 const calibrationWizard = createCalibrationWizard({
@@ -119,7 +119,7 @@ const calibrationWizard = createCalibrationWizard({
   onSaved: async (saved, quick) => {
     calibrationProfile = saved;
     calibrationMessage = quick ? "Quick Check saved." : "Calibration saved and visual previews updated.";
-    if (activeRoute === "train") await render("train");
+    if (["train", "calibration"].includes(activeRoute)) await render(activeRoute);
   },
 });
 
@@ -321,13 +321,15 @@ function connectionCard() {
     </section>`;
 }
 
-function calibrationCard() {
+function calibrationSettingsCard() {
   const profile = calibrationProfile;
   const quick = profile?.quickCheck;
   return `
-    <section class="app-card calibration-card" aria-labelledby="calibration-title">
-      <div><h2 id="calibration-title">Calibration</h2><p>${profile ? `${escapeHtml(profile.name)} · accuracy ±${profile.accuracy} cm` : "Not calibrated · guided setup ready"}</p><details><summary>More</summary><p>${profile ? `Mode: ${escapeHtml(profile.mode)} · ${profile.observations.length} observations${profile.scatterEstimate == null ? "" : ` · scatter ${profile.scatterEstimate} cm`}${quick ? ` · Quick Check ${quick.meanErrorCm} cm` : ""}.` : "Record observed landings without enabling Bluetooth or robot commands."}</p><div class="calibration-file-actions">${profile ? `<button type="button" data-calibration-export>Export</button>` : ""}<label>Import<input data-calibration-import type="file" accept="application/json,.json"></label></div></details>${calibrationMessage ? `<span class="calibration-message" role="status">${escapeHtml(calibrationMessage)}</span>` : ""}</div>
-      <div class="calibration-card-actions">${profile ? `<button class="outline-button" type="button" data-calibration-quick>Quick Check</button>` : ""}<button class="outline-button" type="button" data-calibration-open>${profile ? "Recalibrate" : "Calibrate"}</button></div>
+    <section class="app-card calibration-settings-card" aria-labelledby="calibration-title">
+      <div class="section-heading"><div><h2 id="calibration-title">Calibration profile</h2><p>${profile ? `${escapeHtml(profile.name)} · accuracy ±${profile.accuracy} cm` : "Not calibrated · guided setup ready"}</p></div></div>
+      ${profile ? `<dl class="calibration-parameters"><div><dt>Method</dt><dd>${escapeHtml(profile.mode)}</dd></div><div><dt>Observations</dt><dd>${profile.observations.length}</dd></div><div><dt>Accuracy</dt><dd>±${profile.accuracy} cm</dd></div>${profile.scatterEstimate == null ? "" : `<div><dt>Scatter estimate</dt><dd>${profile.scatterEstimate} cm</dd></div>`}${quick ? `<div><dt>Quick Check</dt><dd>${quick.meanErrorCm} cm mean error</dd></div>` : ""}</dl>` : `<p class="calibration-guidance">Record observed landings to create a local profile. Calibration does not enable Bluetooth or send robot commands.</p>`}
+      <div class="calibration-settings-actions">${profile ? `<button class="outline-button" type="button" data-calibration-quick>Quick Check</button><button class="outline-button" type="button" data-calibration-open>Recalibrate</button><button class="outline-button" type="button" data-calibration-export>Export profile</button>` : `<button class="outline-button" type="button" data-calibration-open>Calibrate</button>`}<label class="outline-button calibration-import">Import profile<input data-calibration-import type="file" accept="application/json,.json"></label></div>
+      ${calibrationMessage ? `<p class="calibration-message" role="status">${escapeHtml(calibrationMessage)}</p>` : ""}
     </section>`;
 }
 
@@ -338,6 +340,9 @@ function modeButton(mode, label, available = true, locked = false) {
 
 function sessionConsole(session) {
   if (session.state === SESSION_STATES.IDLE) return "";
+  if (session.state === SESSION_STATES.COUNTDOWN) {
+    return `<section class="app-card countdown-screen" aria-label="Training starts soon"><span class="eyebrow">GET READY · DRY RUN</span><strong class="countdown-number" role="timer" aria-live="assertive">${Math.max(0, Math.ceil(session.countdownRemaining))}</strong><button type="button" class="stop-button" data-command="stop">Cancel start</button></section>`;
+  }
   const target = session.spec?.mode === "time" ? session.spec.durationSeconds : session.spec?.repetitions;
   const isMsync = session.spec?.mode === "msync";
   let metric = session.spec?.mode === "music"
@@ -345,7 +350,6 @@ function sessionConsole(session) {
     : isMsync
       ? `${formatDuration(msyncSnapshot?.positionMs ?? 0)} / ${formatDuration(msyncSnapshot?.durationMs ?? 0)}${msyncSnapshot?.resting ? " · REST" : msyncSnapshot?.active ? ` · ${msyncSnapshot.active.type} ${escapeHtml(msyncSnapshot.active.name)}` : " · IDLE"}`
     : session.spec?.mode === "time" ? `${Math.round(session.elapsedSeconds)} / ${target} seconds` : `${session.completedCycles} / ${target} repetitions`;
-  if (session.state === SESSION_STATES.COUNTDOWN) metric = `Starting in ${Math.ceil(session.countdownRemaining)}`;
   if (session.state === SESSION_STATES.PAUSED) metric = `Paused · ${metric}`;
   if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s · ${metric}`;
   const progress = Math.round((session.spec?.mode === "music" ? musicSnapshot?.progress ?? 0 : isMsync ? msyncSnapshot?.progress ?? 0 : session.progress) * 100);
@@ -367,22 +371,25 @@ function sessionConsole(session) {
     </section>`;
 }
 
-function voiceControlCard(session) {
+function voiceControlSlot() {
   const supported = voiceController.supported;
   const enabled = supported && uiState.voiceEnabled;
-  const pending = enabled && uiState.voicePendingStart && session.state === SESSION_STATES.IDLE;
   return `
-    <section class="app-card voice-card" aria-labelledby="voice-title">
-      <div class="section-heading"><div><span class="eyebrow">OPTIONAL · ONE COMMAND</span><h2 id="voice-title">Voice controls</h2><p>${supported ? "Press Listen, then say one exact command." : "Speech recognition is not available in this browser."}</p></div><span class="voice-state voice-${escapeHtml(voiceStatus)}">${enabled ? escapeHtml(voiceStatus) : "Off"}</span></div>
-      <div class="voice-actions">
+    <div class="voice-control-slot">
+      <details class="voice-control-details">
+        <summary class="voice-control-button" aria-label="Open voice command controls" title="Voice commands · ${supported ? (enabled ? voiceStatus : "Off") : "Not supported in this browser"}"><span aria-hidden="true">🎙</span><span>Voice</span><small>${supported ? (enabled ? escapeHtml(voiceStatus) : "Off") : "Unavailable"}</small></summary>
+        <div class="voice-control-popover">
+          <strong>Voice commands</strong>
+          <div class="voice-actions">
         ${enabled
-          ? `<button type="button" data-voice-listen class="primary-button" ${voiceController.listening ? "disabled" : ""}>${voiceController.listening ? "Listening…" : "Listen for command"}</button><button type="button" data-voice-disable>Turn off</button>`
+          ? `<button type="button" data-voice-listen class="primary-button" ${voiceController.listening ? "disabled" : ""}>${voiceController.listening ? "Listening…" : "Listen"}</button><button type="button" data-voice-disable>Turn off</button>`
           : `<button type="button" data-voice-enable class="primary-button" ${supported ? "" : "disabled"}>Turn on voice</button>`}
-      </div>
-      <p class="voice-message" role="status" aria-live="polite">${escapeHtml(voiceMessage)}</p>
-      ${pending ? `<div class="voice-confirm" role="alert"><div><strong>Confirm session start</strong><span>Voice never starts the robot or a simulation without this touch confirmation.</span></div><button type="button" data-voice-confirm-start class="primary-button">Confirm start</button><button type="button" data-voice-cancel-start>Cancel</button></div>` : ""}
-      <details><summary>Commands and privacy</summary><p><strong>Start:</strong> “Nova start” · <strong>Pause:</strong> “Nova pause” · <strong>Resume:</strong> “Nova resume” · <strong>Stop:</strong> “Stop” or “Nova emergency stop”.</p><p>Nova Prime stores no audio or transcript history. Your browser or speech provider may process speech online. You can keep voice off and use every touch control.</p></details>
-    </section>`;
+          </div>
+          <p class="voice-message" role="status" aria-live="polite">${escapeHtml(supported ? voiceMessage : "Speech recognition is not available in this browser.")}</p>
+          <details><summary>Commands and privacy</summary><p><strong>Start:</strong> “Nova start” · <strong>Pause:</strong> “Nova pause” · <strong>Resume:</strong> “Nova resume” · <strong>Stop:</strong> “Stop” or “Nova emergency stop”.</p><p>Nova Prime stores no audio or transcript history. Your browser or speech provider may process speech online.</p></details>
+        </div>
+      </details>
+    </div>`;
 }
 
 function setupCard(session) {
@@ -416,7 +423,7 @@ function setupCard(session) {
       <form id="session-form" class="session-form">
         <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
         <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
-        <label><span>Countdown</span><select name="countdown" ${locked ? "disabled" : ""}><option value="3" ${uiState.countdownSeconds === 3 ? "selected" : ""}>3 seconds</option><option value="5" ${uiState.countdownSeconds === 5 ? "selected" : ""}>5 seconds</option><option value="0" ${uiState.countdownSeconds === 0 ? "selected" : ""}>None</option></select></label>
+        ${voiceControlSlot()}
         <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>
       </form>`;
   return `
@@ -438,6 +445,8 @@ function setupCard(session) {
       </div>
 
       ${uiState.mode === "music" ? musicForm : uiState.mode === "msync" ? msyncForm : standardForm}
+      ${["music", "msync"].includes(uiState.mode) ? `<div class="voice-mode-row">${voiceControlSlot()}</div>` : ""}
+      ${uiState.voicePendingStart && session.state === SESSION_STATES.IDLE ? `<div class="voice-confirm voice-confirm-standalone" role="alert"><div><strong>Confirm session start</strong><span>Touch confirmation is required. Voice cannot start the robot directly.</span></div><button type="button" data-voice-confirm-start class="primary-button">Confirm start</button><button type="button" data-voice-cancel-start>Cancel</button></div>` : ""}
       <p class="helper-text">${uiState.mode === "msync" ? "MSYNC controls the drill timeline from validated cues." : `Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. ${uiState.mode === "music" ? "Audio stays on this device and completes automatically." : "Uses the canonical lifecycle."}`} Sends no robot commands and records zero dispatched balls.</p>
       ${(uiState.mode === "msync" ? msyncMessage : musicMessage) ? `<p class="custom-message" role="status">${escapeHtml(uiState.mode === "msync" ? msyncMessage : musicMessage)}</p>` : ""}
     </section>`;
@@ -577,7 +586,12 @@ async function trainView() {
   await Promise.all([refreshCustomCache(), refreshBuiltinPreferences(), refreshCalibrationProfile(), refreshMusicCache()]);
   await refreshMsyncCache();
   const session = controller.snapshot();
-  return `<div class="training-screen">${connectionCard()}${calibrationCard()}${setupCard(session)}${voiceControlCard(session)}${sessionConsole(session)}${drillLibraryTabs()}${drillLibrary(session)}${customDrills(session)}</div>`;
+  return `<div class="training-screen">${connectionCard()}${setupCard(session)}${sessionConsole(session)}${drillLibraryTabs()}${drillLibrary(session)}${customDrills(session)}</div>`;
+}
+
+async function calibrationView() {
+  await refreshCalibrationProfile();
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">SETTINGS</span><h1>Calibration</h1><p>Review calibration parameters, run a guided setup or Quick Check, and manage profiles. These tools record observations locally and do not send robot commands.</p></div>${calibrationSettingsCard()}`;
 }
 
 async function dataView() {
@@ -686,7 +700,7 @@ function roadmap() {
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">JEWELFLOW</span><h1>Roadmap</h1></div><div class="info-grid">${releases.map(([version, name, description]) => `<article class="app-card"><span class="release-number">${version}</span><h2>${name}</h2><p>${description}</p></article>`).join("")}</div>`;
 }
 
-const renderers = { train: trainView, music: musicView, msync: msyncView, statistics: statisticsView, sharing: sharingView, data: dataView, overview, capabilities: capabilityView, roadmap };
+const renderers = { train: trainView, calibration: calibrationView, music: musicView, msync: msyncView, statistics: statisticsView, sharing: sharingView, data: dataView, overview, capabilities: capabilityView, roadmap };
 
 async function render(route) {
   activeRoute = route;
@@ -831,18 +845,6 @@ function bindRouteActions(route) {
       voiceMessage = "Spoken start cancelled. Nothing changed.";
       await render("train");
     });
-    document.querySelector("[data-calibration-open]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, false));
-    document.querySelector("[data-calibration-quick]")?.addEventListener("click", () => calibrationWizard.open(calibrationProfile, true));
-    document.querySelector("[data-calibration-export]")?.addEventListener("click", async () => downloadJson(await calibrationService.export(), `nova-prime-calibration-${new Date().toISOString().slice(0, 10)}.json`));
-    document.querySelector("[data-calibration-import]")?.addEventListener("change", async (event) => {
-      try {
-        const file = event.target.files?.[0]; if (!file) return;
-        const result = await calibrationService.import(JSON.parse(await file.text()));
-        calibrationProfile = result.profiles[0] ?? null;
-        calibrationMessage = `Imported ${result.imported} calibration profile${result.imported === 1 ? "" : "s"}.`;
-      } catch (error) { calibrationMessage = `Import blocked: ${error.message}`; }
-      await render("train");
-    });
     document.querySelectorAll("[data-level]").forEach((button) => button.addEventListener("click", () => { uiState.level = Number(button.dataset.level); void render("train"); }));
     document.querySelectorAll("[data-drill-tab]").forEach((button, index, buttons) => {
       button.addEventListener("click", () => { uiState.drillTab = button.dataset.drillTab; void render("train"); });
@@ -913,7 +915,6 @@ function bindRouteActions(route) {
       const form = new FormData(event.currentTarget);
       if (form.has("amount")) uiState.amount = Number(form.get("amount"));
       if (form.has("pause")) uiState.pauseSeconds = Number(form.get("pause"));
-      if (form.has("countdown")) uiState.countdownSeconds = Number(form.get("countdown"));
       if (form.has("robotLead")) uiState.robotLeadSeconds = Number(form.get("robotLead"));
       if (event.target.name === "msyncTrack") {
         uiState.msyncTrackId = form.get("msyncTrack");
@@ -967,9 +968,8 @@ function bindRouteActions(route) {
       } else {
         uiState.amount = Number(form.get("amount"));
         uiState.pauseSeconds = Number(form.get("pause"));
-        uiState.countdownSeconds = Number(form.get("countdown"));
         const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, randomOrder: randomOrderFor(resolveDrill(uiState.drillId)), repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
-        controller.start(spec, { countdownSeconds: uiState.countdownSeconds });
+        controller.start(spec, { countdownSeconds: SESSION_START_COUNTDOWN_SECONDS });
       }
       await render("train");
     });
@@ -977,6 +977,21 @@ function bindRouteActions(route) {
       await executeSessionCommand(button.dataset.command);
       await render("train");
     }));
+  }
+
+  if (route === "calibration") {
+    document.querySelectorAll("[data-calibration-open]").forEach((button) => button.addEventListener("click", () => calibrationWizard.open(calibrationProfile, false)));
+    document.querySelectorAll("[data-calibration-quick]").forEach((button) => button.addEventListener("click", () => calibrationWizard.open(calibrationProfile, true)));
+    document.querySelector("[data-calibration-export]")?.addEventListener("click", async () => downloadJson(await calibrationService.export(), `nova-prime-calibration-${new Date().toISOString().slice(0, 10)}.json`));
+    document.querySelector("[data-calibration-import]")?.addEventListener("change", async (event) => {
+      try {
+        const file = event.target.files?.[0]; if (!file) return;
+        const result = await calibrationService.import(JSON.parse(await file.text()));
+        calibrationProfile = result.profiles[0] ?? null;
+        calibrationMessage = `Imported ${result.imported} calibration profile${result.imported === 1 ? "" : "s"}.`;
+      } catch (error) { calibrationMessage = `Import blocked: ${error.message}`; }
+      await render("calibration");
+    });
   }
 
   if (route === "msync") {
@@ -1273,3 +1288,4 @@ setInterval(() => {
 }, 1000);
 
 globalThis.NOVA_PRIME_FOUNDATION = Object.freeze({ capabilities, featureFlags: FEATURE_FLAGS, storage: store.kind });
+

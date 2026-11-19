@@ -1,5 +1,12 @@
 # Nova Prime continuation memory
 
+## Latest continuation update — 2026-11-19
+
+- Training setup follows Nova Plus: Reps, Time, Music, and MSYNC remain in one horizontal row in that order. Count and Pause share the standard setup row with a compact Voice control at 3/8, 3/8, and 1/4 widths.
+- The setup countdown selector is removed. Reps/Time starts use a fixed 3-second, large pre-start counter with a cancel action; the counter disappears when the session begins. Music/MSYNC retain immediate user-gesture audio start.
+- Calibration is removed from Training and opened from the hamburger menu as a dedicated profile/settings/parameters page. Existing guided calibration, Quick Check, import, and export remain.
+- Robot control remains disabled. Android phone usability testing was reported complete and apparently successful, but the Nova S Pro physical release gate remains unconfirmed.
+
 ## Latest continuation update — 2026-11-18
 
 - Nova Plus visual alignment is implemented before physical robot testing: light gray/white surfaces, coral active controls, larger touch targets, a 2×2 session-mode selector, larger drill category/cards, and a more readable scrollable menu.
@@ -202,3 +209,4 @@ Keep immediate access to the robot's physical power control, use conservative se
 - Do not treat a React port or minification as source-code protection.
 - Use feature branches and proportionate tests; rebuild before browser QA.
 - Keep documentation and release status synchronized with implementation.
+

@@ -2,7 +2,7 @@ const DEFAULT_ROUTE = "train";
 
 export function routeFromHash(hash = "") {
   const candidate = hash.replace(/^#/, "").trim().toLowerCase();
-  return ["train", "music", "msync", "statistics", "sharing", "data", "overview", "capabilities", "roadmap"].includes(candidate)
+  return ["train", "calibration", "music", "msync", "statistics", "sharing", "data", "overview", "capabilities", "roadmap"].includes(candidate)
     ? candidate
     : DEFAULT_ROUTE;
 }
@@ -20,4 +20,5 @@ export function createRouter({ windowObject = window, onRoute }) {
     },
   });
 }
+
 

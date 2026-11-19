@@ -1,5 +1,7 @@
 # Nova Prime project handover
 
+> Update 2026-11-19: Training modes use a single Reps/Time/Music/MSYNC row. Count and Pause share their setup row with a compact expandable Voice control; the standard start countdown is a large 3-second pre-start display with a cancel action. Calibration now opens from the hamburger menu with profile parameters and existing setup, Quick Check, import, and export actions. Android phone usability testing was reported complete and apparently successful; this does not confirm Nova S Pro robot testing. Keep the physical gate closed and robot flag disabled.
+
 > Update 2026-11-17: Android no-build distribution is being prepared as version `0.17.0-android-package.0`. `ANDROID_INSTALL.md` describes extraction into a loopback server document root, offline use, and same-origin upgrades. `.github/workflows/release.yml` builds, verifies, packages and attaches the production ZIP on a matching `v*` tag. The production package checks that the robot flag is false and production bootstrap does not import the live robot stack. No separate physical-test package is currently implemented. Tests/build/verify and local ZIP integrity passed; merge, matching tag, published asset, and its final URL still need confirmation.
 
 > Update 2026-11-18: Nova Plus visual alignment is implemented before physical testing. The default is light gray/white with coral active states; session mode choices, difficulty, drill categories/cards, fields, and primary actions have larger touch targets, and the menu uses larger scrollable entries. Existing Auto/Dark/Court choices and all Prime-only functions remain. 130 tests, build, 55-file release verification, and browser preview passed. The existing untracked Android ZIP was preserved and is still the earlier UI package; publish a separately versioned package for this visual increment. Live robot control remains disabled and the physical gate has not passed.
@@ -394,3 +396,4 @@ Nova Prime is not complete merely because every automated test passes. Completio
 - remaining migration and agreed UX work complete;
 - full responsive, accessibility, backup/restore, and deployment regression;
 - documentation, versioning, license bundle, release notes, and hosted deployment complete.
+
