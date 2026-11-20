@@ -2,7 +2,7 @@
 
 Nova Prime is the unified community platform for controlling and training with the PONGBOT Nova S Pro.
 
-The project combines Nova Trainer's robot control foundation, calibration, physics, and visual drill editing with Nova Plus's Music, playlists, MSYNC, statistics, sharing, and optional voice controls.
+The project combines Nova Trainer's calibration, physics, and visual drill editing with Nova Plus's robot control, Music, playlists, MSYNC, statistics, sharing, and optional voice controls.
 
 **Live application:** [shimuranmonk.github.io/nova-prime](https://shimuranmonk.github.io/nova-prime/)
 
