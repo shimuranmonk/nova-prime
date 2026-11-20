@@ -8,9 +8,13 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 dist = root / "dist"
-if len(sys.argv) != 2:
-    raise SystemExit("Usage: python scripts/package-release.py <version>")
+if len(sys.argv) not in (2, 3):
+    raise SystemExit("Usage: python scripts/package-release.py <version> [dist-directory]")
 version = sys.argv[1]
+dist_name = sys.argv[2] if len(sys.argv) == 3 else "dist"
+if not re.fullmatch(r"dist(?:-[a-z0-9]+(?:-[a-z0-9]+)*)?", dist_name):
+    raise SystemExit("Invalid build directory name")
+dist = root / dist_name
 meta = json.loads((dist / "build-meta.json").read_text(encoding="utf-8"))
 if meta.get("version") != version:
     raise SystemExit(f"Build version {meta.get('version')} does not match requested version {version}")
@@ -19,12 +23,15 @@ for name in required:
     if not (dist / name).is_file():
         raise SystemExit(f"Required production file missing: {name}")
 flags = (dist / "src/app/feature-flags.js").read_text(encoding="utf-8")
-if not re.search(r"robot:\s*false", flags):
-    raise SystemExit("Production robot feature flag must remain disabled")
-if re.search(r"application/robot|infrastructure/robot", (dist / "src/app/bootstrap.js").read_text(encoding="utf-8")):
-    raise SystemExit("Production bootstrap must not import the live robot stack")
+if not re.search(r"robot:\s*true", flags):
+    raise SystemExit("Production robot feature flag must be enabled after physical gate pass")
+bootstrap = (dist / "src/app/bootstrap.js").read_text(encoding="utf-8")
+if "live-robot-runtime.js" not in bootstrap or "FEATURE_FLAGS.robot" not in bootstrap:
+    raise SystemExit("Production bootstrap must mount the reviewed live robot runtime")
+if "beta-calibration-msync-pending" != meta.get("physicalReleaseGate"):
+    raise SystemExit("Build metadata is missing the physical release gate record")
 archive = root / f"nova-prime-{version}-release.zip"
-with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
+with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
     for file in sorted(p for p in dist.rglob("*") if p.is_file()):
         bundle.write(file, file.relative_to(dist).as_posix())
 with zipfile.ZipFile(archive) as bundle:

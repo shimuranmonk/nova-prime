@@ -1,11 +1,83 @@
 # Nova Prime continuation memory
 
+## Main update requested
+
+User authorizes updating main for ongoing beta testing. README Current status, Development and Current safety boundary sections removed as requested. Calibration/MSYNC remain pending; other checks passed, with second round after both pass. Build metadata now reflects partial beta verification instead of a completed gate. Local ZIPs/builds preserved and excluded from commits.
+
+## Update — 2026-11-21 · compact grouped menu
+
+v0.18.11 narrows the drawer to min(360px, 86vw), reduces spacing, removes repeated descriptions, and preserves 44px touch targets. Entries grouped under Training, Music, Setup and Information; all action IDs/routes retained. Bundle verification and ZIP integrity passed. Artifact: `nova-prime-0.18.11-android-package.0-release.zip`. Not merged or published.
+
+Physical status correction from user: all checks except Calibration and MSYNC have passed and await a second round. Calibration and MSYNC remain PENDING. This supersedes the earlier aggregate complete-gate report; do not claim the complete physical gate has passed.
+
+## Update — 2026-11-21 · About spacing
+
+v0.18.10 adds 28px internal padding and paragraph/action spacing to About; license notice is reduced to 0.6rem in muted text. Styling-only change; bundle verification and ZIP integrity passed. Artifact: `nova-prime-0.18.10-android-package.0-release.zip`. Not merged or published.
+
+## Update — 2026-11-21 · About and carry-forward ball statistics
+
+v0.18.9 removes menu safety banner, Roadmap and standalone Diagnostics. About opens Nova Prime Beta popup with short description, version, ball/drill totals, repository link and Diagnostics. Plan Guidance retained. Update Ball Statistics edits starting totals and resets balls only, preserving drills. Stored under existing settings store; no database migration. Footer now shows ball/drill totals.
+
+Important counting limit: Nova BLE exposes sequence completion, not individual shot telemetry. New totals count completed finite Reps/MSYNC sequences using encoded ball quantities and one drill per completion. Stopped/interrupted/Time/continuous Music runs need manual correction. Existing mixed cycles/commanded-ball history is not converted. These totals must not be described as sensor-confirmed shots. User was told this limitation before implementation.
+
+138 automated tests pass, including serialized increments, validation and ball-only reset. Browser verified About, Diagnostics, menu cleanup and saving 100 balls/20 drills on disposable local origin. 62-file release verification and ZIP integrity pass. Artifact: `nova-prime-0.18.9-android-package.0-release.zip`. Hardware completion counting still needs Android confirmation. Not merged or published.
+
+## Update — 2026-11-21 · packaged icons and dashboard cleanup
+
+v0.18.8 ships local `src/assets/icons/robot-connect.svg` and `robot-disconnect.svg` referenced relative to the runtime module. Release verification requires both assets. Reps/Time parameter fields now explicitly use equal halves at every breakpoint, preserving the Start/Voice row. Dashboard Manage Music/Manage MSYNC links and redundant Quick Music summary tile are removed; source selector and hamburger Music/MSYNC pages remain. Current track title continues to appear during Music/MSYNC training. 137 tests, 61-file release verification, and ZIP integrity passed. Artifact: `nova-prime-0.18.8-android-package.0-release.zip`. Android icon display needs user confirmation. Not merged or published.
+
+## Update — 2026-11-21 · connection icons
+
+User confirms v0.18.6 header control connects but its power character renders as a placeholder. v0.18.7 replaces the character with inline SVG Bluetooth Connect and Disconnect artwork, switching with authenticated readiness and retaining action labels/help. No external font dependency. 137 tests, 59-file release verification and ZIP integrity passed. Artifact: `nova-prime-0.18.7-android-package.0-release.zip`. Not merged or published.
+
+## Update — 2026-11-21 · dedicated training display and header connection
+
+v0.18.6 removes the production connection panel in favour of a 48px header Connect/Disconnect icon. Logo unchanged; Session setup badge reads Disconnected until authenticated, then Robot ready. Routine connection messages stay hidden; failures remain visible. Active sessions render only the dedicated full-viewport training display: countdown transitions to progress/Pause/Resume/Stop. Stop or cancel resets to the dashboard after priority Stop succeeds; normal completion remains visible with Done. The latter completion behaviour is an explicitly stated implementation assumption. Shared test-only controls remain isolated.
+
+Verification: full 137-test suite passed, session renderer exercised for countdown/running/paused/completed/error/idle, browser checked header icon/disconnected badge/menu without startup errors, 59-file release graph and ZIP integrity passed. Physical Android connected/active flow remains to be retested by user; no robot was operated here. ZIP: `nova-prime-0.18.6-android-package.0-release.zip`. Not merged or published.
+
+## Update — 2026-11-21 · New session reset and Voice row
+
+v0.18.5 fixes New session throwing ROBOT_RESET_BLOCKED after Stop had already reset the executor to idle. Reset now handles idle/stopped/error states appropriately, then resets the canonical session to IDLE, hiding the session panel and unlocking setup. The same live connection panel is reattached after Training rerenders. Voice now shares a 3:1 row with Start in Reps/Time, Music and MSYNC. 137 automated tests and 59-file release verification passed; ZIP integrity passed. Artifact: `nova-prime-0.18.5-android-package.0-release.zip`. Actual Android stop/completion/new-session retest remains pending. No merge or publication performed.
+
+## Update — 2026-11-21 · training drill actions
+
+User confirms v0.18.3 Connect works on Android. v0.18.4 removes the informational paragraph under Start, displays Combined as Mixed and Complex as Multi (stored category IDs remain compatible), and adds long-press/right-click drill actions. Edit on built-ins creates a custom copy; Edit on custom drills opens the existing editor. Save to My drills creates a copy in the selected custom group and opens its naming/settings dialog. A 600 ms hold cancels on movement; ordinary taps retain drill selection. 137 tests, validation of copies of all 34 built-ins, 59-file release verification and ZIP integrity pass. Android long-press interaction needs user confirmation. Artifact: `nova-prime-0.18.4-android-package.0-release.zip`. Not published or merged.
+
+## Update — 2026-11-21 · Connect diagnostics fix
+
+The user reported `Cannot read properties of null (reading 'prepend')` on Connect in v0.18.2. The shared logger tried to append to the diagnostics list that exists only in the test UI. It now retains in-memory diagnostics and skips list rendering when that optional element is absent. v0.18.3 is packaged in `nova-prime-0.18.3-android-package.0-release.zip`; 137 tests and 59-file release verification passed. Actual Android reconnect retest is pending. No merge or publication performed.
+
+## Latest update — 2026-11-20 · physical gate reported passed; production controls integrated
+
+- The maintainer explicitly confirmed that the complete documented physical release gate passed. This is recorded as user-reported aggregate evidence in `PHYSICAL_TEST_RUN.md`; per-device run logs were not supplied in this conversation.
+- `FEATURE_FLAGS.robot` is enabled for the production candidate. The normal Training screen mounts the shared authenticated robot runtime with Connect, Disconnect, and priority Stop. Test-only safety checkboxes and per-session confirmation remain confined to the separate test entry point.
+- Version advanced to `0.18.0-android-package.0`. Release verification and packaging require the documented gate record and enabled flag. Build scripts can target a new named `dist-*` directory so existing build folders and ZIPs remain untouched.
+- Verification passed: 136 automated tests; 59-file module-graph/release check; release ZIP has 59 files with root `index.html`, license/notices, and valid CRC. The candidate has not been merged, pushed, or published. Preserve all existing uncommitted work and test artifacts.
+
+## Latest follow-up — 2026-11-20 · Android menu/Connect fix
+
+- User reported the installed v0.18.0 candidate showed no usable Connect control and the hamburger menu did not respond. The production `MutationObserver` repeatedly rewrote unchanged label/helper text, causing an observer feedback loop; the sticky robot panel also had a higher stack level than the menu.
+- Made production text updates idempotent, moved the live controls out of the sticky overlay stack, corrected stale simulation-only About/MSYNC text, and made the visible footer version read generated build metadata.
+- Browser smoke check against the local Android-style HTTP origin confirmed Connect is enabled and the hamburger opens the navigation drawer. The corrected artifact is `nova-prime-0.18.2-android-package.0-release.zip` (v0.18.1 was an intermediate correction and is preserved).
+- 137 automated tests pass; the 59-file production verifier passes; ZIP root index/license/notices/integrity checks pass. Keep the archive local; it has not been pushed or published.
+
+## Latest continuation update — 2026-11-19 · parallel full-feature physical test build
+
+- Prepared branch `test/robot-live-control` with an isolated full-app physical-test entry point and package. Three Android testers each have a separate Nova S Pro and can test in parallel.
+- The distributable is `nova-prime-0.17.0-android-package.0-full-physical-test-ready2.zip`; its `index.html` is at ZIP root and it includes the full source module tree, AGPL license, and third-party notices. Build output is under `dist-full-physical-test-ready2/`.
+- The test copy supports live Reps, Time (up to 255 seconds per command), Music, and validated MSYNC drill/flavor cues through the shared authenticated connection and executor. It adds area-clear/power-access checks, explicit physical-session confirmation, always-visible Connect/Disconnect/priority Stop, diagnostics, and background Stop/no auto-resume. Pause sends Stop; Resume starts the remaining configured command and must be checked physically for duplicate/partial-cycle behavior. Calibration remains observation-based; automated calibration shots are not wired to the robot.
+- Production remains gated: `src/app/feature-flags.js` keeps `robot: false`; production `bootstrap.js` does not import the robot stack; no changes were merged into `main`. The full test ZIP is not a production release and its live operation has not been physically validated across all four modes.
+- Automated suite: 135 passed. Existing production bundle verification: 55 files passed. Full test bundle verification: 52 JavaScript modules, relative imports, license/notices, and unchanged production gate passed. Phone/robot testing is still required; MSYNC timing, Pause/Resume boundary behavior, physical calibration, and repeated/queued Stop remain open release checks.
+- Preserve the prior release/physical-test ZIPs and the earlier `dist` folders; this build uses a new output directory and archive name.
+
 ## Latest continuation update — 2026-11-19
 
 - Training setup follows Nova Plus: Reps, Time, Music, and MSYNC remain in one horizontal row in that order. Count and Pause share the standard setup row with a compact Voice control at 3/8, 3/8, and 1/4 widths.
 - The setup countdown selector is removed. Reps/Time starts use a fixed 3-second, large pre-start counter with a cancel action; the counter disappears when the session begins. Music/MSYNC retain immediate user-gesture audio start.
 - Calibration is removed from Training and opened from the hamburger menu as a dedicated profile/settings/parameters page. Existing guided calibration, Quick Check, import, and export remain.
 - Robot control remains disabled. Android phone usability testing was reported complete and apparently successful, but the Nova S Pro physical release gate remains unconfirmed.
+- The isolated physical-test entry point and ZIP stay separate from production; `FEATURE_FLAGS.robot` and production bootstrap remain gated. User-reported 2026-11-19 checks passed for one conservative ball, stop/disconnect, reconnect, unexpected power-off recovery, login-timeout recovery, chooser-cancel recovery (Connect became available again), two repeated idle priority Stops, and Stop after confirming a single-ball command (one ball fired, robot stationary, no repeated firing). The chooser bug was a connection state left at `connecting` when Web Bluetooth rejected selection; cleanup and cancellation message are fixed and automated tests pass. The rebuilt artifact is `nova-prime-0.17.0-android-package.0-chooser-recovery-physical-test.zip`. Stage 1 is reported PASS; Stage 2 is partial with multi-command queue-load and Stop-order checks still outstanding; later stages remain. Production gate remains closed.
 
 ## Latest continuation update — 2026-11-18
 
@@ -209,4 +281,3 @@ Keep immediate access to the robot's physical power control, use conservative se
 - Do not treat a React port or minification as source-code protection.
 - Use feature branches and proportionate tests; rebuild before browser QA.
 - Keep documentation and release status synchronized with implementation.
-

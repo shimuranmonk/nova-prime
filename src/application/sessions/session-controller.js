@@ -17,6 +17,10 @@ export class LocalSessionController {
   #startedAt = null;
   #errorCode = null;
   #recorded = false;
+  #simulation = true;
+  #liveRun = false;
+  #ballsPlanned = 0;
+  #ballsDispatched = 0;
   #now;
   #onRecord;
 
@@ -36,7 +40,10 @@ export class LocalSessionController {
       completedCycles: this.#completedCycles,
       cyclePauseRemaining: this.#cyclePauseRemaining,
       progress: this.#progress(),
-      simulation: true,
+      simulation: this.#simulation,
+      liveRun: this.#liveRun,
+      ballsPlanned: this.#ballsPlanned,
+      ballsDispatched: this.#ballsDispatched,
     });
   }
 
@@ -46,7 +53,7 @@ export class LocalSessionController {
     return () => this.#listeners.delete(listener);
   }
 
-  start(spec, { countdownSeconds = 3 } = {}) {
+  start(spec, { countdownSeconds = 3, liveRun = false, ballsPlanned = 0 } = {}) {
     if (this.state !== SESSION_STATES.IDLE) return freezeSnapshot({ status: COMMAND_RESULTS.BLOCKED, reason: "SESSION_ACTIVE" });
     const validation = validateSessionSpec(spec);
     if (!validation.valid || !["reps", "time", "music", "msync"].includes(spec.mode)) {
@@ -61,6 +68,10 @@ export class LocalSessionController {
     this.#startedAt = this.#now();
     this.#errorCode = null;
     this.#recorded = false;
+    this.#liveRun = liveRun === true;
+    this.#simulation = !this.#liveRun;
+    this.#ballsPlanned = Math.max(0, Math.floor(Number(ballsPlanned) || 0));
+    this.#ballsDispatched = 0;
     this.#machine.dispatch(SESSION_EVENTS.PREPARE);
     this.#machine.dispatch(SESSION_EVENTS.ARM);
     this.#machine.dispatch(SESSION_EVENTS.COUNTDOWN);
@@ -96,7 +107,7 @@ export class LocalSessionController {
       const complete = this.#spec.mode === "reps"
         ? this.#completedCycles >= this.#spec.repetitions
         : this.#spec.mode === "time" && this.#elapsedSeconds >= this.#spec.durationSeconds;
-      if (complete) void this.#finish("completed");
+      if (complete && !this.#liveRun) void this.#finish("completed");
     }
     this.#notify();
     return this.snapshot();
@@ -122,6 +133,13 @@ export class LocalSessionController {
     }
     this.#notify();
     return result;
+  }
+
+  noteDispatched(count = 1) {
+    const amount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+    this.#ballsDispatched += amount;
+    this.#notify();
+    return this.snapshot();
   }
 
   fail(errorCode = "SESSION_FAILED") {
@@ -158,8 +176,8 @@ export class LocalSessionController {
       startedAt: this.#startedAt,
       endedAt: this.#now(),
       outcome,
-      ballsPlanned: 0,
-      ballsDispatched: 0,
+      ballsPlanned: this.#ballsPlanned,
+      ballsDispatched: this.#ballsDispatched,
       completedCycles: this.#completedCycles,
       durationSeconds: Math.round(this.#elapsedSeconds),
       drillId: this.#spec.drillId,
@@ -171,7 +189,7 @@ export class LocalSessionController {
       quickTrackIds: this.#spec.quickTrackIds,
       msyncAttachmentId: this.#spec.msyncAttachmentId,
       errorCode: this.#errorCode,
-      simulation: true,
+      simulation: this.#simulation,
     });
     await this.#onRecord(record);
   }
@@ -195,6 +213,10 @@ export class LocalSessionController {
     this.#startedAt = null;
     this.#errorCode = null;
     this.#recorded = false;
+    this.#simulation = true;
+    this.#liveRun = false;
+    this.#ballsPlanned = 0;
+    this.#ballsDispatched = 0;
   }
 
   #progress() {

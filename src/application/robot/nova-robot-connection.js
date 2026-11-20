@@ -33,14 +33,14 @@ export class NovaRobotConnection {
     if (this.ready) return this.snapshot();
     if (this.#state !== "disconnected" && this.#state !== "error") throw new Error("NOVA_CONNECTION_BUSY");
     this.#setState("connecting");
-    await this.transport.connect({
-      onNotification: (bytes) => { void this.#onNotification(bytes); },
-      onDisconnect: () => this.#handleDisconnect(),
-    });
-    this.#readyPromise = new Promise((resolve, reject) => { this.#readyResolve = resolve; this.#readyReject = reject; });
-    this.#setState("handshake");
     let timer;
     try {
+      await this.transport.connect({
+        onNotification: (bytes) => { void this.#onNotification(bytes); },
+        onDisconnect: () => this.#handleDisconnect(),
+      });
+      this.#readyPromise = new Promise((resolve, reject) => { this.#readyResolve = resolve; this.#readyReject = reject; });
+      this.#setState("handshake");
       await this.transport.write(NOVA_PACKETS.handshakeStart);
       await Promise.race([
         this.#readyPromise,
@@ -48,6 +48,12 @@ export class NovaRobotConnection {
       ]);
       return this.snapshot();
     } catch (error) {
+      if (this.#state === "connecting" && error?.name === "NotFoundError") {
+        recordRobotDiagnostic(this.diagnostics, "connection.chooser_cancelled");
+        this.transport.disconnect();
+        this.#setState("disconnected");
+        throw error;
+      }
       this.#fail(error);
       this.transport.disconnect();
       throw error;

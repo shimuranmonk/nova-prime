@@ -112,3 +112,21 @@ test("MSYNC uses the canonical lifecycle and records simulated activations", () 
   assert.equal(records[0].completedCycles, 3);
   assert.equal(records[0].ballsDispatched, 0);
 });
+
+test("live session history waits for robot completion and records only reported dispatches", () => {
+  const records = [];
+  const controller = new LocalSessionController({ onRecord: (record) => records.push(record) });
+  controller.start(createSessionSpec({ drillId: "live-drill", repetitions: 3 }), {
+    countdownSeconds: 0, liveRun: true, ballsPlanned: 9,
+  });
+  controller.tick(20);
+  assert.equal(controller.state, SESSION_STATES.RUNNING);
+  assert.equal(records.length, 0);
+  controller.noteDispatched(6);
+  controller.complete({ completedCycles: 3 });
+  assert.equal(controller.state, SESSION_STATES.COMPLETED);
+  assert.equal(records[0].simulation, false);
+  assert.equal(records[0].ballsPlanned, 9);
+  assert.equal(records[0].ballsDispatched, 6);
+  assert.equal(records[0].completedCycles, 3);
+});

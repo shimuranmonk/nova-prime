@@ -4,9 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDirectory, "..");
-const dist = path.join(root, "dist");
+const distName = process.argv[2] ?? "dist";
+if (!/^(?:dist|dist-[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(distName)) throw new Error("Invalid build directory name");
+const dist = path.join(root, distName);
 
 const html = await readFile(path.join(dist, "index.html"), "utf8");
+const buildMeta = JSON.parse(await readFile(path.join(dist, "build-meta.json"), "utf8"));
+if (!html.includes(`<meta name="nova-prime-version" content="${buildMeta.version}">`)) throw new Error("Visible application version does not match the package version");
 if (!html.includes('type="module" src="./src/app/bootstrap.js"')) throw new Error("Built index is missing the application module");
 if (!html.includes('href="./src/styles/app.css"')) throw new Error("Built index is missing the stylesheet");
 if (/https?:\/\/(?!www\.w3\.org)/i.test(html)) throw new Error("Unexpected remote runtime dependency in index.html");
@@ -14,6 +18,10 @@ if (/(?:src|href)=["']\/(?!\/)/i.test(html)) throw new Error("Root-relative asse
 
 await access(path.join(dist, "src", "app", "bootstrap.js"));
 await access(path.join(dist, "src", "styles", "app.css"));
+for (const icon of ["robot-connect.svg", "robot-disconnect.svg"]) {
+  const svg = await readFile(path.join(dist, "src", "assets", "icons", icon), "utf8");
+  if (!svg.includes('xmlns="http://www.w3.org/2000/svg"')) throw new Error(`Invalid packaged icon: ${icon}`);
+}
 await access(path.join(dist, "build-meta.json"));
 const license = await readFile(path.join(dist, "LICENSE"), "utf8");
 if (!license.includes("GNU AFFERO GENERAL PUBLIC LICENSE") || !license.includes("Version 3, 19 November 2007")) throw new Error("Release bundle is missing the AGPL v3 license text");
@@ -44,9 +52,13 @@ for (const file of sourceFiles) {
   }
 }
 const flags = await readFile(path.join(dist, "src", "app", "feature-flags.js"), "utf8");
-if (!/robot:\s*false/.test(flags)) throw new Error("Robot feature flag must remain disabled until physical verification passes");
+if (!/robot:\s*true/.test(flags)) throw new Error("Production robot feature flag must be enabled after physical verification passes");
 const bootstrap = await readFile(path.join(dist, "src", "app", "bootstrap.js"), "utf8");
-if (/application\/robot|infrastructure\/robot/.test(bootstrap)) throw new Error("Production bootstrap must not activate the unverified robot stack");
+if (!bootstrap.includes("live-robot-runtime.js") || !bootstrap.includes("FEATURE_FLAGS.robot")) throw new Error("Production bootstrap must mount the reviewed live robot runtime");
+const gateRecord = await readFile(path.join(root, "docs", "PHYSICAL_TEST_RUN.md"), "utf8");
+if (!gateRecord.includes("LIVE TRAINING BETA — Calibration and MSYNC PENDING")) throw new Error("Production release requires an explicit physical gate pass record");
+await access(path.join(dist, "src", "app", "live-robot-runtime.js"));
+await access(path.join(dist, "src", "styles", "live-robot-controls.css"));
 if (!bootstrap.includes("AGPL-3.0-or-later") || !bootstrap.includes("github.com/shimuranmonk/nova-prime")) throw new Error("Application About screen must expose source and license information");
 
-console.log(`Verified ${files.length} built files and relative module graph; robot transport is packaged but feature-gated off.`);
+console.log(`Verified ${files.length} built files and relative module graph; production live robot controls are enabled for authorized beta testing; Calibration and MSYNC pending.`);

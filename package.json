@@ -1,14 +1,20 @@
 {
   "name": "nova-prime",
-  "version": "0.17.0-android-package.0",
+  "version": "0.18.11-android-package.0",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:physical-test": "node scripts/build-physical-bundle.mjs",
+    "build:full-physical-test": "node scripts/build-full-physical-test.mjs",
+    "verify:full-physical-test": "node scripts/verify-full-physical-test.mjs",
+    "package:full-physical-test": "python scripts/package-full-physical-test.py",
+    "verify:physical-test": "node scripts/verify-physical-bundle.mjs",
     "package:release": "python scripts/package-release.py",
+    "package:physical-test": "python scripts/package-physical-test.py",
     "preview": "node scripts/serve.mjs",
-    "test": "node --test",
+    "test": "node --test test",
     "verify": "node scripts/verify.mjs"
   }
 }

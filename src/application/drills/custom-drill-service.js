@@ -147,6 +147,20 @@ export class CustomDrillService {
     return copy;
   }
 
+  async copyBuiltin(source, group = "A") {
+    assertGroup(group);
+    const records = await this.list(group);
+    if (records.length >= MAX_CUSTOM_DRILLS_PER_GROUP) throw new Error(`Group ${group} is full`);
+    const timestamp = this.now();
+    const copy = { ...clone(source), schemaVersion: DRILL_SCHEMA_VERSION,
+      id: this.idFactory("drill"), source: "custom", builtinKey: null,
+      name: this.#uniqueName(records, source.name), group,
+      programs: regenerateStepIds(source.programs, this.idFactory),
+      sortOrder: records.length, createdAt: timestamp, updatedAt: timestamp };
+    await this.#put(copy);
+    return copy;
+  }
+
   async delete(id) {
     const drill = await this.get(id);
     if (!drill) return false;
