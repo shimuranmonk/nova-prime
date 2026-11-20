@@ -23,7 +23,9 @@ Verified facts include the advertised service and GATT UUIDs, handshake packets 
 
 ## Release gate
 
-Do not change `FEATURE_FLAGS.robot` to `true` until all checks below pass on a real Nova S Pro in a clear test area:
+The maintainer reported that the complete documented physical release gate passed on 2026-11-20; see [PHYSICAL_TEST_RUN.md](PHYSICAL_TEST_RUN.md). Production live control is enabled in the current candidate. This status is user-reported and the run-specific phone/robot matrix may be appended to the run sheet.
+
+The required checks for future firmware, protocol, transport, or safety changes are:
 
 - Connect, reconnect, login timeout, and unexpected disconnect.
 - One conservative single ball, then one short known drill.
@@ -33,4 +35,4 @@ Do not change `FEATURE_FLAGS.robot` to `true` until all checks below pass on a r
 - Calibration/corner placement, Music completion, and MSYNC transitions.
 - Phone/tablet portrait and landscape, hosted HTTPS, and supported local-server origin.
 
-Keep physical power access unobstructed throughout every test. A failed or ambiguous check keeps the production flag off.
+Keep physical power access unobstructed throughout every test. A failed or ambiguous check blocks that change from release.

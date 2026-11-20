@@ -42,6 +42,18 @@ test("drill packet has the seven-byte header and bounded ball payload", () => {
   assert.deepEqual([...packet.slice(3, 7)], [0x01, 10, 1, 1]);
 });
 
+test("physical-test packet encodes exactly one fixed conservative normal ball", () => {
+  const program = { steps: [{ enabled: true, scatter: 0, variants: [{ speed: 1, spin: 0, type: "top", height: 35, drop: 0, bpm: 30, repetitions: 1 }] }] };
+  const packet = encodeDrillPacket(program, { mode: "combos", amount: 1, randomOrder: false });
+  const header = new DataView(packet.buffer);
+  const ball = new DataView(packet.buffer, 7);
+  assert.equal(packet.length, 31);
+  assert.deepEqual([...packet.slice(3, 7)], [0x01, 1, 0, 0]);
+  assert.equal(ball.getUint32(20, true), 1);
+  assert.ok(Math.abs(ball.getFloat32(16, true) - 0.5) < 1e-6);
+  assert.equal(header.getUint16(1, true), 28);
+});
+
 test("inactive steps are omitted and serve positions remain fixed during random order", () => {
   const program = { steps: [
     { enabled: true, scatter: 0, variants: [{ speed: 2, spin: 2, type: "back", height: -30, drop: 0, bpm: 45, repetitions: 1 }] },

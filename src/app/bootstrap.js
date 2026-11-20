@@ -1,3 +1,4 @@
+import { BallStatistics } from "../application/ball-statistics.js";
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
 import { CalibrationService } from "../application/calibration/calibration-service.js";
 import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
@@ -90,6 +91,7 @@ const store = await IndexedDbStore.open().catch((error) => {
   storageNotice = `${error?.message || "Persistent browser storage is unavailable."} This visit uses temporary memory only.`;
   return new MemoryStore();
 });
+const ballStatistics = new BallStatistics(store);
 const customDrillService = new CustomDrillService(store);
 const builtinPreferencesService = new BuiltinPreferencesService(store);
 const novaPlusMigration = new NovaPlusCsvMigrationService(store);
@@ -171,6 +173,9 @@ const controller = new LocalSessionController({
 });
 
 async function executeSessionCommand(command) {
+  if (FEATURE_FLAGS.robot && typeof globalThis.NOVA_PRIME_LIVE_COMMAND === "function") {
+    return globalThis.NOVA_PRIME_LIVE_COMMAND(command);
+  }
   const snapshot = controller.snapshot();
   const musicSession = snapshot.spec?.mode === "music";
   const msyncSession = snapshot.spec?.mode === "msync";
@@ -314,6 +319,7 @@ function selectedMsync() {
 }
 
 function connectionCard() {
+  if (FEATURE_FLAGS.robot) return "";
   return `
     <section class="app-card status-card" aria-labelledby="connection-title">
       <div class="status-copy"><span class="connection-dot"></span><div><h2 id="connection-title">Robot control gated</h2><p>Transport and priority Stop pass simulated tests; physical Nova S Pro verification is still required.</p></div></div>
@@ -366,7 +372,7 @@ function sessionConsole(session) {
         <button type="button" data-command="pause" ${session.state === SESSION_STATES.RUNNING ? "" : "disabled"}>Pause</button>
         <button type="button" data-command="resume" ${session.state === SESSION_STATES.PAUSED ? "" : "disabled"}>Resume</button>
         <button type="button" class="stop-button" data-command="stop" ${stoppable ? "" : "disabled"}>Stop</button>
-        <button type="button" data-command="reset" ${[SESSION_STATES.COMPLETED, SESSION_STATES.ERROR].includes(session.state) ? "" : "disabled"}>New session</button>
+        <button type="button" data-command="reset" ${[SESSION_STATES.COMPLETED, SESSION_STATES.ERROR].includes(session.state) ? "" : "disabled"}>Done</button>
       </div>
     </section>`;
 }
@@ -376,6 +382,7 @@ function voiceControlSlot() {
   const enabled = supported && uiState.voiceEnabled;
   return `
     <div class="voice-control-slot">
+      <span class="voice-control-label">Voice</span>
       <details class="voice-control-details">
         <summary class="voice-control-button" aria-label="Open voice command controls" title="Voice commands · ${supported ? (enabled ? voiceStatus : "Off") : "Not supported in this browser"}"><span aria-hidden="true">🎙</span><span>Voice</span><small>${supported ? (enabled ? escapeHtml(voiceStatus) : "Off") : "Unavailable"}</small></summary>
         <div class="voice-control-popover">
@@ -405,9 +412,7 @@ function setupCard(session) {
   const musicForm = `
       <form id="session-form" class="session-form music-session-form">
         <label><span>Music source</span><select name="musicSource" ${locked ? "disabled" : ""} required>${sourceOptions || '<option value="">No music saved</option>'}</select></label>
-        <div class="music-source-summary"><strong>${escapeHtml(music.label)}</strong><span>${music.count} track${music.count === 1 ? "" : "s"} · ${formatDuration(music.durationMs)}</span></div>
-        <a class="manage-music-link" href="#music">Manage music</a>
-        <button class="primary-button" type="submit" ${locked || music.count === 0 ? "disabled" : ""}>Start Music session</button>
+        <div class="training-start-row">        <button class="primary-button" type="submit" ${locked || music.count === 0 ? "disabled" : ""}>Start Music session</button>${voiceControlSlot()}</div>
       </form>`;
   const msyncOptions = trackCache.filter((track) => msyncCache.some((attachment) => attachment.id === track.msyncAttachmentId))
     .map((track) => `<option value="${escapeHtml(track.id)}" ${uiState.msyncTrackId === track.id ? "selected" : ""}>${escapeHtml(track.displayName)}</option>`).join("");
@@ -416,15 +421,13 @@ function setupCard(session) {
         <label><span>Validated timeline</span><select name="msyncTrack" ${locked ? "disabled" : ""} required>${msyncOptions || '<option value="">No validated MSYNC timeline</option>'}</select></label>
         <label><span>Robot Lead (s)</span><input name="robotLead" type="number" min="0" max="5" step="0.001" value="${uiState.robotLeadSeconds}" ${locked ? "disabled" : ""} required></label>
         <div class="music-source-summary"><strong>${escapeHtml(msync.track?.displayName ?? "No timeline selected")}</strong><span>${msync.attachment ? `${msync.attachment.validationReceipt.summary.cues} cues · ${formatDuration(msync.attachment.validationReceipt.summary.durationMs)}` : "Attach an MSYNC file first"}</span></div>
-        <a class="manage-music-link" href="#msync">Manage MSYNC</a>
-        <button class="primary-button" type="submit" ${locked || !msync.attachment ? "disabled" : ""}>Start MSYNC simulation</button>
+        <div class="training-start-row">        <button class="primary-button" type="submit" ${locked || !msync.attachment ? "disabled" : ""}>Start MSYNC simulation</button>${voiceControlSlot()}</div>
       </form>`;
   const standardForm = `
       <form id="session-form" class="session-form">
         <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
         <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
-        ${voiceControlSlot()}
-        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>
+        <div class="training-start-row">        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>${voiceControlSlot()}</div>
       </form>`;
   return `
     <section class="app-card setup-card" aria-labelledby="setup-title">
@@ -445,10 +448,9 @@ function setupCard(session) {
       </div>
 
       ${uiState.mode === "music" ? musicForm : uiState.mode === "msync" ? msyncForm : standardForm}
-      ${["music", "msync"].includes(uiState.mode) ? `<div class="voice-mode-row">${voiceControlSlot()}</div>` : ""}
       ${uiState.voicePendingStart && session.state === SESSION_STATES.IDLE ? `<div class="voice-confirm voice-confirm-standalone" role="alert"><div><strong>Confirm session start</strong><span>Touch confirmation is required. Voice cannot start the robot directly.</span></div><button type="button" data-voice-confirm-start class="primary-button">Confirm start</button><button type="button" data-voice-cancel-start>Cancel</button></div>` : ""}
-      <p class="helper-text">${uiState.mode === "msync" ? "MSYNC controls the drill timeline from validated cues." : `Selected: <strong>${escapeHtml(selectedDrill?.name ?? "Choose a drill")}</strong>. ${uiState.mode === "music" ? "Audio stays on this device and completes automatically." : "Uses the canonical lifecycle."}`} Sends no robot commands and records zero dispatched balls.</p>
       ${(uiState.mode === "msync" ? msyncMessage : musicMessage) ? `<p class="custom-message" role="status">${escapeHtml(uiState.mode === "msync" ? msyncMessage : musicMessage)}</p>` : ""}
+      <p id="robot-connection-message" class="connection-feedback" role="status"></p>
     </section>`;
 }
 
@@ -473,7 +475,7 @@ function drillLibrary(session) {
     <section id="drill-panel-builtin" class="app-card library-card" role="tabpanel" tabindex="0" aria-labelledby="drill-tab-builtin" aria-hidden="${uiState.drillTab !== "builtin"}" ${uiState.drillTab !== "builtin" ? "hidden" : ""}>
       <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>${BUILTIN_DRILLS.length} drills · level ${uiState.level}</p></div><div class="library-heading-actions"><button class="small-button ${random ? "active" : ""}" type="button" data-builtin-order ${locked || !selected || activeSteps < 2 ? "disabled" : ""}>${random ? "Random order" : "Sequential"}</button><button class="small-button" type="button" data-builtin-reset ${locked || !Object.keys(builtinPreferences).length ? "disabled" : ""}>Reset settings</button></div></div>
       ${builtinMessage ? `<p class="helper-text" role="status">${escapeHtml(builtinMessage)}</p>` : ""}
-      <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${label} <small>${count}</small></button>`).join("")}</div>
+      <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${id === "combined" ? "Mixed" : id === "complex" ? "Multi" : label} <small>${count}</small></button>`).join("")}</div>
       <div class="drill-grid">${drills.map((drill) => drillCard(drill, locked)).join("")}</div>
     </section>`;
 }
@@ -574,7 +576,7 @@ async function msyncView() {
     </article>`;
   }).join("");
   const trackOptions = trackCache.map((track) => `<option value="${escapeHtml(track.id)}">${escapeHtml(track.displayName)} · ${formatDuration(track.durationMs)}</option>`).join("");
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">FROZEN FORMAT V1</span><h1>MSYNC timelines</h1><p>Validate a timeline against its exact local audio file, then simulate synchronized cues. Nova Prime never repairs a file silently and sends no robot commands in this release.</p></div>
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">FROZEN FORMAT V1</span><h1>MSYNC timelines</h1><p>Validate a timeline against its exact local audio file, then ${FEATURE_FLAGS.robot ? "run synchronized cues on the connected robot" : "simulate synchronized cues"}. Nova Prime never repairs a file silently.${FEATURE_FLAGS.robot ? " Validated cues can command a connected Nova S Pro." : " No robot commands are sent."}</p></div>
     ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
     <section class="app-card msync-import-card"><div><h2>Validate and attach</h2><p>The selected track’s SHA-256 identity and measured duration must match the MSYNC file.</p></div><form id="msync-import-form"><label><span>Audio track</span><select name="trackId" required>${trackOptions || '<option value="">Import audio in Music first</option>'}</select></label><label class="file-button">Choose MSYNC<input name="msyncFile" type="file" accept=".ini,.msync,text/plain" required></label><button class="primary-button" type="submit" ${trackCache.length ? "" : "disabled"}>Validate and attach</button></form></section>
     ${msyncMessage ? `<p class="notice music-notice" role="status">${escapeHtml(msyncMessage)}</p>` : ""}
@@ -586,7 +588,8 @@ async function trainView() {
   await Promise.all([refreshCustomCache(), refreshBuiltinPreferences(), refreshCalibrationProfile(), refreshMusicCache()]);
   await refreshMsyncCache();
   const session = controller.snapshot();
-  return `<div class="training-screen">${connectionCard()}${setupCard(session)}${sessionConsole(session)}${drillLibraryTabs()}${drillLibrary(session)}${customDrills(session)}</div>`;
+  if (session.state !== SESSION_STATES.IDLE) return `<div class="training-focus" role="region" aria-label="Training session">${sessionConsole(session)}</div>`;
+  return `<div class="training-screen">${connectionCard()}${setupCard(session)}${drillLibraryTabs()}${drillLibrary(session)}${customDrills(session)}</div>`;
 }
 
 async function calibrationView() {
@@ -688,7 +691,19 @@ async function sharingView() {
 }
 
 function overview() {
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid"><article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available in simulation.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check are available without robot commands.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and simulate cues with adjustable Robot Lead without transport.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Versioned sharing</strong><p>Create validated custom-drill packs, use explicit device sharing, and preview every incoming file before import.</p></article><article class="app-card"><h2>Integrated</h2><strong class="large-value">Stable voice commands</strong><p>Use optional press-to-listen start, pause, resume, and stop commands, with touch confirmation before every spoken start.</p></article><article class="app-card"><h2>Verified in simulation</h2><strong class="large-value">Robot safety stack</strong><p>Protocol encoding, authentication, serialized writes, queue cancellation, and priority Stop pass fake-device tests. Bluetooth stays off until physical tests pass.</p></article><article class="app-card"><h2>Open source</h2><strong class="large-value">AGPL-3.0-or-later</strong><p>Nova Prime comes without warranty. Modified network versions must offer corresponding source. <a href="https://github.com/shimuranmonk/nova-prime" target="_blank" rel="noopener noreferrer">View source and license</a>.</p></article></div>`;
+  const live = FEATURE_FLAGS.robot;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">ABOUT</span><h1>Nova Prime</h1><p>Nova Trainer’s practical structure with Nova Plus modes, built on one local-first safety architecture.</p></div><div class="info-grid">
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">34 built-in drills</strong><p>The verified Trainer catalogue, three levels, Reps, Time, history, backup, and recovery are available for ${live ? "live robot" : "simulation"} training.</p></article>
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">Custom drill editor</strong><p>Build Levels 1–3 with ordered steps, ball variants, spin, speed, placement, tempo, scatter, and a calibrated table preview.</p></article>
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">Guided calibration</strong><p>Standard and Complete observation plans, local profiles, import/export, and Quick Check use manually observed landings.</p></article>
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">Local Music</strong><p>Store deduplicated audio, build playlists, use Quick Music, and run automatically completing Music sessions offline.</p></article>
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">MSYNC v1</strong><p>Validate exact audio identity, attach timelines atomically, and ${live ? "send validated cues to the connected robot" : "simulate cues"} with adjustable Robot Lead.</p></article>
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">Local statistics</strong><p>Review activity trends, mode mix, drill use, and explainable plan guidance without uploading training history.</p></article>
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">Versioned sharing</strong><p>Create validated custom-drill packs, use explicit device sharing, and preview every incoming file before import.</p></article>
+    <article class="app-card"><h2>Integrated</h2><strong class="large-value">Stable voice commands</strong><p>Use optional press-to-listen start, pause, resume, and stop commands, with touch confirmation before every spoken start.</p></article>
+    <article class="app-card"><h2>${live ? "Available" : "Verified in simulation"}</h2><strong class="large-value">Robot safety stack</strong><p>Protocol encoding, authentication, serialized writes, queue cancellation, priority Stop, and background Stop use the shared live transport.${live ? " Live controls are enabled after the reported physical release gate pass." : " Bluetooth stays off until physical tests pass."}</p></article>
+    <article class="app-card"><h2>Open source</h2><strong class="large-value">AGPL-3.0-or-later</strong><p>Nova Prime comes without warranty. Modified network versions must offer corresponding source. <a href="https://github.com/shimuranmonk/nova-prime" target="_blank" rel="noopener noreferrer">View source and license</a>.</p></article>
+  </div>`;
 }
 
 function capabilityView() {
@@ -727,6 +742,32 @@ function downloadText(text, filename) {
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function openDrillActions(id) {
+  if (controller.state !== SESSION_STATES.IDLE) return;
+  const source = resolveDrill(id);
+  if (!source) return;
+  const builtin = Boolean(getBuiltinDrill(id));
+  const dialog = document.createElement("dialog");
+  dialog.className = "drill-dialog drill-action-dialog";
+  dialog.innerHTML = `<h2>${escapeHtml(source.name)}</h2><div class="dialog-actions"><button type="button" data-edit>Edit${builtin ? " a copy" : ""}</button><button type="button" data-copy>Save to My drills</button><button type="button" data-close>Cancel</button></div><p role="alert"></p>`;
+  document.body.append(dialog);
+  dialog.querySelector("[data-close]").onclick = () => dialog.close();
+  dialog.addEventListener("close", () => dialog.remove());
+  const run = async (edit) => {
+    try {
+      let drill = source;
+      if (builtin || !edit) drill = builtin ? await customDrillService.copyBuiltin(source, uiState.group) : await customDrillService.duplicate(id, uiState.group);
+      uiState.drillId = drill.id; uiState.group = drill.group; uiState.drillTab = "custom";
+      await refreshCustomCache(); dialog.close(); await render("train");
+      if (edit) await drillEditor.open(drill.id, uiState.level);
+      else openDrillDialog(drill);
+    } catch (error) { dialog.querySelector("p").textContent = error.message; }
+  };
+  dialog.querySelector("[data-edit]").onclick = () => void run(true);
+  dialog.querySelector("[data-copy]").onclick = () => void run(false);
+  dialog.showModal();
 }
 
 function openDrillDialog(drill = null) {
@@ -881,6 +922,28 @@ function bindRouteActions(route) {
     }));
     document.querySelectorAll("[data-category]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.category = button.dataset.category; uiState.drillId = getBuiltinDrills(uiState.category)[0].id; void render("train"); }));
     document.querySelectorAll("[data-drill-id]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.drillId; void render("train"); }));
+    document.querySelectorAll("[data-drill-id]:not(:disabled), [data-custom-select]:not(:disabled)").forEach((button) => {
+      let timer;
+      let held = false;
+      let origin;
+      const cancel = () => clearTimeout(timer);
+      const open = () => {
+        cancel(); held = true;
+        openDrillActions(button.dataset.drillId || button.dataset.customSelect);
+      };
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        held = false; origin = [event.clientX, event.clientY];
+        timer = setTimeout(open, 600);
+      });
+      button.addEventListener("pointermove", (event) => {
+        if (origin && Math.hypot(event.clientX - origin[0], event.clientY - origin[1]) > 10) cancel();
+      });
+      for (const event of ["pointerup", "pointercancel", "pointerleave"]) button.addEventListener(event, cancel);
+      button.addEventListener("contextmenu", (event) => { event.preventDefault(); if (!held) open(); });
+      button.addEventListener("click", (event) => { if (held) { event.preventDefault(); event.stopImmediatePropagation(); held = false; } }, true);
+      button.addEventListener("keydown", (event) => { if (event.key === "F10" && event.shiftKey) { event.preventDefault(); open(); } });
+    });
     document.querySelectorAll("[data-group]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; uiState.customArrange = false; void render("train"); }));
     document.querySelectorAll("[data-custom-select]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.customSelect; void render("train"); }));
     document.querySelectorAll("[data-custom-edit]:not(:disabled)").forEach((button) => button.addEventListener("click", () => openDrillDialog(resolveDrill(button.dataset.customEdit))));
@@ -1183,6 +1246,30 @@ function bindRouteActions(route) {
   }
 }
 
+async function openAbout() {
+  closeMenu();
+  const totals = await ballStatistics.totals();
+  const dialog = document.createElement("dialog");
+  dialog.className = "drill-dialog about-popup";
+  dialog.setAttribute("aria-label", "About Nova Prime Beta");
+  dialog.innerHTML = `<button type="button" data-close class="icon-button" aria-label="Close About">×</button><h2>Nova Prime Beta</h2><p>Your robot brings the balls; you bring the questionable footwork. Train to your own beat and give the table a workout.</p><p>${escapeHtml(document.querySelector("#build-version").textContent)}</p><p><strong>${totals.balls} balls · ${totals.drills} drills</strong></p><div class="dialog-actions"><a class="outline-button" href="https://github.com/shimuranmonk/nova-prime" target="_blank" rel="noopener noreferrer">View on GitHub</a><button type="button" data-diagnostics>Diagnostics</button></div><small>AGPL-3.0-or-later · Community software, supplied without warranty.</small>`;
+  document.body.append(dialog); dialog.showModal();
+  dialog.querySelector("[data-close]").onclick = () => dialog.close();
+  dialog.querySelector("[data-diagnostics]").onclick = () => { dialog.close(); location.hash = "#capabilities"; void render("capabilities"); };
+  dialog.addEventListener("close", () => dialog.remove());
+}
+async function openBallStatistics() {
+  closeMenu(); const totals = await ballStatistics.totals();
+  const dialog = document.createElement("dialog"); dialog.className = "drill-dialog";
+  dialog.setAttribute("aria-label", "Update Ball Statistics");
+  dialog.innerHTML = `<form><h2>Update Ball Statistics</h2><label>Starting Balls<input name="balls" type="number" min="0" step="1" required value="${totals.balls}"></label><label>Starting Drills<input name="drills" type="number" min="0" step="1" required value="${totals.drills}"></label><p>Continue from your Nova Plus totals. Completed finite robot sequences add to these totals. Interrupted, Time and continuous Music runs require manual correction; no individual-ball sensor is available.</p><p role="alert"></p><div class="dialog-actions"><button type="button" data-reset>Reset Ball Count</button><button type="button" data-cancel>Cancel</button><button type="submit" class="primary-button">Save</button></div></form>`;
+  document.body.append(dialog); dialog.showModal();
+  dialog.querySelector("[data-cancel]").onclick = () => dialog.close();
+  dialog.querySelector("[data-reset]").onclick = async () => { try { await ballStatistics.resetBalls(); dialog.querySelector('[name="balls"]').value = 0; await refreshFooter(); } catch(error) { dialog.querySelector('[role="alert"]').textContent = error.message; } };
+  dialog.querySelector("form").onsubmit = async (event) => { event.preventDefault(); try { const form = new FormData(event.currentTarget); await ballStatistics.set(Number(form.get("balls")), Number(form.get("drills"))); await refreshFooter(); dialog.close(); } catch(error) { dialog.querySelector('[role="alert"]').textContent = error.message; } };
+  dialog.addEventListener("close", () => dialog.remove());
+}
+
 function openMenu() {
   menu.classList.add("open");
   menu.setAttribute("aria-hidden", "false");
@@ -1202,9 +1289,12 @@ function closeMenu() {
 async function refreshFooter() {
   const records = await store.getAll("sessionRecords");
   const cycles = records.reduce((total, record) => total + (Number(record.completedCycles) || 0), 0);
-  document.querySelector("#training-total").textContent = `${records.length} session${records.length === 1 ? "" : "s"} · ${cycles} cycles`;
+  const totals = await ballStatistics.totals();
+  document.querySelector("#training-total").textContent = `${totals.balls} balls · ${totals.drills} drills`;
 }
 
+document.querySelector("#about-menu").addEventListener("click", (event) => { event.preventDefault(); void openAbout(); });
+document.querySelector("#ball-statistics-menu").addEventListener("click", (event) => { event.preventDefault(); void openBallStatistics(); });
 menuToggle.addEventListener("click", openMenu);
 document.querySelector("#menu-close").addEventListener("click", closeMenu);
 menuScrim.addEventListener("click", closeMenu);
@@ -1276,7 +1366,7 @@ document.querySelector("#drill-delete").addEventListener("click", async () => {
 
 appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
-document.querySelector("#build-version").textContent = "v0.17.0-android-package.0";
+document.querySelector("#build-version").textContent = `v${document.querySelector('meta[name="nova-prime-version"]')?.content ?? "development"}`;
 await refreshFooter();
 
 setInterval(() => {
@@ -1289,3 +1379,30 @@ setInterval(() => {
 
 globalThis.NOVA_PRIME_FOUNDATION = Object.freeze({ capabilities, featureFlags: FEATURE_FLAGS, storage: store.kind });
 
+// Expose application services only to the reviewed live-control adapter.
+if (globalThis.NOVA_PRIME_FULL_TEST_BUILD === true || FEATURE_FLAGS.robot) {
+  globalThis.NOVA_PRIME_LIVE_BRIDGE = Object.freeze({
+    uiState,
+    controller,
+    audioPlayer,
+    musicLibrary,
+    msyncService,
+    msyncSimulator,
+    getTrackCache: () => [...trackCache],
+    getMsyncCache: () => [...msyncCache],
+    resolveDrill,
+    programForDrill,
+    randomOrderFor,
+    render,
+    createSessionSpec,
+    refreshFooter,
+    recordCompletedBalls: async (balls) => { await ballStatistics.completed(balls); await refreshFooter(); },
+    getBuiltinPreferences: () => ({ ...builtinPreferences }),
+    getCustomDrills: () => [...customCache],
+  });
+  globalThis.dispatchEvent(new CustomEvent("nova-prime-live-ready"));
+  if (FEATURE_FLAGS.robot && globalThis.NOVA_PRIME_FULL_TEST_BUILD !== true) {
+    const { mountLiveRobotControls } = await import("./live-robot-runtime.js");
+    mountLiveRobotControls(globalThis.NOVA_PRIME_LIVE_BRIDGE, { testOnly: false });
+  }
+}

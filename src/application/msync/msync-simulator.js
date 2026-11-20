@@ -62,7 +62,7 @@ export class MsyncSimulator {
       const cue = cues[this.#robotCueIndex];
       const commandAt = Math.max(0, cue.timeMs - this.#robotLeadMs);
       if (commandAt > this.#positionMs) break;
-      this.#emit("ROBOT_PLAN", { cueType: cue.type, cueTimeMs: cue.timeMs, commandAtMs: commandAt, simulation: true });
+      this.#emit("ROBOT_PLAN", { cueType: cue.type, cueTimeMs: cue.timeMs, commandAtMs: commandAt, cue, simulation: true });
       this.#robotCueIndex += 1;
     }
     while (this.#cueIndex < cues.length && cues[this.#cueIndex].timeMs <= this.#positionMs && this.#state === "playing") {

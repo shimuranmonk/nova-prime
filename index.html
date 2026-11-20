@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#f4f5f8">
     <meta name="description" content="Nova Prime local-first training application for the PONGBOT Nova S Pro.">
+    <meta name="nova-prime-version" content="development">
     <title>Nova Prime</title>
     <link rel="stylesheet" href="./src/styles/app.css">
+    <link rel="stylesheet" href="./src/styles/live-robot-controls.css">
   </head>
   <body>
     <div class="app-shell">
@@ -31,20 +33,26 @@
     <button id="menu-scrim" class="menu-scrim" type="button" aria-label="Close application menu" hidden></button>
     <aside id="app-menu" class="app-menu" aria-label="Application menu" aria-hidden="true" inert>
       <div class="menu-heading"><div><span class="eyebrow">NOVA PRIME</span><h2>Menu</h2></div><button id="menu-close" class="icon-button" type="button" aria-label="Close application menu">×</button></div>
-      <nav>
-        <a href="#train" data-menu-route="train"><span>Training</span><small>Reps, Time, Music and MSYNC</small></a>
-        <a href="#calibration" data-menu-route="calibration"><span>Calibration</span><small>Profiles, setup and parameters</small></a>
-        <a href="#music" data-menu-route="music"><span>Music</span><small>Tracks, playlists and Quick Music</small></a>
-        <a href="#msync" data-menu-route="msync"><span>MSYNC</span><small>Validate and simulate timelines</small></a>
-        <a href="#statistics" data-menu-route="statistics"><span>Statistics</span><small>Local activity and plan guidance</small></a>
-        <a href="#sharing" data-menu-route="sharing"><span>Sharing</span><small>Export or import custom drill packs</small></a>
-        <a href="#data" data-menu-route="data"><span>Data</span><small>History, backup and restore</small></a>
-        <a href="#overview" data-menu-route="overview"><span>About</span><small>Current integration status</small></a>
-        <a href="#capabilities" data-menu-route="capabilities"><span>Diagnostics</span><small>Browser capabilities</small></a>
-        <a href="#roadmap" data-menu-route="roadmap"><span>Roadmap</span><small>JewelFlow releases</small></a>
+      <nav aria-label="Grouped application functions">
+        <section class="menu-group" aria-labelledby="menu-training"><h3 id="menu-training">Training</h3>
+          <a href="#train" data-menu-route="train"><span>Training dashboard</span></a>
+          <a href="#statistics" data-menu-route="statistics"><span>Statistics</span></a>
+          <a href="#statistics" id="ball-statistics-menu"><span>Update Ball Statistics</span></a>
+        </section>
+        <section class="menu-group" aria-labelledby="menu-music"><h3 id="menu-music">Music</h3>
+          <a href="#music" data-menu-route="music"><span>Tracks &amp; playlists</span></a>
+          <a href="#msync" data-menu-route="msync"><span>MSYNC timelines</span></a>
+        </section>
+        <section class="menu-group" aria-labelledby="menu-setup"><h3 id="menu-setup">Setup</h3>
+          <a href="#calibration" data-menu-route="calibration"><span>Calibration</span></a>
+          <a href="#data" data-menu-route="data"><span>History, backup &amp; restore</span></a>
+          <a href="#sharing" data-menu-route="sharing"><span>Share &amp; import drills</span></a>
+        </section>
+        <section class="menu-group" aria-labelledby="menu-information"><h3 id="menu-information">Information</h3>
+          <a href="#overview" id="about-menu"><span>About Nova Prime</span></a>
+        </section>
       </nav>
       <label class="theme-picker"><span>Appearance</span><select id="theme-select" aria-label="Appearance theme"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option><option value="court">Court</option></select></label>
-      <div class="menu-safety"><strong>Simulation-only build</strong><span>No Bluetooth or robot commands are available.</span></div>
     </aside>
 
     <dialog id="drill-dialog" class="drill-dialog" aria-labelledby="drill-dialog-title">
@@ -79,4 +87,3 @@
     <script type="module" src="./src/app/bootstrap.js"></script>
   </body>
 </html>
-

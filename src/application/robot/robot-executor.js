@@ -43,8 +43,8 @@ export class RobotExecutor {
     return this.start(packet);
   }
 
-  stop() {
-    if (["idle", "stopped"].includes(this.#state)) return Promise.resolve(Object.freeze({ status: "IGNORED", reason: "ALREADY_STOPPED" }));
+  stop({ force = false } = {}) {
+    if (["idle", "stopped"].includes(this.#state) && !force) return Promise.resolve(Object.freeze({ status: "IGNORED", reason: "ALREADY_STOPPED" }));
     if (this.#priorityPromise && this.#state === "stopping") return this.#priorityPromise;
     return this.#priorityStop("stopped");
   }

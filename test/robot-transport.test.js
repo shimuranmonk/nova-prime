@@ -70,6 +70,23 @@ test("robot connection completes the four-stage authenticated handshake", async 
   assert.deepEqual([...transport.writes.at(-1)], NOVA_PACKETS.ready);
 });
 
+test("canceling the browser device chooser returns to disconnected and allows retry", async () => {
+  const transport = new FakeTransport();
+  let attempts = 0;
+  transport.connect = async () => {
+    attempts += 1;
+    throw new DOMException("User canceled device selection", "NotFoundError");
+  };
+  const connection = new NovaRobotConnection({ transport });
+
+  await assert.rejects(() => connection.connect(), { name: "NotFoundError" });
+  assert.equal(connection.state, "disconnected");
+  assert.equal(transport.disconnected, true);
+  await assert.rejects(() => connection.connect(), { name: "NotFoundError" });
+  assert.equal(attempts, 2);
+  assert.equal(connection.state, "disconnected");
+});
+
 test("robot connection times out safely and disconnects", async () => {
   const transport = new FakeTransport();
   const connection = new NovaRobotConnection({ transport, handshakeTimeoutMs: 5 });
@@ -118,5 +135,14 @@ test("executor retries only the idempotent Stop packet", async () => {
   await executor.start([0x81]);
   const result = await executor.stop();
   assert.equal(result.attempts, 2);
+  assert.equal(executor.state, "stopped");
+});
+
+test("executor can send an explicit priority Stop while connected but idle", async () => {
+  const writes = [];
+  const executor = new RobotExecutor({ connection: { ready: true, async write(bytes) { writes.push([...bytes]); } } });
+  const result = await executor.stop({ force: true });
+  assert.equal(result.status, "SENT");
+  assert.deepEqual(writes, [NOVA_PACKETS.stop]);
   assert.equal(executor.state, "stopped");
 });

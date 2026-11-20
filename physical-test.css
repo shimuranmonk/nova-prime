@@ -1,0 +1,42 @@
+:root { color-scheme: light; --page: #f4f5f8; --surface: #fff; --soft: #f1f3f6; --line: #dce1e6; --ink: #30383d; --muted: #667178; --accent: #ca462d; --blue: #346b88; --blue-soft: #e8f1f6; --danger: #bd3440; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--page); color: var(--ink); }
+button, input { font: inherit; }
+.test-shell { display: grid; gap: 14px; width: min(680px, 100%); margin-inline: auto; padding: max(18px, env(safe-area-inset-top)) 14px max(28px, env(safe-area-inset-bottom)); }
+.test-header { display: flex; align-items: center; gap: 12px; }
+.brand-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--accent); }
+.brand-mark span { width: 14px; height: 14px; border-radius: 50%; background: white; }
+h1, h2, p { margin: 0; }
+h1 { font-size: 1.25rem; }
+h2 { font-size: 1.08rem; }
+.eyebrow { margin-bottom: 4px; color: var(--muted); font-size: .68rem; font-weight: 900; letter-spacing: .09em; }
+.warning-card, .test-card { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 5px 16px rgba(30,58,75,.08); }
+.warning-card { border-color: #e8b46b; background: #fff5e7; color: #704d18; }
+.warning-card p, .helper, .status-message { margin-top: 7px; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+.warning-card p { color: inherit; }
+.safety-check { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--line); font-weight: 700; line-height: 1.4; }
+.safety-check:last-of-type { border-bottom: 0; }
+.safety-check input { flex: 0 0 auto; width: 24px; height: 24px; accent-color: var(--accent); }
+.status-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.status-indicator { width: 16px; height: 16px; border: 3px solid #e8edf0; border-radius: 50%; background: #9aabb7; }
+.status-indicator[data-state="ready"] { background: #168366; }
+.status-indicator[data-state="error"] { background: var(--danger); }
+.button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 13px; }
+.primary-button, .outline-button, .stop-button { min-height: 54px; padding: 12px 14px; border: 1px solid transparent; border-radius: 12px; font-weight: 850; cursor: pointer; touch-action: manipulation; }
+.primary-button { background: var(--accent); color: white; }
+.outline-button { border-color: var(--line); background: var(--soft); color: var(--ink); }
+.primary-button:disabled, .outline-button:disabled, .stop-button:disabled { cursor: not-allowed; opacity: .48; }
+.ball-card { border-color: color-mix(in srgb, var(--blue) 38%, var(--line)); }
+.ball-settings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0; }
+.ball-settings div { padding: 10px; border-radius: 10px; background: var(--blue-soft); }
+.ball-settings dt { color: var(--blue); font-size: .65rem; font-weight: 850; text-transform: uppercase; }
+.ball-settings dd { margin: 5px 0 0; font-weight: 850; }
+.shot-button, .stop-button { width: 100%; margin-top: 10px; }
+.shot-button { background: var(--blue); }
+.stop-button { position: sticky; bottom: max(8px, env(safe-area-inset-bottom)); z-index: 5; border-color: var(--danger); background: var(--danger); color: white; font-size: 1.05rem; letter-spacing: .04em; box-shadow: 0 4px 14px rgba(105,20,27,.25); }
+.diagnostics-card summary { min-height: 44px; align-content: center; font-weight: 850; cursor: pointer; }
+.diagnostics-card ol { display: grid; gap: 4px; max-height: 160px; overflow: auto; margin: 10px 0 0; padding-left: 22px; color: var(--muted); font: .72rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+footer { display: grid; gap: 3px; padding: 4px 2px; font-size: .77rem; }
+footer span { color: var(--muted); }
+@media (max-width: 420px) { .test-shell { padding-inline: 10px; } .ball-settings { grid-template-columns: repeat(2, 1fr); } .button-row { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: no-preference) { button { transition: filter 100ms ease; } button:active:not(:disabled) { filter: brightness(.93); } }

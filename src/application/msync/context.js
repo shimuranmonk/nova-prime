@@ -11,6 +11,7 @@ export function createMsyncValidationContext(track, customDrills = []) {
     2: programData(drill.programs[2]),
     3: programData(drill.programs[3]),
     random: drill.random,
+    primePrograms: drill.programs,
   }]));
   const customDrillsByGroup = { "custom-a": [], "custom-b": [], "custom-c": [] };
   const drillData = {};
@@ -22,6 +23,7 @@ export function createMsyncValidationContext(track, customDrills = []) {
       2: programData(drill.programs[2]),
       3: programData(drill.programs[3]),
       random: drill.random,
+      primePrograms: drill.programs,
     };
   }
   return Object.freeze({

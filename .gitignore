@@ -1,4 +1,10 @@
 dist/
+dist-physical-test/
+dist-physical-test-*/
+dist-full-physical-test*/
 node_modules/
 .DS_Store
 *.log
+
+dist-release*/
+nova-prime-*-release.zip

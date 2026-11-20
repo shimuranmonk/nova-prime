@@ -77,6 +77,9 @@ test("MSYNC simulator applies cues and exposes lead-time plans without transport
   simulator.advance(5_000);
   assert.equal(simulator.snapshot().state, "completed");
   assert.ok(simulator.snapshot().events.some((event) => event.type === "ROBOT_PLAN" && event.simulation));
+  const plan = simulator.snapshot().events.find((event) => event.type === "ROBOT_PLAN");
+  assert.equal(plan.cue.type, "INLINE");
+  assert.equal(plan.cue.robotProgram.steps[0].variants[0].speed, 5);
 });
 
 test("MSYNC simulator pause and priority stop prevent later cue activation", () => {

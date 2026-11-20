@@ -182,7 +182,11 @@ function validateDrills(entries, issues, context) {
                 `${entry.key} cannot resolve ${kind}:${reference} at level ${level}.`,
                 { found: `${kind}:${reference}` }));
         }
-        drills[entry.key] = { kind, reference, level, line: entry.line, data, random };
+        const primePrograms = kind === 'BUILTIN'
+            ? context.builtInDrills?.[reference]?.primePrograms
+            : context.drillData?.[reference]?.primePrograms;
+        drills[entry.key] = { kind, reference, level, line: entry.line, data, random,
+            primeProgram: primePrograms?.[level] || null };
     }
     return drills;
 }
@@ -353,6 +357,33 @@ function activeBalls(active) {
     return balls;
 }
 
+function inlinePrimeProgram(definition) {
+    const steps = (definition?.balls || []).map((ball, index) => ({
+        id: `msync:inline:${index + 1}`,
+        enabled: true,
+        scatter: ball.scatter || 0,
+        variants: [{ speed: ball.speed, spin: ball.spin, type: ball.type || 'top',
+            height: ball.height, drop: ball.drop, bpm: ball.bpm, repetitions: ball.reps }]
+    }));
+    return steps.length ? { steps } : null;
+}
+
+function flavorPrimeProgram(program, flavor) {
+    if (!program || !flavor) return program;
+    return { ...program, steps: program.steps.map((step) => ({
+        ...step,
+        variants: step.variants.map((ball) => ({ ...ball,
+            ...(flavor.type ? { type: flavor.type } : {}),
+            ...(flavor.speed !== undefined ? { speed: flavor.speed } : {}),
+            ...(flavor.spin !== undefined ? { spin: flavor.spin } : {}),
+            ...(flavor.height !== undefined ? { height: flavor.height } : {}),
+            ...(flavor.drop !== undefined ? { drop: flavor.drop } : {}),
+            ...(flavor.bpm !== undefined ? { bpm: flavor.bpm } : {}),
+            ...(flavor.reps !== undefined ? { repetitions: flavor.reps } : {})
+        }))
+    })) };
+}
+
 function validateCues(rawCues, parsed, durationMs, issues) {
     const cues = [];
     const used = { drills: new Set(), inline: new Set(), flavors: new Set() };
@@ -414,6 +445,7 @@ function validateCues(rawCues, parsed, durationMs, issues) {
             activationCount++;
             cue.name = raw.value;
             cue.once = raw.once;
+            cue.robotProgram = active?.definition?.primeProgram || null;
         }
         else if (raw.command === 'INLINE') {
             if (!Object.hasOwn(parsed.inline, raw.value)) add(issues, issue('ERROR',
@@ -423,6 +455,7 @@ function validateCues(rawCues, parsed, durationMs, issues) {
             activationCount++;
             cue.name = raw.value;
             cue.once = raw.once;
+            cue.robotProgram = inlinePrimeProgram(active?.definition);
         }
         else if (raw.command === 'FLAVOR') {
             if (!active) add(issues, issue('ERROR', 'FLAVOR_WITHOUT_DRILL', raw.line, 'CUES',
@@ -442,6 +475,8 @@ function validateCues(rawCues, parsed, durationMs, issues) {
                 }
             }
             cue.name = raw.value;
+            cue.robotProgram = raw.value === 'NONE' ? active?.definition?.primeProgram || inlinePrimeProgram(active?.definition)
+                : flavorPrimeProgram(active?.definition?.primeProgram || inlinePrimeProgram(active?.definition), parsed.flavors[raw.value]);
         }
         else if (raw.command === 'REST') {
             if (!active) add(issues, issue('ERROR', 'REST_WITHOUT_DRILL', raw.line, 'CUES',
