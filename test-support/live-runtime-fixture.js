@@ -28,9 +28,10 @@ function fixture(mode='reps'){
  const c=clock();globalThis.setTimeout=(f,ms)=>c.set(f,ms);globalThis.clearTimeout=i=>c.clear(i);
  const doc=new Target(),win=new Target(),panel=new Target(),header=new Target(),route=new Target(),form=new Target();
  panel.fields=Object.fromEntries(['area','power','connect','disconnect','stop','status','connection','diagnostics'].map(k=>['#full-test-'+k,k==='diagnostics'?null:new Target()]));
- const host=new Target(),menu=new Target();doc.createElement=()=>doc.created++===0?panel:header;doc.created=0;
+ const host=new Target(),menu=new Target();doc.createElement=()=>{const index=doc.created++;return index===0?panel:index===1?header:new Target();};doc.created=0;
  doc.fields={'#route-view':route,'#menu-toggle':menu,'#robot-control-root':host,'#session-form':form};
  Object.assign(globalThis,{document:doc,window:win,MutationObserver:class{observe(){}},isSecureContext:true,FormData:class{get(k){return k==='amount'?'2':k==='pause'?'0':k==='musicSource'?'quick':null;}}});
+ let connectionWriteCount=0;
  const writes=[];const write=new Target(),notify=new Target();let failStops=false,failPrograms=false,holdProgram=null;
  const device=new Target();device.gatt={connected:false,async connect(){this.connected=true;return{getPrimaryService:async()=>({getCharacteristic:async u=>u.endsWith('ff01')?write:notify})};},disconnect(){this.connected=false;}};
  const notification=async bytes=>notify.emit('characteristicvaluechanged',{target:{value:new DataView(Uint8Array.from(bytes).buffer)}});
@@ -48,12 +49,12 @@ function fixture(mode='reps'){
  // Same canonical audio state reactions as production bootstrap (no synthetic robot Stop).
  let prior='idle';audio.subscribe(s=>{const prev=prior;prior=s.state;const m=controller.snapshot().spec?.mode;if(m==='music'&&s.state==='completed'&&prev!=='completed')controller.complete({completedCycles:s.completedTracks});if(m==='music'&&s.state==='error'&&prev!=='error')controller.fail('AUDIO_PLAYBACK_FAILED');if(m==='msync'&&s.state==='error'&&prev!=='error'){projection.stop();controller.fail('MSYNC_AUDIO_PLAYBACK_FAILED');}});
  let oldProjection='idle';projection.subscribe(s=>{const prev=oldProjection;oldProjection=s.state;if(controller.snapshot().spec?.mode==='msync'&&s.state==='completed'&&prev!=='completed'){audio.stop();controller.complete({completedCycles:s.activations});}});
- mountLiveRobotControls(bridge,{testOnly:false});
+ mountLiveRobotControls(bridge,{testOnly:false,now:()=>c.now});
  return{c,doc,win,panel,header,writes,rawAudio,audio,controller,parsed,track,projection,bridge,device,
-  async connect(){await panel.fields['#full-test-connect'].click();assert.equal(header.dataset.connected,'true');},
+  async connect(){await panel.fields['#full-test-connect'].click();assert.equal(header.dataset.connected,'true');connectionWriteCount=writes.length;},
   async start(){await doc.emit('submit',{target:{matches:s=>s==='#session-form'},preventDefault(){},stopImmediatePropagation(){}});if(controller.state==='COUNTDOWN')controller.tick(3);await flush();},
   done:()=>notification([0,2,3,0,5,1,0]),
-  programs:()=>writes.filter(w=>w.p[0]===129),stops:()=>writes.filter(w=>w.p[0]===128&&w.p[3]===1),
+  programs:()=>writes.filter(w=>w.p[0]===129),stops:()=>writes.slice(connectionWriteCount).filter(w=>w.p[0]===128&&w.p[3]===1),
   failStops(){failStops=true;},failPrograms(){failPrograms=true;},holdProgram(p){holdProgram=p;},
   command:cmd=>globalThis.NOVA_PRIME_LIVE_COMMAND(cmd)};
 }

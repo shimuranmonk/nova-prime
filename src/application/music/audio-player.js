@@ -86,6 +86,7 @@ export class AudioPlayer {
   async resume() {
     if (this.#state !== "paused") return false;
     const generation = this.#generation;
+    this.#state = "loading";
     this.#armWatchdog();
     try {
       await this.#audio.play();

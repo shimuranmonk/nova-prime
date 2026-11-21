@@ -16,7 +16,7 @@ export class RobotExecutor {
 
   get state() { return this.#state; }
   get epoch() { return this.#epoch; }
-  snapshot() { return Object.freeze({ state: this.#state, epoch: this.#epoch, ready: this.connection.ready !== false }); }
+  snapshot() { return Object.freeze({ state: this.#state, epoch: this.#epoch, ready: this.connection.ready !== false, motorPower: "unknown" }); }
 
   start(packet) {
     if (this.connection.ready === false) return Promise.reject(new Error("ROBOT_NOT_READY"));
@@ -46,7 +46,13 @@ export class RobotExecutor {
 
   stop({ force = false } = {}) {
     if (["idle", "stopped"].includes(this.#state) && !force) return Promise.resolve(Object.freeze({ status: "IGNORED", reason: "ALREADY_STOPPED" }));
-    if (this.#priorityPromise && ["stopping", "pausing"].includes(this.#state)) return this.#priorityPromise;
+    if (this.#priorityPromise && this.#state === "pausing") {
+      return this.#priorityPromise.then(result => {
+        if (this.#state === "paused") this.#state = "stopped";
+        return result;
+      });
+    }
+    if (this.#priorityPromise && this.#state === "stopping") return this.#priorityPromise;
     return this.#priorityStop("stopped");
   }
 
@@ -92,7 +98,7 @@ export class RobotExecutor {
           if (epoch !== this.#epoch) return Object.freeze({ status: "CANCELLED", epoch });
           this.#state = finalState;
           recordRobotDiagnostic(this.diagnostics, "executor.stop_sent", { epoch, attempts: attempt + 1, finalState });
-          return Object.freeze({ status: "SENT", epoch, attempts: attempt + 1 });
+          return Object.freeze({ status: "SENT", epoch, attempts: attempt + 1, confirmation: "write-only", motorPower: "unknown" });
         } catch (error) { lastError = error; }
       }
       if (epoch === this.#epoch) this.#state = "error";

@@ -93,3 +93,17 @@ test("executor diagnostics describe delivery and Stop without retaining packet b
   assert.equal(entries[1].details.byteLength, 4);
   assert.equal(JSON.stringify(entries).includes("129"), false);
 });
+
+test('background safety also attempts Stop from executor error state',async()=>{
+  const visibility=new FakeEventSource(),lifecycle=new FakeEventSource();let stops=0;
+  const executor={state:'error',async stop(){stops++;this.state='stopped';return{status:'SENT'};}};
+  const monitor=new RobotSafetyMonitor({executor,visibilitySource:visibility,lifecycleSource:lifecycle});
+  monitor.arm();visibility.visibilityState='hidden';visibility.dispatch('visibilitychange');await monitor.flush();
+  assert.equal(stops,1);assert.equal(executor.state,'stopped');monitor.disarm();
+});
+
+test('Stop write result does not assert physical motor shutdown',async()=>{
+  const executor=new RobotExecutor({connection:{ready:true,async write(){}}});
+  const result=await executor.stop({force:true});
+  assert.equal(result.confirmation,'write-only');assert.equal(result.motorPower,'unknown');assert.equal(executor.snapshot().motorPower,'unknown');
+});

@@ -156,7 +156,7 @@ test('cycle completion schedules repeat using SESSION CYCLE_PAUSE', async () => 
     assert.equal(timers.at(-1).delay, 1500);
 });
 
-test('missing robot DONE notification falls back to a timed persistent repeat', async () => {
+test('missing robot DONE stops instead of repeating an unconfirmed batch', async () => {
     const timers = [];
     const diagnostics = [];
     const adapter = new MsyncRobotAdapter({
@@ -177,14 +177,13 @@ test('missing robot DONE notification falls back to a timed persistent repeat', 
     await adapter.queue;
 
     timers.at(-1).callback();
-    assert.equal(diagnostics.at(-1).type, 'ROBOT_DONE_FALLBACK');
-    assert.equal(timers.at(-1).delay, 1500);
-    timers.at(-1).callback();
     await adapter.queue;
-    assert.equal(diagnostics.filter(value => value.type === 'ROBOT_REPLACE_SENT').length, 2);
+    assert.ok(diagnostics.some(event => event.type === 'ROBOT_ERROR' && event.message === 'MSYNC_COMPLETION_TIMEOUT'));
+    assert.equal(diagnostics.filter(value => value.type === 'ROBOT_REPLACE_SENT').length, 1);
+    assert.equal(diagnostics.at(-1).reason, 'COMPLETION_TIMEOUT');
 });
 
-test('changing an active live drill waits for STOP completion before replacement', async () => {
+test('missing STOP acknowledgement blocks replacement rather than launching anyway', async () => {
     const actions = [];
     const adapter = new MsyncRobotAdapter({
         send: async packet => actions.push(packet[0] === 0x80 ? 'STOP' : 'DRILL'),
@@ -207,7 +206,7 @@ test('changing an active live drill waits for STOP completion before replacement
     });
     await adapter.queue;
     assert.deepEqual(actions, [
-        'STOP', 'DRILL', 'STOP', `WAIT:${ROBOT_STOP_ACK_TIMEOUT_MS}`, 'DRILL'
+        'STOP', 'DRILL', 'STOP', `WAIT:${ROBOT_STOP_ACK_TIMEOUT_MS}`
     ]);
 });
 
@@ -296,9 +295,11 @@ test('ONCE completes one cycle and ignores later flavor changes until reactivate
     await adapter.queue;
 
     assert.equal(adapter.execution, null);
-    assert.equal(timers.length, 0);
+    assert.equal(timers.length, 1); // One bounded completion deadline, cleared by DONE.
     assert.equal(diagnostics.filter(value => value.type === 'ROBOT_REPLACE_SENT').length, 1);
-    assert.equal(diagnostics.at(-1).type, 'ROBOT_ONCE_COMPLETE');
+    assert.ok(diagnostics.some(event => event.type === 'ROBOT_ONCE_COMPLETE'));
+    assert.equal(diagnostics.at(-1).type, 'ROBOT_STOP_SENT');
+    assert.equal(diagnostics.at(-1).reason, 'ONCE_COMPLETE');
 });
 
 test('DONE acknowledgements after STOP cannot restart ball delivery', async () => {

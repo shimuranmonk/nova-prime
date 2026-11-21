@@ -178,3 +178,31 @@ test('failed Stop retries disconnect and do not claim the robot stopped',async()
   await assert.rejects(()=>executor.stop({force:true}),/write failed/);
   assert.equal(attempts,2);assert.equal(disconnected,true);assert.equal(executor.state,'error');
 });
+
+test('Bluetooth write timeout closes the connection and rejects subsequent work',async()=>{
+  let disconnected=0;
+  const characteristic={addEventListener(){},startNotifications:async()=>{},writeValue:()=>new Promise(()=>{})};
+  const device={gatt:{connected:false,async connect(){this.connected=true;return{getPrimaryService:async()=>({getCharacteristic:async()=>characteristic})};},disconnect(){this.connected=false;}},addEventListener(){},removeEventListener(){}};
+  const transport=new WebBluetoothTransport({bluetooth:{requestDevice:async()=>device},timeoutMs:10});
+  await transport.connect({onDisconnect:()=>disconnected++});
+  await assert.rejects(()=>transport.write([129,1]),/WRITE_TIMEOUT/);
+  assert.equal(transport.connected,false);assert.equal(disconnected,1);
+  await assert.rejects(()=>transport.write([129,2]),/NOT_CONNECTED/);
+});
+
+test('late GATT connection after timeout is closed and cannot become usable',async()=>{
+  let release;const pending=new Promise(r=>{release=r;});
+  const device={gatt:{connected:false,connect:()=>pending,disconnect(){this.connected=false;}},addEventListener(){},removeEventListener(){}};
+  const transport=new WebBluetoothTransport({bluetooth:{requestDevice:async()=>device},timeoutMs:10});
+  await assert.rejects(()=>transport.connect(),/CONNECT_TIMEOUT/);
+  device.gatt.connected=true;release({disconnect(){device.gatt.connected=false;}});await waitTurn();
+  assert.equal(device.gatt.connected,false);assert.equal(transport.connected,false);
+});
+
+test('Stop takes precedence over an unfinished Pause and prevents Resume',async()=>{
+  let release;const hold=new Promise(r=>{release=r;});
+  const executor=new RobotExecutor({connection:{ready:true,async write(packet){if(packet[0]===128)await hold;}}});
+  await executor.start([129,1]);const pausing=executor.pause();const stopping=executor.stop();release();
+  await Promise.all([pausing,stopping]);assert.equal(executor.state,'stopped');
+  await assert.rejects(()=>executor.resume([129,2]),/NOT_PAUSED/);
+});

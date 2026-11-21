@@ -46,7 +46,12 @@ export class WebBluetoothTransport {
     };
     device.addEventListener?.("gattserverdisconnected", this.#disconnectListener);
     try {
-      const server = await withTimeout(device.gatt.connect(), this.timeoutMs, "NOVA_GATT_CONNECT_TIMEOUT");
+      const connecting = device.gatt.connect();
+      void connecting.then(server => {
+        if (generation !== this.#generation) { server.disconnect?.(); device.gatt.disconnect(); }
+      }).catch(() => {});
+      const server = await withTimeout(connecting, this.timeoutMs, "NOVA_GATT_CONNECT_TIMEOUT");
+      if (generation !== this.#generation) throw new Error("NOVA_CONNECTION_CANCELLED");
       const service = await withTimeout(server.getPrimaryService(this.profile.serviceUuid), this.timeoutMs, "NOVA_SERVICE_TIMEOUT");
       const [writeCharacteristic, notifyCharacteristic] = await Promise.all([
         withTimeout(service.getCharacteristic(this.profile.writeUuid), this.timeoutMs, "NOVA_WRITE_CHARACTERISTIC_TIMEOUT"),
@@ -61,6 +66,7 @@ export class WebBluetoothTransport {
         if (value) onNotification(new Uint8Array(value.buffer, value.byteOffset ?? 0, value.byteLength));
       });
       await withTimeout(notifyCharacteristic.startNotifications(), this.timeoutMs, "NOVA_NOTIFICATION_TIMEOUT");
+      if (generation !== this.#generation) throw new Error("NOVA_CONNECTION_CANCELLED");
     } catch (error) {
       if (generation === this.#generation) this.disconnect();
       throw error;
