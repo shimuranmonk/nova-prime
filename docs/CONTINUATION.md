@@ -1,5 +1,14 @@
 # Nova Prime continuation memory
 
+## Update — 2026-11-21 · isolated robot idle/safety fixes
+
+Branch `fix/robot-idle-safety`, candidate version `0.19.1-robot-safety.0`, started from main `09abc2e`. Original uncommitted worktree preserved in `work/nova-prime`; this branch uses `work/nova-prime-robot-safety`. Main/Pages and robot feature flags are unchanged.
+
+Priority fixes were committed first: pending startup cancellation, Music error Stop, five-second audio progress/loading/resume watchdog, transport generation invalidation, blocked overlapping Start/Stop, and Pause acknowledgement filtering. Follow-up protections add initial Stop on connection, two-minute idle/paused Stop-then-disconnect, completion deadlines, explicit MSYNC ONCE Stop, fail-closed missing MSYNC completion/Stop acknowledgement, error-state lifecycle Stop and visible Stop failure feedback/disconnect.
+
+203 automated tests pass, including 30 runtime safety scenarios plus transport/executor/lifecycle regressions. Test fixture uses actual production runtime, protocol, executor, transport and AudioPlayer with fake DOM/Bluetooth/audio and virtual time; production bootstrap audio reactions are represented in the fixture. This is software evidence, not motor-current/temperature or firmware-sleep verification. See [ROBOT_IDLE_SAFETY.md](ROBOT_IDLE_SAFETY.md) for behavior, limits and retest matrix. No physical robot operated. Hardware warmth/battery cause remains unconfirmed. Keep this candidate on its branch pending review and hardware verification; do not merge automatically.
+
+
 ## Update — 2026-11-21 · Nova Plus MSYNC parity candidate
 
 Version `0.19.0-msync-parity.0` adapts the user-supplied Nova Plus PROD8 session controller and robot adapter. It retains the original audio-clock polling, countdown/pre-roll, lead timing, repeating 100-cycle batches versus ONCE, REST restart, IDLE, flavors, variants/random/scatter, and Stop-before-replacement semantics. Prime's executor remains the only transport writer. Stop/background/disconnect cancel the coordinator; late awaited audio starts/resumes cannot revive stopped sessions. Concurrent starts are rejected while preparation is pending.

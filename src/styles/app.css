@@ -860,3 +860,6 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 .msync-activity ol:empty { display: none; }
 .track-hash-button { min-width: 44px; min-height: 44px; }
 .training-focus .msync-activity { max-height: 35dvh; overflow: auto; }
+
+/* Safety failures remain visible above the focused training view. */
+.robot-safety-feedback:not([hidden]) { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 35; width: min(720px, calc(100vw - 32px)); max-height: 25dvh; overflow: auto; margin: 0; padding: 14px 18px; border: 2px solid var(--danger, #b42318); border-radius: 12px; background: var(--surface, #fff); color: var(--text, #172b3a); box-shadow: 0 4px 16px #0002; }

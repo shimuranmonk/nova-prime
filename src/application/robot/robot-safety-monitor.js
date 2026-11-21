@@ -1,6 +1,6 @@
 import { recordRobotDiagnostic } from "./robot-diagnostics.js";
 
-const ACTIVE_STATES = new Set(["running", "pausing", "paused", "stopping"]);
+const ACTIVE_STATES = new Set(["running", "pausing", "paused", "stopping", "error"]);
 
 export class RobotSafetyMonitor {
   #armed = false;

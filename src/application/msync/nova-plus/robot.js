@@ -256,14 +256,14 @@ export class MsyncRobotAdapter {
             const batchCycles = this.execution.once ? 1 : ROBOT_PERSISTENT_CYCLES;
             await this.send(buildMsyncDrillPacket(balls, batchCycles));
             this.awaitingCycleDone = true;
-            if (!this.execution.once) {
+            {
                 const expectedMs = estimatedCycleDurationMs(balls) * batchCycles;
                 this.completionTimer = this.setTimer(() => {
                     if (generation !== this.generation || !this.awaitingCycleDone ||
                         this.resting || this.paused) return;
                     this.awaitingCycleDone = false;
-                    this.onDiagnostic({ type: 'ROBOT_DONE_FALLBACK', expectedMs });
-                    this.scheduleRepeat(generation);
+                    this.stopOnly('COMPLETION_TIMEOUT');
+                    this.onDiagnostic({ type: 'ROBOT_ERROR', message: 'MSYNC_COMPLETION_TIMEOUT', expectedMs });
                 }, expectedMs + this.robotLeadMs + ROBOT_DONE_SAFETY_MS);
             }
             this.onDiagnostic({
@@ -296,6 +296,7 @@ export class MsyncRobotAdapter {
                     ? 'ROBOT_STOP_ACKNOWLEDGED'
                     : 'ROBOT_STOP_ACK_TIMEOUT'
             });
+            if (result !== 'ACKNOWLEDGED') throw new Error('ROBOT_STOP_UNACKNOWLEDGED');
         };
     }
 
@@ -331,7 +332,7 @@ export class MsyncRobotAdapter {
             this.execution = null;
             this.onceCompleted = true;
             this.onDiagnostic({ type: 'ROBOT_ONCE_COMPLETE' });
-            return;
+            return this.stopOnly('ONCE_COMPLETE');
         }
         const generation = this.generation;
         this.scheduleRepeat(generation);
