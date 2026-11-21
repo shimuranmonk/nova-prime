@@ -85,9 +85,11 @@ test('backgrounding connected idle robot stops and disconnects immediately',asyn
   const f=fixture();await f.connect();f.doc.visibilityState='hidden';await f.doc.emit('visibilitychange');
   assert.equal(f.header.dataset.connected,'false');assert.equal(f.stops().length,1);
 });
-test('late DONE immediately after Resume cannot finish the new run',async()=>{
-  const f=fixture();await f.connect();await f.start();await f.command('pause');await f.command('resume');await f.done();
-  assert.equal(f.controller.state,'RUNNING');await f.c.advance(2000);await f.done();assert.equal(f.controller.state,'COMPLETED');
+test('DONE during an unfinished Resume is ignored; DONE after acceptance completes without a time filter',async()=>{
+  const f=fixture();await f.connect();await f.start();await f.command('pause');
+  let release;f.holdProgram(new Promise(resolve=>{release=resolve;}));
+  const resuming=f.command('resume');await flush();await f.done();assert.equal(f.controller.state,'PAUSED');
+  release();await resuming;await f.done();assert.equal(f.controller.state,'COMPLETED');
 });
 
 test('stalled Music resume requests Stop instead of allowing endless robot activity',async()=>{
@@ -115,6 +117,30 @@ test('disconnected Start is blocked with visible connection guidance',async()=>{
 test('Stop while disconnected cannot report a successful hardware Stop',async()=>{
   const f=fixture();const result=await f.command('stop');assert.equal(result.status,'FAILED');assert.equal(result.motorPower,'unknown');
 });
+
+test('three Push FH balls can complete sooner than the duration estimate',async()=>{
+  const {BUILTIN_DRILLS}=await import('../src/domain/drills/builtin-catalog.js');
+  const drill=BUILTIN_DRILLS.find(d=>d.name==='Push FH');const f=fixture();
+  globalThis.FormData=class{get(k){return k==='amount'?'3':k==='pause'?'0':null;}};
+  f.bridge.resolveDrill=()=>drill;f.bridge.programForDrill=()=>drill.programs[1];
+  await f.connect();await f.start();await f.c.advance(3334);await f.done();
+  assert.equal(f.controller.state,'COMPLETED');assert.equal(f.stops().length,1);
+  assert.equal((await f.command('reset')).status,'EXECUTED');assert.equal(f.controller.state,'IDLE');
+});
+for(const outcome of ['pending','rejected']) {
+  test(`statistics ${outcome} cannot block completion or Done`,async()=>{
+    const f=fixture();let release;
+    f.bridge.recordCompletedBalls=outcome==='pending'?()=>new Promise(resolve=>{release=resolve;}):async()=>{throw Error('quota');};
+    await f.connect();await f.start();await f.c.advance(2000);await f.done();
+    assert.equal(f.controller.state,'COMPLETED');assert.equal(f.stops().length,1);
+    if(outcome==='rejected'){
+      assert.match(f.panel.fields['#full-test-status'].textContent,/statistics could not be saved/);
+      assert.doesNotMatch(f.panel.fields['#full-test-status'].textContent,/Stop failed/);
+    }
+    assert.equal((await f.command('reset')).status,'EXECUTED');assert.equal(f.controller.state,'IDLE');
+    release?.();await flush();assert.equal(f.controller.state,'IDLE');
+  });
+}
 for(const mode of ['music','msync']) {
   test(`${mode} pending preparation is canceled on background/disconnect`,async()=>{
     const f=fixture(mode);await f.connect();let release;

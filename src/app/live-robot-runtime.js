@@ -106,7 +106,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   function armCompletionDeadline(context, packet) {
     clearCompletionDeadline();
     const expectedMs = expectedPacketDuration(packet, context.mode);
-    context.doneNotBefore = now() + Math.max(0, expectedMs - 500);
+    // Duration estimates are watchdog bounds, never grounds for discarding DONE.
     const configuredPause = bridge.controller.snapshot().spec?.pauseSeconds || 0;
     const allowanceMs = Math.max(5000, expectedMs * 0.2) + configuredPause * 1000 * packet[4];
     completionTimer = setTimeout(() => {
@@ -432,6 +432,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (!runContext || runContext.sent || runContext.failed || snapshot.state !== "RUNNING" || !["reps", "time"].includes(runContext.mode)) return;
     const context = runContext;
     context.sent = true;
+    context.awaitingDone = false;
     void (async () => {
       try {
         const options = { mode: runContext.mode === "time" ? "time" : "combos", amount: runContext.mode === "time" ? snapshot.spec.durationSeconds : snapshot.spec.repetitions, randomOrder: snapshot.spec.randomOrder };
@@ -440,6 +441,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
         const result = await executor.start(packet);
         if (result.status !== "SENT") throw new Error("ROBOT_PACKET_NOT_SENT");
         if (runContext !== context || context.failed) return;
+        context.awaitingDone = true;
         armCompletionDeadline(context, packet);
         bridge.controller.noteDispatched(countPacketBalls(packet, options.mode === "combos" ? options.amount : 1));
         if (runContext.mode === "reps") finiteCompletions.push(countPacketBalls(packet, options.amount));
@@ -459,21 +461,35 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (event?.type === "state" && event.snapshot.state === "disconnected") finiteCompletions.length = 0;
     const context = runContext;
     if (event?.type !== "done" || !context || context.failed || context.completing ||
-        !["reps", "time"].includes(context.mode) || !context.sent ||
-        executor.state !== "running" || bridge.controller.state !== "RUNNING" ||
-        now() < (context.doneNotBefore ?? Infinity)) return;
+        !["reps", "time"].includes(context.mode) || !context.sent || !context.awaitingDone ||
+        executor.state !== "running" || bridge.controller.state !== "RUNNING") return;
     context.completing = true;
+    context.awaitingDone = false;
     clearCompletionDeadline();
     const completedBalls = finiteCompletions.shift();
     void (async () => {
-      try {
-        await priorityStop();
-        if (runContext !== context) return;
-        if (completedBalls) await bridge.recordCompletedBalls(completedBalls);
-        bridge.controller.complete({ completedCycles: context.mode === "reps" ? bridge.controller.snapshot().spec.repetitions : 0 });
-        status.textContent = "Sequence completion reported; Stop written. Motor power is not measured.";
-      } catch (error) { status.textContent = `Completion Stop failed (${error.message}). Use physical power.`; }
-      if (runContext === context) runContext = null;
+      try { await priorityStop(); }
+      catch (error) {
+        if (runContext === context) {
+          bridge.controller.fail("COMPLETION_STOP_FAILED");
+          runContext = null;
+        }
+        status.textContent = `Completion Stop failed (${error.message}). Use physical power.`;
+        paint(); return;
+      }
+      if (runContext !== context) return;
+      // The robot lifecycle completes before non-critical statistics persistence.
+      bridge.controller.complete({ completedCycles: context.mode === "reps" ? bridge.controller.snapshot().spec.repetitions : 0 });
+      runContext = null;
+      status.textContent = "Sequence completion reported; Stop written. Motor power is not measured.";
+      paint();
+      if (completedBalls) {
+        Promise.resolve().then(() => bridge.recordCompletedBalls(completedBalls)).catch(error => {
+          log("statistics.save_failed", error.message);
+          status.textContent = `Training completed, but statistics could not be saved (${error.message}). Robot Stop was written; motor power is unverified.`;
+          paint();
+        });
+      }
     })();
   });
 
@@ -524,6 +540,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       if (!runContext || !connection.ready) return { status: "REJECTED" };
       const context = runContext;
       const generation = preparationGeneration;
+      context.awaitingDone = false;
       clearCompletionDeadline();
       const result = await executor.pause();
       if (runContext !== context || generation !== preparationGeneration) return { status: "CANCELLED" };
@@ -545,6 +562,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
           : runContext.mode === "reps" ? Math.max(1, snapshot.spec.repetitions - snapshot.completedCycles) : 1,
         randomOrder: snapshot.spec.randomOrder };
       const packet = encodeDrillPacket(runContext.program, options);
+      context.awaitingDone = false;
       const result = await executor.resume(packet);
       if (runContext !== context || generation !== preparationGeneration) return { status: "CANCELLED" };
       if (result.status === "SENT") {
@@ -556,7 +574,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
         if (runContext.mode === "msync") bridge.msyncSimulator.resume();
         bridge.controller.resume();
         runContext.sent = true;
-        if (["reps", "time"].includes(runContext.mode)) armCompletionDeadline(runContext, packet);
+        if (["reps", "time"].includes(runContext.mode)) { runContext.awaitingDone = true; armCompletionDeadline(runContext, packet); }
         status.textContent = "Resumed. Verify the robot follows the remaining session.";
       }
       return result;

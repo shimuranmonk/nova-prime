@@ -17,6 +17,7 @@ export class LocalSessionController {
   #startedAt = null;
   #errorCode = null;
   #recorded = false;
+  #recordError = null;
   #simulation = true;
   #liveRun = false;
   #ballsPlanned = 0;
@@ -44,6 +45,7 @@ export class LocalSessionController {
       liveRun: this.#liveRun,
       ballsPlanned: this.#ballsPlanned,
       ballsDispatched: this.#ballsDispatched,
+      recordError: this.#recordError,
     });
   }
 
@@ -68,6 +70,7 @@ export class LocalSessionController {
     this.#startedAt = this.#now();
     this.#errorCode = null;
     this.#recorded = false;
+    this.#recordError = null;
     this.#liveRun = liveRun === true;
     this.#simulation = !this.#liveRun;
     this.#ballsPlanned = Math.max(0, Math.floor(Number(ballsPlanned) || 0));
@@ -191,7 +194,14 @@ export class LocalSessionController {
       errorCode: this.#errorCode,
       simulation: this.#simulation,
     });
-    await this.#onRecord(record);
+    const sessionId = this.#spec.id;
+    try { await this.#onRecord(record); }
+    catch (error) {
+      if (this.#spec?.id === sessionId) {
+        this.#recordError = `Training history could not be saved: ${error?.message || "storage unavailable"}`;
+        this.#notify();
+      }
+    }
   }
 
   reset() {
@@ -205,6 +215,7 @@ export class LocalSessionController {
   }
 
   #clear() {
+    this.#recordError = null;
     this.#spec = null;
     this.#countdownRemaining = 0;
     this.#elapsedSeconds = 0;
