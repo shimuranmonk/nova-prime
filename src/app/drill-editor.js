@@ -66,6 +66,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   let activeStepId = null;
   let activeVariant = 0;
   let dirty = false;
+  let editorTab = "placement";
   let calibration = null;
   let placementTarget = null;
   let placementMessage = "";
@@ -170,8 +171,8 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
           <button type="button" class="danger-button" data-step-delete ${program.steps.length === 1 ? "disabled" : ""}>Delete</button>
         </div>
         <label class="editor-range"><span>Scatter<output>${step.scatter}</output></span><input type="range" min="0" max="${scatterMaximum}" step="0.5" value="${Math.min(step.scatter, scatterMaximum)}" data-step-scatter></label>
-        <div class="variant-heading"><div class="variant-tabs" role="tablist" aria-label="Ball variants">${step.variants.map((_, index) => `<button type="button" role="tab" data-editor-variant="${index}" class="${index === activeVariant ? "selected" : ""}" aria-selected="${index === activeVariant}">Ball ${index + 1}</button>`).join("")}</div></div>
-        <div class="ball-kind" role="group" aria-label="Spin type"><button type="button" data-ball-type="top" class="${ball.type === "top" ? "selected" : ""}" aria-pressed="${ball.type === "top"}">Topspin</button><button type="button" data-ball-type="back" class="${ball.type === "back" ? "selected" : ""}" aria-pressed="${ball.type === "back"}">Backspin</button></div>
+        <div class="variant-heading"><div class="variant-tabs" role="tablist" aria-label="Ball variants">${step.variants.map((_, index) => `<button type="button" role="tab" data-editor-variant="${index}" class="${index === activeVariant ? "selected" : ""}" aria-selected="${index === activeVariant}">Ball ${index + 1}</button>`).join("")}</div>
+        <div class="ball-kind" role="group" aria-label="Spin type"><button type="button" data-ball-type="top" class="${ball.type === "top" ? "selected" : ""}" aria-pressed="${ball.type === "top"}">Topspin</button><button type="button" data-ball-type="back" class="${ball.type === "back" ? "selected" : ""}" aria-pressed="${ball.type === "back"}">Backspin</button></div></div>
         <div class="parameter-grid">
           ${rangeControl("Speed", "speed", ball.speed, 0, 10, 0.5)}
           ${rangeControl("Spin", "spin", ball.spin, 0, spinMaximum, 0.5, ` / ${spinMaximum}`)}
@@ -203,15 +204,20 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     const sourceLevel = populatedLevels[0] ?? 1;
     root.innerHTML = `
       <div class="editor-shell">
-        <header class="editor-header"><span class="eyebrow">VISUAL DRILL EDITOR</span><h2>${escapeHtml(draft.name)}</h2><button class="icon-button" type="button" data-editor-close aria-label="Close visual drill editor">×</button></header>
+        <header class="editor-header"><span class="eyebrow">VDrill Editor</span><h2>${escapeHtml(draft.name)}</h2><button class="icon-button" type="button" data-editor-close aria-label="Close visual drill editor">×</button>
         <div class="editor-msync-actions" role="group" aria-label="MSYNC copy actions">
-          <button type="button" data-msync-copy="inline" title="Copy as MSYNC Inline · current level" aria-label="Copy as MSYNC Inline" ${program ? "" : "disabled"}><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M17 2l5 5-10 10-5 1 1-5z"/></svg><span>Inline</span></button>
-          <button type="button" data-msync-copy="reference" title="Copy MSYNC Reference · saved drill ID" aria-label="Copy MSYNC Reference"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>Reference</span></button>
+          <button type="button" data-msync-copy="inline" title="Copy as MSYNC Inline · current level" aria-label="Copy as MSYNC Inline" ${program ? "" : "disabled"}><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M17 2l5 5-10 10-5 1 1-5z"/></svg></button>
+          <button type="button" data-msync-copy="reference" title="Copy MSYNC Reference · saved drill ID" aria-label="Copy MSYNC Reference"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
+        </div></header>
+        <div class="editor-navigation"><div class="editor-view-tabs" role="tablist" aria-label="Editor view">${["placement", "parameters"].map(tab => `<button type="button" role="tab" id="editor-tab-${tab}" aria-controls="editor-view-${tab}" aria-selected="${editorTab === tab}" tabindex="${editorTab === tab ? 0 : -1}" data-editor-tab="${tab}">${tab === "placement" ? "Placement" : "Parameters"}</button>`).join("")}</div>
           <span data-msync-copy-status role="status">${escapeHtml(copyMessage)}</span>
           <textarea data-msync-copy-fallback aria-label="MSYNC text to copy" readonly ${copyFallback ? "" : "hidden"}>${escapeHtml(copyFallback)}</textarea>
         </div>
         ${program ? `
-          <div class="editor-workspace">${renderTable(program, step, activeVariant)}${renderStepList(program, step)}${renderBallControls(program, step)}</div>
+          <div class="editor-workspace editor-tabbed-workspace">
+            <div id="editor-view-placement" class="editor-placement-view" role="tabpanel" aria-labelledby="editor-tab-placement" ${editorTab === "placement" ? "" : "hidden"}>${renderTable(program, step, activeVariant)}</div>
+            <div id="editor-view-parameters" class="editor-parameters-view" role="tabpanel" aria-labelledby="editor-tab-parameters" ${editorTab === "parameters" ? "" : "hidden"}>${renderStepList(program, step)}${renderBallControls(program, step)}</div>
+          </div>
         ` : `<section class="editor-empty"><span class="editor-empty-icon">${level}</span><h3>Level ${level} has no program yet</h3><p>Start from Level ${sourceLevel}, then adjust its steps and ball parameters.</p><button class="primary-button" type="button" data-editor-create-level="${sourceLevel}">Create from Level ${sourceLevel}</button></section>`}
         <p class="dialog-result" role="alert">${validation.valid ? "" : escapeHtml(validation.issues[0]?.message ?? "Program is invalid")}</p>
         <footer class="editor-footer"><span>${dirty ? "Unsaved changes" : "No unsaved changes"}</span><div><button type="button" data-editor-cancel>Cancel</button><button class="primary-button" type="button" data-editor-save ${validation.valid && dirty ? "" : "disabled"}>Save program</button></div></footer>
@@ -256,6 +262,13 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   }
 
   function bind() {
+    root.querySelectorAll("[data-editor-tab]").forEach(button => {
+      button.addEventListener("click", () => { editorTab = button.dataset.editorTab; render(); root.querySelector(`[data-editor-tab="${editorTab}"]`)?.focus(); });
+      button.addEventListener("keydown", event => {
+        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+        event.preventDefault(); editorTab = editorTab === "placement" ? "parameters" : "placement"; render(); root.querySelector(`[data-editor-tab="${editorTab}"]`)?.focus();
+      });
+    });
     root.querySelectorAll("[data-msync-copy]").forEach((button) => button.addEventListener("click", async () => {
       try {
         const text = button.dataset.msyncCopy === "inline" ? createMsyncInlineBlock(draft, level) : createMsyncReference(stored);

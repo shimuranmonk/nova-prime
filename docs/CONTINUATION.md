@@ -1,5 +1,9 @@
 # Nova Prime continuation memory
 
+## Update — 2026-11-21 · tabbed VDrill editor
+
+v0.18.14 adds accessible Placement/Parameters tabs, icon-only MSYNC actions next to VDrill Editor heading, a 24px visible placement marker with extended touch area, and Ball variants left/Topspin-Backspin right on one row. Parameters retain two-column fields on phones; long programs scroll within Parameters. Placement height is constrained with container sizing so table, Height and dynamic readouts remain visible. Existing ID-specific mobile CSS had overridden the first draft; corrected and browser-tested at 390x760 portrait and 844x390 landscape. 139 tests passed, 63-file release verification and ZIP integrity passed. Artifact: `nova-prime-0.18.14-android-package.0-release.zip`. Actual A55 touch check remains pending.
+
 ## Update — 2026-11-21 · visible MSYNC toolbar and dialog margins
 
 v0.18.13 fixes editor grid row allocation that collapsed the new MSYNC copy toolbar. Explicit header/toolbar/workspace/result/footer rows; manual-copy textarea now stays inside toolbar. Browser verified both visible icons and successful copy actions at desktop and 390x844 phone size. Shared custom dialogs use 20–24px padding; About retains 28px; editor header/footer use 16–20px horizontal padding. Native Chrome confirm/prompt spacing is browser-controlled. 139 tests, 63-file release verification and ZIP integrity passed. Artifact: `nova-prime-0.18.13-android-package.0-release.zip`.
