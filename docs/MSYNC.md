@@ -58,3 +58,12 @@ Version `0.3.0-msync.0` adds a responsive MSYNC management route, track/file att
 ## Safety boundary
 
 `ROBOT_PLAN` is diagnostic output, not transport. Live Bluetooth remains disabled until a later executor has queue cancellation, priority Stop, disconnect handling, fake-transport tests, and physical Nova S Pro verification.
+
+
+## Update — 2026-11-22 · browser audio startup correction
+
+Version `0.19.3-audio-timers.0`, branch `fix/browser-audio-timers`, starts from main `d23389e`. Hosted v0.19.2 MSYNC stayed at 0:00/COUNTDOWN for more than 10 seconds without sound. Reproduced with the matching supplied MP3 in the full production browser bootstrap: native timer functions were called with AudioPlayer as receiver, causing Illegal invocation in watchdog cancellation and again in error cleanup. Bind both timer callbacks to globalThis. Keep the five-second watchdog and Stop protections.
+
+Live MSYNC now becomes RUNNING only after confirmed audio playback; pending startup shows STARTING AUDIO and remains cancellable. 212 automated tests pass, including browser-style receiver enforcement and delayed/zero-countdown lifecycle cases. The 67-file production verifier passes. Real browser playback with the matching MP3 and an isolated startup timeline advanced through its INLINE cue and completed at STOP; blocked and indefinitely pending playback reached ERROR with Done usable, and a subsequent normal run completed. No console warnings/errors. Bluetooth was simulated; no hardware operated. The original full EOT timeline still needs physical retesting. Test-only audio failure controls are excluded from production.
+
+User reports the v0.19.2 three-ball retest fired three balls and Done returned from the completed screen; later idle Bluetooth disconnect was acceptable. Automatic return to the Training dashboard remains a discussion item, not implemented here. IndexedDB schema, stored IDs, robot feature flags and partial physical gate status remain unchanged. Calibration/MSYNC hardware verification remains PENDING; this fix is software evidence only. Preserve the original dirty worktree.

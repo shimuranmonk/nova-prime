@@ -1,5 +1,13 @@
 # Nova Prime continuation memory
 
+## Update — 2026-11-22 · browser audio startup correction
+
+Version `0.19.3-audio-timers.0`, branch `fix/browser-audio-timers`, starts from main `d23389e`. Hosted v0.19.2 MSYNC stayed at 0:00/COUNTDOWN for more than 10 seconds without sound. Reproduced with the matching supplied MP3 in the full production browser bootstrap: native timer functions were called with AudioPlayer as receiver, causing Illegal invocation in watchdog cancellation and again in error cleanup. Bind both timer callbacks to globalThis. Keep the five-second watchdog and Stop protections.
+
+Live MSYNC now becomes RUNNING only after confirmed audio playback; pending startup shows STARTING AUDIO and remains cancellable. 212 automated tests pass, including browser-style receiver enforcement and delayed/zero-countdown lifecycle cases. The 67-file production verifier passes. Real browser playback with the matching MP3 and an isolated startup timeline advanced through its INLINE cue and completed at STOP; blocked and indefinitely pending playback reached ERROR with Done usable, and a subsequent normal run completed. No console warnings/errors. Bluetooth was simulated; no hardware operated. The original full EOT timeline still needs physical retesting. Test-only audio failure controls are excluded from production.
+
+User reports the v0.19.2 three-ball retest fired three balls and Done returned from the completed screen; later idle Bluetooth disconnect was acceptable. Automatic return to the Training dashboard remains a discussion item, not implemented here. IndexedDB schema, stored IDs, robot feature flags and partial physical gate status remain unchanged. Calibration/MSYNC hardware verification remains PENDING; this fix is software evidence only. Preserve the original dirty worktree.
+
 ## Update — 2026-11-21 · three-ball completion correction
 
 Version `0.19.2-session-completion.0`, branch `fix/session-completion-refresh`, starts from main `504df78`. Android checkpoint 4 reported three Push FH balls fired, but screen stayed RUNNING at 3/3 with Done disabled. Pause caused a refresh, after which Done exited; disconnect happened later (duration unmeasured). Checkpoints 1–3 on v0.19.1 passed; checkpoint 4 remains FAIL until retested.

@@ -130,3 +130,18 @@ test("live session history waits for robot completion and records only reported 
   assert.equal(records[0].ballsDispatched, 6);
   assert.equal(records[0].completedCycles, 3);
 });
+
+test('live MSYNC cannot enter Running until audio playback is confirmed',()=>{
+  const controller=new LocalSessionController();
+  controller.start(createSessionSpec({mode:'msync',msyncAttachmentId:'msync_test'}),{countdownSeconds:4,liveRun:true});
+  controller.tick(20);assert.equal(controller.state,'COUNTDOWN');assert.equal(controller.snapshot().countdownRemaining,0);
+  assert.equal(controller.markAudioPlaying(),true);assert.equal(controller.state,'RUNNING');
+  controller.stop();assert.equal(controller.markAudioPlaying(),false);assert.equal(controller.state,'IDLE');
+});
+
+test('zero-countdown live MSYNC still waits for successful audio startup',()=>{
+  const controller=new LocalSessionController();
+  controller.start(createSessionSpec({mode:'msync',msyncAttachmentId:'msync_test'}),{countdownSeconds:0,liveRun:true});
+  assert.equal(controller.state,'COUNTDOWN');controller.fail('AUDIO_FAILED');
+  assert.equal(controller.markAudioPlaying(),false);assert.equal(controller.state,'ERROR');
+});

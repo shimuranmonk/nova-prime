@@ -99,3 +99,16 @@ test("audio player converts object URL failure into a recoverable error state", 
   assert.equal(player.snapshot().error, "URL allocation failed");
   assert.equal(audio.paused, true);
 });
+
+test('audio watchdog invokes browser-style timer callbacks with the global receiver',async()=>{
+  const audio=new FakeAudio();let now=0,next=0;const timers=new Map();
+  const player=new AudioPlayer({audio,now:()=>now,
+    setTimer:function(fn){assert.equal(this,globalThis);const id=++next;timers.set(id,fn);return id;},
+    clearTimer:function(id){assert.equal(this,globalThis);timers.delete(id);},
+    urlObject:{createObjectURL:()=> 'blob:timer-test',revokeObjectURL(){}}});
+  await player.start([{audioBlob:new Blob(['audio'])}]);assert.equal(player.snapshot().state,'playing');
+  assert.equal(player.pause(),true);assert.equal(timers.size,0);assert.equal(await player.resume(),true);
+  now=5000;const callback=[...timers.values()][0];callback();
+  assert.equal(player.snapshot().state,'error');assert.match(player.snapshot().error,/stopped progressing/);
+  player.stop();assert.equal(player.snapshot().state,'idle');assert.equal(timers.size,0);
+});
