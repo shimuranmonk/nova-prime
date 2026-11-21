@@ -1,5 +1,9 @@
 # Nova Prime continuation memory
 
+## Update — 2026-11-21 · visible MSYNC toolbar and dialog margins
+
+v0.18.13 fixes editor grid row allocation that collapsed the new MSYNC copy toolbar. Explicit header/toolbar/workspace/result/footer rows; manual-copy textarea now stays inside toolbar. Browser verified both visible icons and successful copy actions at desktop and 390x844 phone size. Shared custom dialogs use 20–24px padding; About retains 28px; editor header/footer use 16–20px horizontal padding. Native Chrome confirm/prompt spacing is browser-controlled. 139 tests, 63-file release verification and ZIP integrity passed. Artifact: `nova-prime-0.18.13-android-package.0-release.zip`.
+
 ## Update — 2026-11-21 · custom drill MSYNC copy actions
 
 v0.18.12 adds Copy as MSYNC Inline and Copy MSYNC Reference to the visual editor header toolbar, with SVG icons, accessible labels and 48px touch targets. Original Nova Plus behaviour inspected in Downloads/nova-main_inline.zip: js/editor.js and js/msync-inline-export.js. Inline uses current draft and selected level, omits disabled steps, groups variants under the same BALL number, preserves direct parameters/scatter/random, and rejects empty programs. Reference uses saved immutable Prime ID (`CUSTOM:<id>`); selected LEVEL must be supplied in the MSYNC DRILLS mapping. Clipboard failure shows selectable readonly text. 139 tests and 63-file release verification/ZIP integrity pass. Artifact: `nova-prime-0.18.12-android-package.0-release.zip`. Android clipboard test pending. Not merged or published.
