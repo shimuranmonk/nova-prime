@@ -1,3 +1,4 @@
+import { createMsyncInlineBlock, createMsyncReference } from "../domain/msync/inline-export.js";
 import { createBall, createStep, DRILL_STEP_LIMIT, isServeBall, spinLimitForSpeed } from "../domain/drills/schema.js";
 import { applyCalibration, fitBallToTarget, previewBall, previewPosition, tablePointFromPosition } from "../domain/drills/preview.js";
 import { validateDrill } from "../domain/drills/validation.js";
@@ -68,6 +69,8 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   let calibration = null;
   let placementTarget = null;
   let placementMessage = "";
+  let copyMessage = "";
+  let copyFallback = "";
   const ballPreview = (ball) => applyCalibration(previewBall(ball, draft.robotPosition), calibration, ball);
 
   const currentProgram = () => draft?.programs?.[level] ?? null;
@@ -201,6 +204,12 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     root.innerHTML = `
       <div class="editor-shell">
         <header class="editor-header"><span class="eyebrow">VISUAL DRILL EDITOR</span><h2>${escapeHtml(draft.name)}</h2><button class="icon-button" type="button" data-editor-close aria-label="Close visual drill editor">×</button></header>
+        <div class="editor-msync-actions" role="group" aria-label="MSYNC copy actions">
+          <button type="button" data-msync-copy="inline" title="Copy as MSYNC Inline · current level" aria-label="Copy as MSYNC Inline" ${program ? "" : "disabled"}><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M17 2l5 5-10 10-5 1 1-5z"/></svg><span>Inline</span></button>
+          <button type="button" data-msync-copy="reference" title="Copy MSYNC Reference · saved drill ID" aria-label="Copy MSYNC Reference"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>Reference</span></button>
+          <span data-msync-copy-status role="status">${escapeHtml(copyMessage)}</span>
+        </div>
+        <textarea data-msync-copy-fallback aria-label="MSYNC text to copy" readonly ${copyFallback ? "" : "hidden"}>${escapeHtml(copyFallback)}</textarea>
         ${program ? `
           <div class="editor-workspace">${renderTable(program, step, activeVariant)}${renderStepList(program, step)}${renderBallControls(program, step)}</div>
         ` : `<section class="editor-empty"><span class="editor-empty-icon">${level}</span><h3>Level ${level} has no program yet</h3><p>Start from Level ${sourceLevel}, then adjust its steps and ball parameters.</p><button class="primary-button" type="button" data-editor-create-level="${sourceLevel}">Create from Level ${sourceLevel}</button></section>`}
@@ -247,6 +256,21 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   }
 
   function bind() {
+    root.querySelectorAll("[data-msync-copy]").forEach((button) => button.addEventListener("click", async () => {
+      try {
+        const text = button.dataset.msyncCopy === "inline" ? createMsyncInlineBlock(draft, level) : createMsyncReference(stored);
+        try {
+          if (!globalThis.navigator?.clipboard?.writeText) throw new Error("Clipboard unavailable");
+          await globalThis.navigator.clipboard.writeText(text);
+          copyMessage = "Copied to clipboard"; copyFallback = "";
+        } catch {
+          copyFallback = text; copyMessage = "Select and copy the text below";
+        }
+      } catch (error) { copyMessage = error.message; copyFallback = ""; }
+      render();
+      const fallback = root.querySelector("[data-msync-copy-fallback]");
+      if (copyFallback && fallback) { fallback.focus(); fallback.select(); }
+    }));
     root.querySelector("[data-editor-close]")?.addEventListener("click", requestClose);
     root.querySelector("[data-editor-cancel]")?.addEventListener("click", requestClose);
     root.querySelectorAll("[data-editor-level]").forEach((button) => button.addEventListener("click", () => { level = Number(button.dataset.editorLevel); setActiveFromProgram(); render(); }));

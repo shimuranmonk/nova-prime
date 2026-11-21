@@ -773,3 +773,7 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 .app-menu nav a span { font-size: .93rem; }
 .app-menu .theme-picker { margin-top: 8px; }
 .app-menu .theme-picker select { min-height: 44px; }
+
+.editor-msync-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 18px; }
+.editor-msync-actions button { min-height: 48px; display: flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--teal-dark); font: inherit; }
+[data-msync-copy-fallback] { margin: 0 18px 12px; width: calc(100% - 36px); min-height: 130px; }
