@@ -1,0 +1,351 @@
+// Adapted from user-supplied Nova Plus PROD8 msync-robot.js.
+export const ROBOT_STOP_PACKET = Object.freeze([0x80, 1, 0, 1]);
+export const ROBOT_DONE_SAFETY_MS = 750;
+export const ROBOT_PERSISTENT_CYCLES = 100;
+export const ROBOT_STOP_ACK_TIMEOUT_MS = 1800;
+
+function packRobotBall(top, bottom, height, drop, frequency, reps) {
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const buffer = new ArrayBuffer(24);
+    const view = new DataView(buffer);
+    view.setUint32(0, clamp(top, 400, 7500), true);
+    view.setUint32(4, clamp(bottom, 400, 7500), true);
+    view.setFloat32(8, (clamp(height, -50, 100) + 50) / 150 * 50 - 20, true);
+    view.setFloat32(12, (clamp(drop, -10, 10) + 10) / 20 * 44 - 22, true);
+    view.setFloat32(16, clamp(frequency, 0, 100) / 100 + 0.5, true);
+    view.setUint32(20, reps, true);
+    return new Uint8Array(buffer);
+}
+
+function calculateRPMs(speed, spin, type) {
+    const baseSpeed = 970 + 630.5 * speed;
+    const spinFactor = 342 * spin;
+    const top = type === 'top' ? baseSpeed + spinFactor : baseSpeed - spinFactor;
+    const bottom = type === 'top' ? baseSpeed - spinFactor : baseSpeed + spinFactor;
+    return [Math.round(top), Math.round(bottom)];
+}
+
+function directParameters(ball) {
+    const speed = Number.isFinite(ball[7])
+        ? ball[7]
+        : Math.round((((ball[0] + ball[1]) / 2 - 970) / 630.5) * 2) / 2;
+    const spin = Number.isFinite(ball[8])
+        ? ball[8]
+        : Math.round((Math.abs(ball[0] - ball[1]) / 2 / 342) * 2) / 2;
+    const type = ball[9] || (ball[0] >= ball[1] ? 'top' : 'back');
+    return {
+        speed,
+        spin,
+        type,
+        height: ball[2],
+        drop: ball[3],
+        bpm: Math.round(30 + ball[4] * 0.6),
+        reps: ball[5],
+        scatter: ball[10] || 0
+    };
+}
+
+function toRobotBall(parameters, flavor = null) {
+    const value = { ...parameters, ...(flavor || {}) };
+    const [top, bottom] = calculateRPMs(value.speed, value.spin, value.type);
+    const frequency = (value.bpm - 30) / 0.6;
+    return [
+        top,
+        bottom,
+        value.height,
+        value.drop,
+        frequency,
+        value.reps,
+        1,
+        value.speed,
+        value.spin,
+        value.type,
+        value.scatter || 0
+    ];
+}
+
+function referencedSteps(definition, flavor) {
+    return (definition.data || []).map(step =>
+        step
+            .filter(ball => ball[6] === undefined || ball[6] === 1)
+            .map(ball => toRobotBall(directParameters(ball), flavor))
+    ).filter(step => step.length);
+}
+
+function inlineSteps(definition, flavor) {
+    const groups = new Map();
+    for (const ball of definition.balls || []) {
+        if (!groups.has(ball.ball)) groups.set(ball.ball, []);
+        groups.get(ball.ball).push(toRobotBall(ball, flavor));
+    }
+    return [...groups.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([, alternatives]) => alternatives);
+}
+
+export function resolveMsyncExecution(parsed, active, flavorName = null) {
+    if (!active) throw new Error('MSYNC has no active drill');
+    const flavor = flavorName ? parsed.flavors[flavorName] : null;
+    if (active.type === 'DRILL') {
+        const definition = parsed.drills[active.name];
+        if (!definition) throw new Error(`Drill ${active.name} is unavailable`);
+        return {
+            name: active.name,
+            steps: referencedSteps(definition, flavor),
+            random: Boolean(definition.random),
+            once: Boolean(active.once)
+        };
+    }
+    const definition = parsed.inline[active.name];
+    if (!definition) throw new Error(`Inline drill ${active.name} is unavailable`);
+    return {
+        name: active.name,
+        steps: inlineSteps(definition, flavor),
+        random: Boolean(definition.random),
+        once: Boolean(active.once)
+    };
+}
+
+function estimatedCycleDurationMs(balls) {
+    return balls.reduce((total, ball) => {
+        const bpm = 30 + ball[4] * 0.6;
+        const reps = Math.max(1, ball[5] || 1);
+        return total + reps * 60000 / Math.max(1, bpm);
+    }, 0);
+}
+
+export function chooseMsyncBalls(execution, random = Math.random) {
+    let steps = [...execution.steps];
+    if (execution.random) {
+        for (let index = steps.length - 1; index > 0; index--) {
+            const target = Math.floor(random() * (index + 1));
+            [steps[index], steps[target]] = [steps[target], steps[index]];
+        }
+    }
+    return steps.map(alternatives => {
+        const selected = [...alternatives[Math.floor(random() * alternatives.length)]];
+        const scatter = selected[10] || 0;
+        if (scatter > 0) {
+            const stepsWide = Math.floor((scatter * 2) / 0.5);
+            selected[3] = Math.max(-10, Math.min(10,
+                selected[3] - scatter + Math.floor(random() * (stepsWide + 1)) * 0.5));
+        }
+        return selected;
+    });
+}
+
+export function buildMsyncDrillPacket(balls, cycles = 1, pack = packRobotBall) {
+    if (!balls.length) throw new Error('MSYNC drill has no executable balls');
+    const packed = balls.map(ball => pack(...ball));
+    const buffer = new ArrayBuffer(7 + packed.length * 24);
+    const view = new DataView(buffer);
+    view.setUint8(0, 0x81);
+    view.setUint16(1, 4 + packed.length * 24, true);
+    view.setUint8(3, 1);
+    view.setUint16(4, cycles, true);
+    view.setUint8(6, 0);
+    const packet = new Uint8Array(buffer);
+    let offset = 7;
+    for (const ball of packed) {
+        packet.set(ball, offset);
+        offset += 24;
+    }
+    return packet;
+}
+
+export class MsyncRobotAdapter {
+    constructor({ send, subscribeDone, isConnected, setTimer = (fn, ms) => setTimeout(fn, ms),
+        clearTimer = id => clearTimeout(id), wait = ms => new Promise(resolve => setTimeout(resolve, ms)),
+        now = () => performance.now(), onDiagnostic = () => {} }) {
+        this.send = send;
+        this.isConnected = isConnected;
+        this.setTimer = setTimer;
+        this.clearTimer = clearTimer;
+        this.wait = wait;
+        this.now = now;
+        this.onDiagnostic = onDiagnostic;
+        this.execution = null;
+        this.resting = false;
+        this.paused = false;
+        this.awaitingCycleDone = false;
+        this.onceCompleted = false;
+        this.generation = 0;
+        this.repeatTimer = null;
+        this.completionTimer = null;
+        this.stopAckResolve = null;
+        this.queue = Promise.resolve();
+        this.unsubscribeDone = subscribeDone(() => this.handleDone());
+        this.cyclePauseMs = 1000;
+        this.robotLeadMs = 1300;
+    }
+
+    configure(parsed) {
+        this.parsed = parsed;
+        this.cyclePauseMs = Math.round((parsed.session?.cyclePause ?? 1) * 1000);
+        const robotLead = Number(parsed.session?.robotLead);
+        this.robotLeadMs = Math.round(Math.min(5, Math.max(0,
+            Number.isFinite(robotLead) ? robotLead : 1.3)) * 1000);
+    }
+
+    handleSessionEvent(event) {
+        if (event.type === 'ACTIVATE') {
+            this.onceCompleted = false;
+            this.execution = resolveMsyncExecution(
+                this.parsed,
+                event.active,
+                event.flavor
+            );
+            if (!this.resting && !this.paused) this.replace();
+        }
+        else if (event.type === 'FLAVOR') {
+            if (this.onceCompleted && event.active?.once) return;
+            this.execution = resolveMsyncExecution(
+                this.parsed,
+                event.active,
+                event.flavor
+            );
+            if (!this.resting && !this.paused) this.replace();
+        }
+        else if (event.type === 'REST_START') {
+            this.resting = true;
+            this.stopOnly('REST');
+        }
+        else if (event.type === 'REST_END') {
+            this.resting = false;
+            if (!this.paused && this.execution) this.replace();
+        }
+        else if (event.type === 'PAUSE') {
+            this.paused = true;
+            this.stopOnly('PAUSE');
+        }
+        else if (event.type === 'RESUME') {
+            this.paused = false;
+            if (!this.resting && this.execution) this.replace();
+        }
+        else if (event.type === 'IDLE') {
+            this.execution = null;
+            this.onceCompleted = false;
+            this.resting = false;
+            this.paused = false;
+            this.stopOnly('IDLE');
+        }
+        else if (event.type === 'COMPLETE' || event.type === 'ERROR') {
+            this.stopOnly(event.type);
+        }
+    }
+
+    replace() {
+        const generation = ++this.generation;
+        const replacingActiveBatch = this.awaitingCycleDone;
+        this.awaitingCycleDone = false;
+        this.clearTimer(this.repeatTimer);
+        this.clearTimer(this.completionTimer);
+        this.repeatTimer = null;
+        this.completionTimer = null;
+        this.queue = this.queue.then(async () => {
+            if (generation !== this.generation) return;
+            if (!this.isConnected()) throw new Error('Robot disconnected');
+            const startedAt = this.now();
+            const waitForStopAcknowledgement = replacingActiveBatch
+                ? this.createStopAcknowledgementWaiter()
+                : null;
+            await this.send(ROBOT_STOP_PACKET);
+            if (waitForStopAcknowledgement) await waitForStopAcknowledgement();
+            if (generation !== this.generation || this.resting || this.paused) return;
+            const balls = chooseMsyncBalls(this.execution);
+            const batchCycles = this.execution.once ? 1 : ROBOT_PERSISTENT_CYCLES;
+            await this.send(buildMsyncDrillPacket(balls, batchCycles));
+            this.awaitingCycleDone = true;
+            if (!this.execution.once) {
+                const expectedMs = estimatedCycleDurationMs(balls) * batchCycles;
+                this.completionTimer = this.setTimer(() => {
+                    if (generation !== this.generation || !this.awaitingCycleDone ||
+                        this.resting || this.paused) return;
+                    this.awaitingCycleDone = false;
+                    this.onDiagnostic({ type: 'ROBOT_DONE_FALLBACK', expectedMs });
+                    this.scheduleRepeat(generation);
+                }, expectedMs + this.robotLeadMs + ROBOT_DONE_SAFETY_MS);
+            }
+            this.onDiagnostic({
+                type: 'ROBOT_REPLACE_SENT',
+                ballCount: balls.length,
+                batchCycles,
+                dispatchMs: Math.max(0, this.now() - startedAt)
+            });
+        }).catch(error => this.onDiagnostic({
+            type: 'ROBOT_ERROR',
+            message: error?.message || String(error)
+        }));
+        return this.queue;
+    }
+
+    createStopAcknowledgementWaiter() {
+        let acknowledge;
+        const acknowledgement = new Promise(resolve => {
+            acknowledge = () => resolve('ACKNOWLEDGED');
+        });
+        this.stopAckResolve = acknowledge;
+        return async () => {
+            const result = await Promise.race([
+                acknowledgement,
+                this.wait(ROBOT_STOP_ACK_TIMEOUT_MS).then(() => 'TIMEOUT')
+            ]);
+            if (this.stopAckResolve === acknowledge) this.stopAckResolve = null;
+            this.onDiagnostic({
+                type: result === 'ACKNOWLEDGED'
+                    ? 'ROBOT_STOP_ACKNOWLEDGED'
+                    : 'ROBOT_STOP_ACK_TIMEOUT'
+            });
+        };
+    }
+
+    stopOnly(reason) {
+        ++this.generation;
+        this.awaitingCycleDone = false;
+        this.clearTimer(this.repeatTimer);
+        this.clearTimer(this.completionTimer);
+        this.repeatTimer = null;
+        this.completionTimer = null;
+        this.queue = this.queue.then(async () => {
+            if (this.isConnected()) await this.send(ROBOT_STOP_PACKET);
+            this.onDiagnostic({ type: 'ROBOT_STOP_SENT', reason });
+        }).catch(error => this.onDiagnostic({
+            type: 'ROBOT_ERROR',
+            message: error?.message || String(error)
+        }));
+        return this.queue;
+    }
+
+    handleDone() {
+        if (this.stopAckResolve) {
+            const acknowledge = this.stopAckResolve;
+            this.stopAckResolve = null;
+            acknowledge();
+            return;
+        }
+        if (!this.awaitingCycleDone || !this.execution || this.resting || this.paused || !this.isConnected()) return;
+        this.awaitingCycleDone = false;
+        this.clearTimer(this.completionTimer);
+        this.completionTimer = null;
+        if (this.execution.once) {
+            this.execution = null;
+            this.onceCompleted = true;
+            this.onDiagnostic({ type: 'ROBOT_ONCE_COMPLETE' });
+            return;
+        }
+        const generation = this.generation;
+        this.scheduleRepeat(generation);
+    }
+
+    scheduleRepeat(generation) {
+        this.clearTimer(this.repeatTimer);
+        this.repeatTimer = this.setTimer(() => {
+            if (generation === this.generation && !this.resting && !this.paused) this.replace();
+        }, this.cyclePauseMs);
+    }
+
+    async destroy() {
+        await this.stopOnly('DESTROY');
+        this.unsubscribeDone?.();
+    }
+}

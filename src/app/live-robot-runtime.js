@@ -1,3 +1,4 @@
+import { LiveMsync } from "../application/msync/live-msync.js";
 import { NovaRobotConnection } from "../application/robot/nova-robot-connection.js";
 import { RobotDiagnostics } from "../application/robot/robot-diagnostics.js";
 import { RobotExecutor } from "../application/robot/robot-executor.js";
@@ -66,6 +67,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   let runContext = null;
   let dispatchedPrograms = 0;
   let lastMsyncEventCount = 0;
+  let liveMsync = null;
   const finiteCompletions = [];
 
   const updateLabels = () => {
@@ -207,6 +209,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     return result;
   }
   async function disconnectSafely() {
+    if (liveMsync) await liveMsync.stop();
     const result = await priorityStop({ force: true });
     if (result.status !== "SENT") throw new Error("PRIORITY_STOP_NOT_CONFIRMED");
     executor.reset();
@@ -260,6 +263,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (pending || !connection.ready) return;
     pending = true; paint();
     try {
+      if (liveMsync) await liveMsync.stop();
       await sendStopAndReset();
       if (bridge.controller.state === "RUNNING" || bridge.controller.state === "PAUSED" || bridge.controller.state === "COUNTDOWN") bridge.controller.stop();
       status.textContent = "Priority Stop sent. Confirm the robot is physically stationary.";
@@ -285,6 +289,8 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       if (!track?.msyncAttachmentId) throw new Error("Select a track with a validated MSYNC timeline.");
       msync = await bridge.msyncService.revalidate(track.msyncAttachmentId);
       if (!msync.valid) throw new Error(msync.validation.errors[0]?.message ?? "MSYNC validation failed.");
+      if (msync.newWarnings?.length && !globalThis.confirm(`${msync.newWarnings.length} new MSYNC warnings:\n${msync.newWarnings.map(w => w.message).join("\n")}\nContinue?`)) return;
+      if (msync.newWarnings?.length) await bridge.msyncService.acceptWarnings(msync.attachment.id, msync.validation.warnings);
       spec = bridge.createSessionSpec({ mode, level: bridge.uiState.level, msyncAttachmentId: msync.attachment.id, pauseSeconds: 0 });
     } else if (mode === "music") {
       const form = new FormData(document.querySelector("#session-form"));
@@ -305,7 +311,8 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     }
     if (mode === "reps" && bridge.uiState.amount > 255) throw new Error("Repetitions are limited to 255 per robot command.");
     const ballCount = mode === "reps" ? countPacketBalls(initialPacket, bridge.uiState.amount) : 0;
-    const result = bridge.controller.start(spec, { countdownSeconds: ["reps", "time"].includes(mode) ? 3 : 0, liveRun: true, ballsPlanned: ballCount });
+    if (liveMsync) { await liveMsync.destroy(); liveMsync = null; }
+    const result = bridge.controller.start(spec, { countdownSeconds: mode === "msync" ? msync.validation.parsed.session.countdown : ["reps", "time"].includes(mode) ? 3 : 0, liveRun: true, ballsPlanned: ballCount });
     if (result.status !== "EXECUTED") throw new Error("A session is already active or the setup is invalid.");
     runContext = { mode, program, packet: initialPacket, audioTracks, msyncParsed: msync?.validation.parsed, sent: false, failed: false };
     status.textContent = `Live ${mode.toUpperCase()} session armed. Stop remains available above.`;
@@ -314,19 +321,26 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       runContext.sent = true;
       await bridge.audioPlayer.start(audioTracks);
     } else if (mode === "msync") {
-      lastMsyncEventCount = 0;
-      bridge.msyncSimulator.start(msync.validation.parsed, { robotLeadSeconds: bridge.uiState.robotLeadSeconds });
-      await bridge.audioPlayer.start([msync.track]);
+      liveMsync = new LiveMsync({ audioPlayer:bridge.audioPlayer, connection, executor,
+        projection:bridge.msyncSimulator, controller:bridge.controller,
+        onDiagnostic:event => { log(event.type, event.message || event.reason || ""); },
+        onDispatch:packet => bridge.controller.noteDispatched(countPacketBalls(packet, new DataView(packet.buffer, packet.byteOffset, packet.byteLength).getUint16(4, true))),
+      });
+      await liveMsync.start(msync.validation.parsed, msync.track, bridge.uiState.robotLeadSeconds);
     }
     await bridge.render("train");
   }
 
+  let sessionStartPending = false;
   document.addEventListener("submit", async (event) => {
     if (!(testOnly ? globalThis.NOVA_PRIME_FULL_TEST_BUILD : true) || !event.target.matches("#session-form")) return;
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (sessionStartPending) return;
+    sessionStartPending = true;
     try { await startLiveSession(); }
     catch (error) {
+      if (liveMsync) await liveMsync.destroy().catch(() => {});
       status.textContent = error.message;
       log("session.start_blocked", error.message);
       if (runContext) {
@@ -337,7 +351,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
         if (!["IDLE", "COMPLETED", "ERROR"].includes(bridge.controller.state)) bridge.controller.fail("LIVE_SESSION_START_FAILED");
         runContext = null;
       }
-    }
+    } finally { sessionStartPending = false; }
   }, true);
 
   bridge.controller.subscribe((snapshot) => {
@@ -385,44 +399,14 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (runContext?.mode === "music" && snapshot.state === "completed" && previous !== "completed") {
       void sendStopAndReset().then(() => { status.textContent = "Music finished; robot Stop sent."; runContext = null; }).catch((error) => { status.textContent = `Music ended but Stop failed (${error.message}). Use physical power.`; });
     }
-    if (runContext?.mode === "msync" && snapshot.state === "completed" && previous !== "completed") {
+    if (!liveMsync && runContext?.mode === "msync" && snapshot.state === "completed" && previous !== "completed") {
       void sendStopAndReset().then(() => { status.textContent = "MSYNC audio finished; robot Stop sent."; runContext = null; }).catch((error) => { status.textContent = `MSYNC ended but Stop failed (${error.message}). Use physical power.`; });
-    }
-  });
-
-  bridge.msyncSimulator.subscribe((snapshot) => {
-    const newEvents = snapshot.events.slice(lastMsyncEventCount);
-    lastMsyncEventCount = snapshot.events.length;
-    if (runContext?.mode !== "msync") return;
-    const plans = new Map();
-    for (const event of newEvents) if (event.type === "ROBOT_PLAN") {
-      const time = event.commandAtMs;
-      plans.set(time, [...(plans.get(time) ?? []), event.cue]);
-    }
-    for (const cues of plans.values()) {
-      if (cues.some((cue) => ["REST", "IDLE", "STOP"].includes(cue?.type))) {
-        void sendStopAndReset().catch((error) => { status.textContent = `MSYNC cue Stop failed (${error.message}). Use physical power.`; });
-        continue;
-      }
-      // DRILL/INLINE followed by FLAVOR at the same timestamp is one launch
-      // using the resolved flavor parameters, not two duplicate launches.
-      const cue = [...cues].reverse().find((item) => ["DRILL", "INLINE", "FLAVOR"].includes(item?.type));
-      if (!cue) continue;
-      const program = cue.robotProgram || (cue.type === "INLINE" ? toInlineProgram(cue.balls) : null);
-      if (!program?.steps?.length) {
-        status.textContent = `MSYNC ${cue.type} cue is not executable by this test build; robot has not been sent this cue.`;
-        continue;
-      }
-      runContext.program = program;
-      void sendProgram(program, { mode: "combos", amount: 1, randomOrder: false }).catch((error) => {
-        status.textContent = `MSYNC cue dispatch failed (${error.message}). Priority Stop requested.`;
-        void priorityStop({ force: true }).catch(() => {});
-      });
     }
   });
 
   globalThis.NOVA_PRIME_LIVE_COMMAND = async (command) => {
     if (command === "stop") {
+      if (liveMsync) await liveMsync.stop();
       await sendStopAndReset();
       if (bridge.controller.state !== "IDLE" && bridge.controller.state !== "COMPLETED") bridge.controller.stop();
       bridge.audioPlayer.stop(); bridge.msyncSimulator.stop(); runContext = null;
@@ -431,6 +415,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       return { status: "EXECUTED" };
     }
     if (command === "pause") {
+      if (runContext?.mode === "msync" && liveMsync) return liveMsync.pause();
       if (!runContext || !connection.ready) return { status: "REJECTED" };
       const result = await executor.pause();
       if (result.status !== "SENT") return result;
@@ -441,6 +426,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       return result;
     }
     if (command === "resume") {
+      if (runContext?.mode === "msync" && liveMsync) return liveMsync.resume();
       if (!runContext || !connection.ready || executor.state !== "paused") return { status: "REJECTED" };
       const snapshot = bridge.controller.snapshot();
       const options = { mode: runContext.mode === "time" ? "time" : runContext.mode === "music" ? "endless" : "combos",
@@ -459,6 +445,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       return result;
     }
     if (command === "reset") {
+      if (liveMsync) { await liveMsync.destroy(); liveMsync = null; }
       if (["COMPLETED", "ERROR"].includes(bridge.controller.state)) {
         if (["stopped", "error"].includes(executor.state)) executor.reset();
         else if (executor.state !== "idle") {
@@ -472,9 +459,10 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   };
   if (testOnly) globalThis.NOVA_PRIME_FULL_TEST_COMMAND = globalThis.NOVA_PRIME_LIVE_COMMAND;
 
-  window.addEventListener("pagehide", () => { runContext = null; });
+  window.addEventListener("pagehide", () => { void liveMsync?.stop(); runContext = null; });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden" && runContext) {
+      void liveMsync?.stop();
       status.textContent = "Page hidden: priority Stop requested. Returning will not resume automatically.";
       bridge.controller.stop();
       runContext = null;

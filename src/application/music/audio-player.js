@@ -30,6 +30,8 @@ export class AudioPlayer {
     });
   }
 
+  currentTimeMs() { return Math.round((Number(this.#audio.currentTime) || 0) * 1000); }
+
   snapshot() {
     const duration = Number(this.#audio.duration) || (this.#queue[this.#index]?.durationMs ?? 0) / 1000;
     const currentTime = Number(this.#audio.currentTime) || 0;

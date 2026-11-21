@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMsyncValidationContext } from "../src/application/msync/context.js";
@@ -6,7 +7,7 @@ import { MsyncSimulator } from "../src/application/msync/msync-simulator.js";
 import { validateMsyncSource } from "../src/domain/msync/validator.js";
 import { MemoryStore } from "../src/infrastructure/storage/memory-store.js";
 
-const HASH = "8fd41e9802b5c417b45a91c90a12cdb074377d4f6a9c4d1e753624cbb3892601";
+const HASH = createHash("sha256").update("audio").digest("hex");
 const TRACK = Object.freeze({
   id: "track_test", displayName: "test.mp3", mimeType: "audio/mpeg", byteSize: 5,
   durationMs: 60_000, sha256: HASH, audioBlob: new Blob(["audio"]), msyncAttachmentId: null,
@@ -92,4 +93,17 @@ test("MSYNC simulator pause and priority stop prevent later cue activation", () 
   simulator.stop();
   simulator.advance(60_000);
   assert.equal(simulator.snapshot().state, "stopped");
+});
+
+test("MSYNC revalidation rejects changed audio and warns before attachment", async () => {
+  const store = new MemoryStore({ tracks:[TRACK] }); const service = new MsyncService(store);
+  const file = { name:"warning.msync", text:async () => source("00:05.000 STOP").replace("FILENAME=test.mp3", "FILENAME=renamed.mp3") };
+  const blocked = await service.attach(file, TRACK.id);
+  assert.equal(blocked.requiresWarningAcceptance, true);
+  assert.equal((await store.getAll("msyncAttachments")).length,0);
+  const attached = await service.attach(file, TRACK.id,{acceptWarnings:true});
+  assert.equal((await service.revalidate(attached.attachment.id)).newWarnings.length,0);
+  const track = await store.get("tracks",TRACK.id);
+  await store.put("tracks",{...track,audioBlob:new Blob(["changed"])});
+  await assert.rejects(service.revalidate(attached.attachment.id), /stored audio content/);
 });

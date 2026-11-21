@@ -13,8 +13,12 @@ export class MsyncSimulator {
   #restUntilMs = 0;
   #events = [];
   #activations = 0;
+  external = false;
+  #externalSnapshot = null;
+  setExternal(snapshot) { this.external = true; this.#externalSnapshot = Object.freeze(snapshot); this.#listeners.forEach(listener => listener(this.snapshot())); }
 
   snapshot() {
+    if (this.external && this.#externalSnapshot) return this.#externalSnapshot;
     return frozen({
       state: this.#state,
       positionMs: this.#positionMs,
@@ -55,6 +59,7 @@ export class MsyncSimulator {
   }
 
   advance(positionMs) {
+    if (this.external) return this.snapshot();
     if (this.#state !== "playing") return this.snapshot();
     this.#positionMs = Math.max(this.#positionMs, Math.max(0, Number(positionMs) || 0));
     const cues = this.#parsed.cues;
