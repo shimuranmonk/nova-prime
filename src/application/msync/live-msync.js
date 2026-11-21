@@ -32,7 +32,7 @@ export class LiveMsync {
       onEvent: event => { if (event.type === "ACTIVATE") this.activations++; this.record(event); },
       onRobotEvent: event => this.robot.handleSessionEvent(event),
       onState: ({ state }) => {
-        if (state === "PLAYING" && controller.state === "COUNTDOWN") controller.tick(controller.snapshot().countdownRemaining);
+        if (state === "PLAYING") controller.markAudioPlaying();
         if (state === "COMPLETED" || state === "ERROR") this.finished = true;
         this.publish();
         if (state === "ERROR" && !["IDLE", "ERROR", "COMPLETED"].includes(controller.state)) controller.fail("MSYNC_RUNTIME_FAILED");

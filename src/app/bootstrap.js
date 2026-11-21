@@ -348,7 +348,8 @@ function modeButton(mode, label, available = true, locked = false) {
 function sessionConsole(session) {
   if (session.state === SESSION_STATES.IDLE) return "";
   if (session.state === SESSION_STATES.COUNTDOWN) {
-    return `<section class="app-card countdown-screen" aria-label="Training starts soon"><span class="eyebrow">GET READY · DRY RUN</span><strong class="countdown-number" role="timer" aria-live="assertive">${Math.max(0, Math.ceil(session.countdownRemaining))}</strong><button type="button" class="stop-button" data-command="stop">Cancel start</button></section>`;
+    const awaitingAudio = session.liveRun && session.spec?.mode === "msync" && session.countdownRemaining === 0;
+    return `<section class="app-card countdown-screen" aria-label="Training starts soon"><span class="eyebrow">${awaitingAudio ? "STARTING AUDIO" : "GET READY · DRY RUN"}</span><strong class="countdown-number" role="timer" aria-live="assertive">${awaitingAudio ? "…" : Math.max(0, Math.ceil(session.countdownRemaining))}</strong><button type="button" class="stop-button" data-command="stop">Cancel start</button></section>`;
   }
   const target = session.spec?.mode === "time" ? session.spec.durationSeconds : session.spec?.repetitions;
   const isMsync = session.spec?.mode === "msync";

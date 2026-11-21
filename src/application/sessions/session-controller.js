@@ -78,7 +78,7 @@ export class LocalSessionController {
     this.#machine.dispatch(SESSION_EVENTS.PREPARE);
     this.#machine.dispatch(SESSION_EVENTS.ARM);
     this.#machine.dispatch(SESSION_EVENTS.COUNTDOWN);
-    if (this.#countdownRemaining === 0) this.#machine.dispatch(SESSION_EVENTS.START);
+    if (this.#countdownRemaining === 0 && !(this.#liveRun && spec.mode === "msync")) this.#machine.dispatch(SESSION_EVENTS.START);
     this.#notify();
     return freezeSnapshot({ status: COMMAND_RESULTS.EXECUTED, snapshot: this.snapshot() });
   }
@@ -87,7 +87,7 @@ export class LocalSessionController {
     const amount = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
     if (this.state === SESSION_STATES.COUNTDOWN) {
       this.#countdownRemaining = Math.max(0, this.#countdownRemaining - amount);
-      if (this.#countdownRemaining === 0) this.#machine.dispatch(SESSION_EVENTS.START);
+      if (this.#countdownRemaining === 0 && !(this.#liveRun && this.#spec.mode === "msync")) this.#machine.dispatch(SESSION_EVENTS.START);
     } else if (this.state === SESSION_STATES.RUNNING) {
       this.#elapsedSeconds += amount;
       if (["music", "msync"].includes(this.#spec.mode)) {
@@ -114,6 +114,14 @@ export class LocalSessionController {
     }
     this.#notify();
     return this.snapshot();
+  }
+
+  markAudioPlaying() {
+    if (!this.#liveRun || this.#spec?.mode !== "msync" || this.state !== SESSION_STATES.COUNTDOWN) return false;
+    this.#countdownRemaining = 0;
+    this.#machine.dispatch(SESSION_EVENTS.START);
+    this.#notify();
+    return true;
   }
 
   pause() {

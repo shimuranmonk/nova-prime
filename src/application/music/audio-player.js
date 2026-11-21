@@ -24,7 +24,8 @@ export class AudioPlayer {
 
   constructor({ audio = new Audio(), urlObject = URL, now = () => performance.now(), setTimer = setTimeout, clearTimer = clearTimeout, stallTimeoutMs = 5000 } = {}) {
     this.#audio = audio;
-    Object.assign(this, { now, setTimer, clearTimer, stallTimeoutMs });
+    // Browser timer functions require Window as their receiver, not AudioPlayer.
+    Object.assign(this, { now, setTimer: setTimer.bind(globalThis), clearTimer: clearTimer.bind(globalThis), stallTimeoutMs });
     this.#urlObject = urlObject;
     audio.addEventListener("timeupdate", () => this.#notify());
     audio.addEventListener("ended", () => { void this.#advance(); });

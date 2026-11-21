@@ -143,7 +143,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       const sessionPill = document.querySelector("#route-view .session-console .simulation-pill");
       if (sessionPill && sessionPill.textContent !== "Live robot") sessionPill.textContent = "Live robot";
       const countdownLabel = document.querySelector("#route-view .countdown-screen .eyebrow");
-      if (countdownLabel && countdownLabel.textContent !== "GET READY · LIVE ROBOT") countdownLabel.textContent = "GET READY · LIVE ROBOT";
+      if (countdownLabel && countdownLabel.textContent !== "STARTING AUDIO" && countdownLabel.textContent !== "GET READY · LIVE ROBOT") countdownLabel.textContent = "GET READY · LIVE ROBOT";
       const helper = document.querySelector("#route-view .setup-card > .helper-text");
       if (helper?.textContent.includes("Sends no robot commands and records zero dispatched balls.")) helper.textContent = helper.textContent.replace("Sends no robot commands and records zero dispatched balls.", "Training sends commands to the connected Nova S Pro. Keep the launch area clear and power access within reach.");
       const sessionHelper = document.querySelector("#route-view .session-console .helper-text");
