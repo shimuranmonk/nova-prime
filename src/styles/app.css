@@ -853,3 +853,10 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 #editor-dialog .editor-parameters-view .editor-range input { height: 32px; min-height: 32px; }
 #editor-dialog .editor-parameters-view .ball-flags { position: static; }
 #editor-dialog .editor-parameters-view .ball-panel-heading h3 { font-size: .9rem; }
+
+.msync-activity { grid-column: 1 / -1; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); padding: 14px; min-width: 0; }
+.msync-activity p { margin: 5px 0; overflow-wrap: anywhere; }
+.msync-activity ol { max-height: 150px; overflow: auto; margin: 8px 0 0; padding-left: 20px; font-size: .75rem; line-height: 1.5; }
+.msync-activity ol:empty { display: none; }
+.track-hash-button { min-width: 44px; min-height: 44px; }
+.training-focus .msync-activity { max-height: 35dvh; overflow: auto; }

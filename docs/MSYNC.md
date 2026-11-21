@@ -1,5 +1,16 @@
 # MSYNC v1
 
+## Update — 2026-11-21 · Nova Plus MSYNC parity candidate
+
+Version `0.19.0-msync-parity.0` adapts the user-supplied Nova Plus PROD8 session controller and robot adapter. It retains the original audio-clock polling, countdown/pre-roll, lead timing, repeating 100-cycle batches versus ONCE, REST restart, IDLE, flavors, variants/random/scatter, and Stop-before-replacement semantics. Prime's executor remains the only transport writer. Stop/background/disconnect cancel the coordinator; late awaited audio starts/resumes cannot revive stopped sessions. Concurrent starts are rejected while preparation is pending.
+
+Attachment warnings require acknowledgement, and launch revalidation recomputes the stored audio SHA-256. Existing IndexedDB stores and custom IDs remain unchanged. The MSYNC activity view shows current/next cues and a bounded event log in setup and training; each Music track has Copy Audio Hash with manual clipboard fallback.
+
+Browser smoke checks passed for startup, activity display, track import/hash action, warning acknowledgement and timeline attachment; no browser console errors were observed. The 66-file bundle and ZIP integrity checks passed. 165 automated tests passed, including the original Nova Plus controller/adapter cases and Prime integration regressions for REST, repeats, more than 100 events, audio failure, countdown cancellation and late resume. No robot was operated during development. Physical MSYNC and Calibration remain PENDING; the existing authorized live beta flag is unchanged. Continuous MSYNC batches do not establish physically measured ball totals; manual correction remains necessary. Candidate package: `nova-prime-0.19.0-msync-parity.0-release.zip`. Publication is not yet confirmed.
+
+The sections below describe the original simulation milestone and are historical where they refer to future live support. The candidate above is the current runtime.
+
+
 ## Business challenge
 
 Music-synchronized training is valuable only when a timeline targets the exact local audio and its drill instructions are predictable. A permissive import or hidden repair could shift cues or produce unsafe future robot behavior.

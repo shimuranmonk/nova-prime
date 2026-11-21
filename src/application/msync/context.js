@@ -2,7 +2,10 @@ import { BUILTIN_DRILLS } from "../../domain/drills/builtin-catalog.js";
 
 function programData(program) {
   return (program?.steps ?? []).filter((step) => step.enabled).map((step) =>
-    step.variants.map((ball) => [ball.speed, ball.spin, ball.height, ball.drop, ball.bpm, ball.repetitions, 1]));
+    step.variants.map((ball) => {
+      const base = 970 + 630.5 * ball.speed; const spin = 342 * ball.spin;
+      return [Math.round(base + (ball.type === "top" ? spin : -spin)), Math.round(base + (ball.type === "top" ? -spin : spin)), ball.height, ball.drop, (ball.bpm - 30) / .6, ball.repetitions, 1, ball.speed, ball.spin, ball.type, step.scatter || 0];
+    }));
 }
 
 export function createMsyncValidationContext(track, customDrills = []) {

@@ -1,5 +1,14 @@
 # Nova Prime project handover
 
+## Update — 2026-11-21 · Nova Plus MSYNC parity candidate
+
+Version `0.19.0-msync-parity.0` adapts the user-supplied Nova Plus PROD8 session controller and robot adapter. It retains the original audio-clock polling, countdown/pre-roll, lead timing, repeating 100-cycle batches versus ONCE, REST restart, IDLE, flavors, variants/random/scatter, and Stop-before-replacement semantics. Prime's executor remains the only transport writer. Stop/background/disconnect cancel the coordinator; late awaited audio starts/resumes cannot revive stopped sessions. Concurrent starts are rejected while preparation is pending.
+
+Attachment warnings require acknowledgement, and launch revalidation recomputes the stored audio SHA-256. Existing IndexedDB stores and custom IDs remain unchanged. The MSYNC activity view shows current/next cues and a bounded event log in setup and training; each Music track has Copy Audio Hash with manual clipboard fallback.
+
+Browser smoke checks passed for startup, activity display, track import/hash action, warning acknowledgement and timeline attachment; no browser console errors were observed. The 66-file bundle and ZIP integrity checks passed. 165 automated tests passed, including the original Nova Plus controller/adapter cases and Prime integration regressions for REST, repeats, more than 100 events, audio failure, countdown cancellation and late resume. No robot was operated during development. Physical MSYNC and Calibration remain PENDING; the existing authorized live beta flag is unchanged. Continuous MSYNC batches do not establish physically measured ball totals; manual correction remains necessary. Candidate package: `nova-prime-0.19.0-msync-parity.0-release.zip`. Publication is not yet confirmed.
+
+
 ## Update — 2026-11-20 · physical gate and production candidate
 
 The maintainer explicitly reports that the complete documented physical release gate passed. The run sheet records this as an aggregate, user-reported result; no per-phone/per-robot logs were supplied in this turn. Production robot control is enabled in the `0.18.2-android-package.0` corrected candidate. The standard Training screen integrates Connect, Disconnect, and priority Stop; test-only checkboxes and per-session confirmation are excluded from production. A user report found that v0.18.0's observer loop made the UI unresponsive and its sticky control layer could cover the menu; v0.18.2 makes text updates idempotent, fixes stacking, and shows the generated app version. Browser smoke check confirmed Connect and the hamburger menu work. All 137 automated tests passed, the 59-file production bundle verifier passed, and the ZIP passed root-index/license/notices/integrity checks. The candidate has not been merged, pushed, or published.

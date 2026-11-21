@@ -15,3 +15,7 @@ That license grant does not override third-party copyright, trademark, patent, o
 The Nova S Pro protocol boundary was independently implemented from publicly available behavioral information, including the public `olanga/nova` repository at commit `913f044d664b81dcb77c9e9d6e9ae5b33103f3ca`. The immutable source references are recorded in `src/infrastructure/robot/nova-protocol.js` and `docs/ROBOT.md`.
 
 No affiliation with or endorsement by PONGBOT or the acknowledged community contributors is implied. PONGBOT, Nova, and related product names may be trademarks of their respective owners.
+
+## Nova Plus MSYNC reuse
+
+The MSYNC controller and robot adapter under `src/application/msync/nova-plus/`, and their original behavioural test cases, are adapted from the maintainer-supplied `nova-feature-voice-command-control_PROD8.zip` (Nova Plus). Prime retains its own persistence, audio library and shared robot transport executor. The supplied archive contained no standalone license file; this provenance notice records the source and does not assert a separate third-party license grant. Existing community acknowledgements above remain applicable.

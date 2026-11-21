@@ -36,9 +36,10 @@ export class MsyncService {
     return Object.freeze({ file, track, sourceText, sourceSha256: await sha256Text(sourceText), validation });
   }
 
-  async attach(file, trackId) {
+  async attach(file, trackId, { acceptWarnings = false } = {}) {
     const candidate = await this.validateFile(file, trackId);
     if (!candidate.validation.valid) return Object.freeze({ attached: false, ...candidate });
+    if (candidate.validation.warnings.length && !acceptWarnings) return Object.freeze({ attached:false, requiresWarningAcceptance:true, ...candidate });
     const now = this.now();
     const attachment = createMsyncAttachment({
       trackId,
@@ -50,6 +51,7 @@ export class MsyncService {
         parserVersion: MSYNC_PARSER_VERSION,
         validatedAt: now,
         warnings: candidate.validation.warnings,
+        acceptedWarnings: candidate.validation.warnings,
         summary: candidate.validation.summary,
       }),
       importedAt: now,
@@ -75,8 +77,17 @@ export class MsyncService {
     if (await sha256Text(attachment.sourceText) !== attachment.sourceSha256) throw new Error("Stored MSYNC source does not match its fingerprint");
     const validation = validateMsyncSource(attachment.sourceText, createMsyncValidationContext(track, drills));
     if (!validation.valid) return Object.freeze({ valid: false, attachment, track, validation });
+    if (await sha256Hex(track.audioBlob) !== validation.parsed.audio.sha256) throw new Error("The stored audio content does not match this MSYNC file");
     if (track.sha256 !== validation.parsed.audio.sha256) throw new Error("The current audio identity no longer matches this MSYNC file");
-    return Object.freeze({ valid: true, attachment, track, validation });
+    const identity = warning => `${warning.code}|${warning.line ?? ""}|${warning.section}`;
+    const accepted = new Set((attachment.validationReceipt.acceptedWarnings ?? []).map(identity));
+    return Object.freeze({ valid: true, attachment, track, validation, newWarnings:validation.warnings.filter(w => !accepted.has(identity(w))) });
+  }
+
+  async acceptWarnings(id, warnings) {
+    const attachment = await this.store.get("msyncAttachments", id);
+    if (!attachment) throw new Error("MSYNC attachment is unavailable");
+    await this.store.put("msyncAttachments", { ...attachment, validationReceipt:{ ...attachment.validationReceipt, acceptedWarnings:warnings }, updatedAt:this.now() });
   }
 
   async remove(trackId) {

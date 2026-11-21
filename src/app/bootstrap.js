@@ -366,6 +366,7 @@ function sessionConsole(session) {
     <section class="app-card session-console" aria-label="Active session">
       <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${isMsync ? "MSYNC timeline" : `${escapeHtml(drill?.name ?? "Local session")} · ${session.spec?.randomOrder ? "Random order" : "Sequential"}`}${trackLabel}</p></div><span class="simulation-pill">${isMsync ? "Timeline simulation" : session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
       <strong class="session-metric">${metric}</strong>
+      ${isMsync ? msyncActivity() : ""}
       ${isMsync ? `<p class="helper-text">Robot Lead ${((msyncSnapshot?.robotLeadMs ?? 1300) / 1000).toFixed(3)}s · planned robot cues are displayed only and never transmitted.</p>` : ""}
       <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
       <div class="console-actions">
@@ -399,6 +400,15 @@ function voiceControlSlot() {
     </div>`;
 }
 
+function msyncActivity() {
+  const selected = selectedMsync();
+  const snapshot = controller.state === SESSION_STATES.IDLE ? null : msyncSnapshot;
+  const events = snapshot?.events ?? [];
+  const position = snapshot?.positionMs ?? 0;
+  const next = selected.attachment?.parsed?.cues?.find(cue => snapshot ? cue.timeMs > position : cue.timeMs >= position);
+  return `<section class="msync-activity" aria-label="MSYNC activity"><strong>${escapeHtml(snapshot?.state?.toUpperCase() || (selected.attachment ? "READY" : "NO TIMELINE SELECTED"))}</strong><p>${escapeHtml(selected.track?.displayName || "Attach an MSYNC file from the MSYNC menu.")}</p><p>${snapshot?.active ? `Current: ${escapeHtml(snapshot.active.type)} ${escapeHtml(snapshot.active.name)}` : "No active drill"}${snapshot?.flavor ? ` · ${escapeHtml(snapshot.flavor)}` : ""}${snapshot?.resting ? " · REST" : ""}</p>${next ? `<small>Next: ${formatDuration(next.timeMs)} · ${escapeHtml(next.type)} ${escapeHtml(next.name || "")}</small>` : ""}<ol role="log" aria-label="Recent MSYNC events">${events.slice(-8).map(event => `<li>${formatDuration(event.positionMs || 0)} · ${escapeHtml(event.type)} ${escapeHtml(event.message || event.code || event.active?.name || event.reason || "")}</li>`).join("")}</ol></section>`;
+}
+
 function setupCard(session) {
   const locked = session.state !== SESSION_STATES.IDLE;
   const amountLabel = uiState.mode === "time" ? "Duration (s)" : "Count";
@@ -420,7 +430,7 @@ function setupCard(session) {
       <form id="session-form" class="session-form music-session-form">
         <label><span>Validated timeline</span><select name="msyncTrack" ${locked ? "disabled" : ""} required>${msyncOptions || '<option value="">No validated MSYNC timeline</option>'}</select></label>
         <label><span>Robot Lead (s)</span><input name="robotLead" type="number" min="0" max="5" step="0.001" value="${uiState.robotLeadSeconds}" ${locked ? "disabled" : ""} required></label>
-        <div class="music-source-summary"><strong>${escapeHtml(msync.track?.displayName ?? "No timeline selected")}</strong><span>${msync.attachment ? `${msync.attachment.validationReceipt.summary.cues} cues · ${formatDuration(msync.attachment.validationReceipt.summary.durationMs)}` : "Attach an MSYNC file first"}</span></div>
+        ${msyncActivity()}
         <div class="training-start-row">        <button class="primary-button" type="submit" ${locked || !msync.attachment ? "disabled" : ""}>Start MSYNC simulation</button>${voiceControlSlot()}</div>
       </form>`;
   const standardForm = `
@@ -547,6 +557,7 @@ async function musicView() {
     <input type="checkbox" data-quick-track="${escapeHtml(track.id)}" aria-label="Select ${escapeHtml(track.displayName)} for Quick Music" ${uiState.quickTrackIds.includes(track.id) ? "checked" : ""}>
     <div class="track-copy"><strong>${escapeHtml(track.displayName)}</strong><span>${formatDuration(track.durationMs)} · ${formatBytes(track.byteSize)} · stored locally</span></div>
     <form data-track-rename="${escapeHtml(track.id)}" class="track-rename"><input name="name" value="${escapeHtml(track.displayName)}" maxlength="80" aria-label="Rename ${escapeHtml(track.displayName)}"><button type="submit">Rename</button></form>
+    <button class="icon-button track-hash-button" type="button" data-track-hash="${escapeHtml(track.id)}" title="Copy audio SHA-256" aria-label="Copy audio hash for ${escapeHtml(track.displayName)}"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
     <button class="danger-button" type="button" data-track-delete="${escapeHtml(track.id)}">Delete</button>
   </article>`).join("");
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">LOCAL MUSIC</span><h1>Music library</h1><p>Import audio once, build playlists, or select a few tracks for Quick Music. Audio remains in this browser and can play without internet or Wi-Fi.</p></div>
@@ -1063,7 +1074,13 @@ function bindRouteActions(route) {
       const form = new FormData(event.currentTarget);
       const file = form.get("msyncFile");
       try {
-        const result = await msyncService.attach(file, form.get("trackId"));
+        const checked = await msyncService.validateFile(file, form.get("trackId"));
+        let accepted = false;
+        if (checked.validation.valid && checked.validation.warnings.length) {
+          accepted = globalThis.confirm(`MSYNC warnings:\n${checked.validation.warnings.map(w => w.message).join("\n")}\nAttach anyway?`);
+          if (!accepted) { msyncIssues = checked.validation.issues; msyncMessage = "Not attached: warnings were not accepted."; await render("msync"); return; }
+        }
+        const result = await msyncService.attach(file, form.get("trackId"), { acceptWarnings:accepted });
         msyncIssues = result.validation.issues;
         if (!result.attached) {
           msyncMessage = `Not attached: ${result.validation.errors.length} validation error${result.validation.errors.length === 1 ? "" : "s"}.`;
@@ -1107,6 +1124,15 @@ function bindRouteActions(route) {
       } catch (error) { musicMessage = `Import blocked: ${error.message}`; }
       await render("music");
     });
+    document.querySelectorAll("[data-track-hash]").forEach(button => button.addEventListener("click", async () => {
+      const track = trackCache.find(track => track.id === button.dataset.trackHash);
+      if (!track?.sha256) { musicMessage = "Audio hash unavailable; reimport this track."; await render("music"); return; }
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+        await navigator.clipboard.writeText(track.sha256); musicMessage = "Audio SHA-256 copied.";
+      } catch { window.prompt("Copy audio SHA-256:", track.sha256); }
+      await render("music");
+    }));
     document.querySelectorAll("[data-quick-track]").forEach((input) => input.addEventListener("change", () => {
       const selected = new Set(uiState.quickTrackIds);
       input.checked ? selected.add(input.dataset.quickTrack) : selected.delete(input.dataset.quickTrack);
