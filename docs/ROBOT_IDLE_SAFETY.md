@@ -1,6 +1,6 @@
 # Robot inactivity and Stop safety candidate
 
-Date: 2026-11-21 (Asia/Manila). Branch: `fix/robot-idle-safety`. Version: `0.19.1-robot-safety.0`.
+Date: 2026-11-21 (Asia/Manila). Original safety branch: `fix/robot-idle-safety`, v0.19.1. Completion follow-up: `fix/session-completion-refresh`, v0.19.2-session-completion.0.
 
 ## Why this branch exists
 
@@ -31,7 +31,7 @@ The original worktree is preserved. Main and hosted Pages are unchanged. Fixes a
 | Background/page exit | Best-effort Stop and disconnect; never automatic resume | Lifecycle/runtime cases |
 | Stop reported written | Explicitly mark motor power unknown; preserve visible failure messages on focused screen | Executor confirmation and runtime feedback |
 
-Reps completion estimate uses encoded repetitions, frequency and cycle count. Time uses encoded seconds. The allowance is the greater of 5 seconds or 20% of expected duration, plus configured cycle pauses. Pause cancels that deadline; Resume arms a fresh one for the remaining command. A short minimum-duration guard rejects early DONE notifications but cannot authenticate a completion against a firmware sequence ID, because none is established by this protocol.
+Reps completion estimate uses encoded repetitions, frequency and cycle count. Time uses encoded seconds. The allowance is the greater of 5 seconds or 20% of expected duration, plus configured cycle pauses. Pause cancels that deadline; Resume arms a fresh one for the remaining command. Completion duration estimates are only backup Stop deadlines. v0.19.2 removes the minimum-duration admission guard because a valid three-ball completion can precede three full intervals. DONE is accepted only for a sent/accepted active RUNNING command, not during Pause/Stop or an unfinished write. No established firmware per-run sequence ID exists, so arbitrarily delayed markers after a new accepted run cannot be authenticated by timing guesses.
 
 ## Verification and physical limits
 
@@ -57,3 +57,9 @@ The fail-closed MSYNC completion and Stop-ack timeout policy intentionally diffe
 | Motor shutdown/firmware standby | Confirm actual motor behavior/current through supported external observation; app state alone is insufficient |
 
 Keep physical power available and switch off an unusually warm idle robot. This branch is not a completed physical release gate or proof that the reported battery drain has been cured. IndexedDB stores, names and schema versions are unchanged.
+
+## Completion regression and full-screen browser fixture
+
+Android checkpoint 4 failed on v0.19.1 despite three balls being launched. The session screen stayed RUNNING after the internal terminal state changed, and Pause forced the missing refresh. v0.19.2 subscribes to terminal/history-error changes and renders focused session state without awaiting library/statistics reads. Only the latest asynchronous render may commit its HTML. Completion/Done no longer waits for ball statistics; a storage failure cannot be mislabeled as Stop failure. Record-save rejections are captured separately.
+
+For a repeatable full-app browser test without real hardware, build a dedicated `dist-*` directory and run `python test-support/serve-completion-browser.py <dist-directory> <loopback-port>`. The loopback-only server substitutes a test entry module which installs simulated Bluetooth before importing the real production bootstrap. Its page visibly says SIMULATED ROBOT. Test Normal, Write error and Pending write settings with Count 3 / Push FH; each must automatically show COMPLETED and enable Done, and Done must return to setup. This fixture is not included in the deployment. Browser checks passed in all three conditions; real Android/robot verification remains pending.

@@ -1,5 +1,14 @@
 # Current verification status
 
+## Update — 2026-11-21 · three-ball completion correction
+
+Version `0.19.2-session-completion.0`, branch `fix/session-completion-refresh`, starts from main `504df78`. Android checkpoint 4 reported three Push FH balls fired, but screen stayed RUNNING at 3/3 with Done disabled. Pause caused a refresh, after which Done exited; disconnect happened later (duration unmeasured). Checkpoints 1–3 on v0.19.1 passed; checkpoint 4 remains FAIL until retested.
+
+Reproduced defects: terminal state changes stopped the clock before a final render, estimated-duration admission discarded early valid DONE, and statistics persistence was awaited before controller completion. The correction observes terminal state/history-warning changes, bypasses library I/O for focused session rendering, rejects stale overlapping renders, accepts DONE based on active command phase rather than elapsed estimates, and completes after Stop before asynchronous statistics saving. History-write failures are caught and shown as storage warnings. Live repetition progress is labeled Estimated until completion. Notifications during Pause/Stop/unaccepted writes remain excluded; the firmware marker has no established per-run sequence ID, so delayed post-resume markers remain a physical verification limitation.
+
+209 automated tests passed; the 67-file build/module verification passed. Full production bootstrap/browser screen was exercised with a loopback-only simulated Bluetooth entry: three-ball Push FH reached COMPLETED with Done enabled automatically, Done returned to setup, and both rejected and indefinitely pending statistics writes preserved completion/Done. No console errors or physical robot commands. Test fixture files stay outside the shipped bundle. IndexedDB schema and robot feature flags are unchanged. Physical checkpoint 4 and other hardware checks remain pending.
+
+
 User clarification: Calibration and MSYNC have not been tested. All other required checks passed. Second-round testing will commence after Calibration and MSYNC pass. The user authorizes updating main for ongoing beta testing; the complete physical release gate remains partial. Earlier aggregate complete-pass statements below are historical and superseded.
 
 # Physical verification run sheet

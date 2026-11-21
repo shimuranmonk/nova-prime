@@ -24,6 +24,7 @@ import { createDrillEditor } from "./drill-editor.js";
 import { FEATURE_FLAGS } from "./feature-flags.js";
 import { createRouter } from "./router.js";
 import { ThemeController } from "./theme-controller.js";
+import { observeSessionView } from "./session-view-observer.js";
 
 const capabilities = detectCapabilities();
 const themeController = new ThemeController();
@@ -356,6 +357,7 @@ function sessionConsole(session) {
     : isMsync
       ? `${formatDuration(msyncSnapshot?.positionMs ?? 0)} / ${formatDuration(msyncSnapshot?.durationMs ?? 0)}${msyncSnapshot?.resting ? " · REST" : msyncSnapshot?.active ? ` · ${msyncSnapshot.active.type} ${escapeHtml(msyncSnapshot.active.name)}` : " · IDLE"}`
     : session.spec?.mode === "time" ? `${Math.round(session.elapsedSeconds)} / ${target} seconds` : `${session.completedCycles} / ${target} repetitions`;
+  if (session.liveRun && session.spec?.mode === "reps" && [SESSION_STATES.RUNNING, SESSION_STATES.PAUSED].includes(session.state)) metric = `Estimated ${metric}`;
   if (session.state === SESSION_STATES.PAUSED) metric = `Paused · ${metric}`;
   if (session.state === SESSION_STATES.RUNNING && session.cyclePauseRemaining > 0) metric = `Resting ${Math.ceil(session.cyclePauseRemaining)}s · ${metric}`;
   const progress = Math.round((session.spec?.mode === "music" ? musicSnapshot?.progress ?? 0 : isMsync ? msyncSnapshot?.progress ?? 0 : session.progress) * 100);
@@ -366,6 +368,7 @@ function sessionConsole(session) {
     <section class="app-card session-console" aria-label="Active session">
       <div class="console-heading"><div><span class="eyebrow">SESSION</span><h2>${session.state}</h2><p>${isMsync ? "MSYNC timeline" : `${escapeHtml(drill?.name ?? "Local session")} · ${session.spec?.randomOrder ? "Random order" : "Sequential"}`}${trackLabel}</p></div><span class="simulation-pill">${isMsync ? "Timeline simulation" : session.spec?.mode === "music" ? "Local audio" : "Simulation"}</span></div>
       <strong class="session-metric">${metric}</strong>
+      ${session.recordError ? `<p role="alert" class="connection-feedback">${escapeHtml(session.recordError)}</p>` : ""}
       ${isMsync ? msyncActivity() : ""}
       ${isMsync ? `<p class="helper-text">Robot Lead ${((msyncSnapshot?.robotLeadMs ?? 1300) / 1000).toFixed(3)}s · planned robot cues are displayed only and never transmitted.</p>` : ""}
       <div class="progress-track" role="progressbar" aria-label="Session progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}"><span style="width:${progress}%"></span></div>
@@ -596,6 +599,9 @@ async function msyncView() {
 }
 
 async function trainView() {
+  // Rendering an active/finished session must not wait for library or statistics I/O.
+  const current = controller.snapshot();
+  if (current.state !== SESSION_STATES.IDLE) return `<div class="training-focus" role="region" aria-label="Training session">${sessionConsole(current)}</div>`;
   await Promise.all([refreshCustomCache(), refreshBuiltinPreferences(), refreshCalibrationProfile(), refreshMusicCache()]);
   await refreshMsyncCache();
   const session = controller.snapshot();
@@ -728,10 +734,14 @@ function roadmap() {
 
 const renderers = { train: trainView, calibration: calibrationView, music: musicView, msync: msyncView, statistics: statisticsView, sharing: sharingView, data: dataView, overview, capabilities: capabilityView, roadmap };
 
+let renderRevision = 0;
 async function render(route) {
+  const revision = ++renderRevision;
   activeRoute = route;
   document.querySelectorAll("[data-menu-route]").forEach((link) => link.toggleAttribute("aria-current", link.dataset.menuRoute === route));
-  view.innerHTML = await renderers[route]();
+  const html = await renderers[route]();
+  if (revision !== renderRevision || activeRoute !== route) return;
+  view.innerHTML = html;
   document.title = `Nova Prime · ${route[0].toUpperCase()}${route.slice(1)}`;
   bindRouteActions(route);
   closeMenu();
@@ -1394,6 +1404,11 @@ appReady = true;
 createRouter({ onRoute: (route) => void render(route) }).start();
 document.querySelector("#build-version").textContent = `v${document.querySelector('meta[name="nova-prime-version"]')?.content ?? "development"}`;
 await refreshFooter();
+
+observeSessionView(controller, {
+  render: () => render("train"),
+  isVisible: () => appReady && activeRoute === "train",
+});
 
 setInterval(() => {
   if ([SESSION_STATES.COUNTDOWN, SESSION_STATES.RUNNING].includes(controller.state)) {
