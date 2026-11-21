@@ -2,8 +2,8 @@
 import { BallStatistics } from '../src/application/ball-statistics.js';
 
 const panel=document.createElement('aside');
-panel.style.cssText='position:fixed;bottom:0;left:0;z-index:100;background:#fff8cf;color:#172b3a;border:2px solid #8a6200;padding:8px;font:12px sans-serif';
-panel.innerHTML='<strong>SIMULATED ROBOT — no hardware connection</strong> <label>Statistics test <select id="mock-statistics"><option value="normal">Normal</option><option value="error">Write error</option><option value="pending">Pending write</option></select></label> <output id="mock-packets">No drill packets</output>';
+panel.style.cssText='position:fixed;top:0;right:0;max-width:240px;z-index:100;background:#fff8cf;color:#172b3a;border:2px solid #8a6200;padding:8px;font:12px sans-serif';
+panel.innerHTML='<strong>SIMULATED ROBOT - no hardware connection</strong> <label>Statistics test <select id="mock-statistics"><option value="normal">Normal</option><option value="error">Write error</option><option value="pending">Pending write</option></select></label> <output id="mock-packets">No drill packets</output>';
 document.body.append(panel);
 const audioLabel=document.createElement('label');
 audioLabel.innerHTML=' Audio test <select id="mock-audio"><option value="normal">Normal audio</option><option value="rejected">Playback rejected</option><option value="pending">Playback pending</option></select>';

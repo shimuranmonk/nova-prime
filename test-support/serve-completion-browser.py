@@ -17,6 +17,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             body=(dist/'index.html').read_text(encoding='utf-8').replace(
                 'src="./src/app/bootstrap.js"','src="./__completion_fixture.js"').encode()
             self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.end_headers();self.wfile.write(body)
+        elif path=='/__session_controls_test.html':
+            body=(root/'test-support/session-screen-browser.html').read_bytes()
+            self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.end_headers();self.wfile.write(body)
         elif path=='/__completion_fixture.js':
             body=(root/'test-support/completion-browser-robot.js').read_text(encoding='utf-8').replace(
                 "'../src/","'./src/").encode()

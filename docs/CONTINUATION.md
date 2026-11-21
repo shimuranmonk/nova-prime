@@ -1,5 +1,13 @@
 # Nova Prime continuation memory
 
+## Update - 2026-11-22: MSYNC session controls
+
+Version `0.19.4-msync-controls.0`, branch `fix/msync-session-controls`, starts from main `d532a5c`. User confirms v0.19.3 MSYNC executes and plays, but session Pause/Stop controls do not respond: controls verification FAIL, not a complete MSYNC hardware pass. Frequent audio/MSYNC renders replaced the complete session subtree, detaching buttons during pointer interaction. Focused screen updates now preserve the control row, buttons, handlers and ancestors while updating readouts and disabled states; countdown cancellation is also retained. No transport/protocol, IndexedDB or robot flag changes.
+
+212 automated tests passed, plus six real browser DOM regression checks (held Stop across 50 readout refreshes, exactly one command, paused/terminal disabled states, countdown identity, transition rebinding). Full production bootstrap with real matching MP3 and simulated Bluetooth verified Pause, held Resume, held Stop during the active INLINE cue, return to setup and countdown cancellation, with no console warnings/errors. Existing coordinator tests verify no later cues after Stop. The browser fixture overlay was moved away from session controls; earlier fixture overlay could intercept clicks and must not be used as evidence of user-button behavior. Test-only fixtures are excluded from the 68-file verified deployment. No physical robot operated. Android MSYNC Pause/Resume/Stop and Calibration remain PENDING. Motor-power/sleep behavior remains physically unverified.
+
+Automatic dashboard return on normal completion remains out of scope; manual Stop already returns to setup. Preserve original dirty worktrees. Package `nova-prime-0.19.4-msync-controls.0-release.zip` has index.html at root, licenses and notices. Back up main before merging the verified correction.
+
 ## Update — 2026-11-22 · browser audio startup correction
 
 Version `0.19.3-audio-timers.0`, branch `fix/browser-audio-timers`, starts from main `d23389e`. Hosted v0.19.2 MSYNC stayed at 0:00/COUNTDOWN for more than 10 seconds without sound. Reproduced with the matching supplied MP3 in the full production browser bootstrap: native timer functions were called with AudioPlayer as receiver, causing Illegal invocation in watchdog cancellation and again in error cleanup. Bind both timer callbacks to globalThis. Keep the five-second watchdog and Stop protections.

@@ -1,4 +1,5 @@
 import { BallStatistics } from "../application/ball-statistics.js";
+import { updateSessionScreen } from "./session-screen.js";
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
 import { CalibrationService } from "../application/calibration/calibration-service.js";
 import { CUSTOM_GROUPS, CustomDrillService } from "../application/drills/custom-drill-service.js";
@@ -742,9 +743,10 @@ async function render(route) {
   document.querySelectorAll("[data-menu-route]").forEach((link) => link.toggleAttribute("aria-current", link.dataset.menuRoute === route));
   const html = await renderers[route]();
   if (revision !== renderRevision || activeRoute !== route) return;
-  view.innerHTML = html;
+  const updatedSession = route === "train" && updateSessionScreen(view, html);
+  if (!updatedSession) view.innerHTML = html;
   document.title = `Nova Prime · ${route[0].toUpperCase()}${route.slice(1)}`;
-  bindRouteActions(route);
+  if (!updatedSession) bindRouteActions(route);
   closeMenu();
 }
 

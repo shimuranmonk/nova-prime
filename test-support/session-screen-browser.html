@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>Session control DOM regressions</title>
+<button id="run">Run DOM regressions</button><pre id="result">Not run</pre><div id="view"></div>
+<script type="module">
+import { updateSessionScreen } from './src/app/session-screen.js';
+const view = document.querySelector('#view');
+const screen = (value, paused = false, done = false) => `<div class="training-focus"><section class="session-console"><strong>${value}</strong><div class="console-actions"><button data-command="pause" ${paused || done ? 'disabled' : ''}>Pause</button><button data-command="resume" ${!paused || done ? 'disabled' : ''}>Resume</button><button data-command="stop" ${done ? 'disabled' : ''}>Stop</button><button data-command="reset" ${done ? '' : 'disabled'}>Done</button></div></section></div>`;
+document.querySelector('#run').onclick = () => {
+  const results = [];
+  const check = (condition, name) => { if (!condition) throw Error(name); results.push(`PASS ${name}`); };
+  try {
+    view.innerHTML = screen(0);
+    const parent = view.querySelector('section'), actions = view.querySelector('.console-actions');
+    const stop = view.querySelector('[data-command="stop"]');
+    let clicks = 0, detached = false;
+    stop.addEventListener('click', () => clicks++);
+    const observer = new MutationObserver(() => {});
+    observer.observe(view, { childList: true, subtree: true });
+    stop.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    for (let i = 1; i <= 50; i++) updateSessionScreen(view, screen(i));
+    for (const record of observer.takeRecords()) for (const node of record.removedNodes) {
+      if (node === stop || node.contains?.(stop)) detached = true;
+    }
+    observer.disconnect();
+    stop.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); stop.click();
+    check(!detached && stop.isConnected && view.querySelector('section') === parent && view.querySelector('.console-actions') === actions, 'held Stop and ancestors survive 50 readout refreshes');
+    check(clicks === 1 && view.querySelector('strong').textContent === '50', 'one command with updated progress');
+    updateSessionScreen(view, screen(51, true));
+    check(view.querySelector('[data-command="pause"]').disabled && !view.querySelector('[data-command="resume"]').disabled && !stop.disabled, 'paused controls update without replacement');
+    updateSessionScreen(view, screen(52, false, true));
+    check(stop.disabled && !view.querySelector('[data-command="reset"]').disabled, 'terminal controls enable Done');
+    view.innerHTML = '<div class="training-focus"><section class="countdown-screen"><span class="eyebrow">GET READY</span><strong class="countdown-number">3</strong><button data-command="stop">Cancel start</button></section></div>';
+    const cancel = view.querySelector('button');
+    updateSessionScreen(view, '<div class="training-focus"><section class="countdown-screen"><span class="eyebrow">STARTING AUDIO</span><strong class="countdown-number">…</strong><button data-command="stop">Cancel start</button></section></div>');
+    check(view.querySelector('button') === cancel && view.querySelector('.countdown-number').textContent === '…', 'countdown Cancel survives startup updates');
+    check(!updateSessionScreen(view, screen(0)) && !updateSessionScreen(view, '<p>Dashboard</p>'), 'screen transitions request a fresh binding');
+    document.querySelector('#result').textContent = results.join('\n') + '\n6 browser DOM checks passed';
+  } catch (error) { document.querySelector('#result').textContent = results.join('\n') + '\nFAIL ' + error.message; }
+};
+</script>
