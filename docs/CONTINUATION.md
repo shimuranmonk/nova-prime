@@ -1,5 +1,9 @@
 # Nova Prime continuation memory
 
+## Update — 2026-11-21 · custom drill MSYNC copy actions
+
+v0.18.12 adds Copy as MSYNC Inline and Copy MSYNC Reference to the visual editor header toolbar, with SVG icons, accessible labels and 48px touch targets. Original Nova Plus behaviour inspected in Downloads/nova-main_inline.zip: js/editor.js and js/msync-inline-export.js. Inline uses current draft and selected level, omits disabled steps, groups variants under the same BALL number, preserves direct parameters/scatter/random, and rejects empty programs. Reference uses saved immutable Prime ID (`CUSTOM:<id>`); selected LEVEL must be supplied in the MSYNC DRILLS mapping. Clipboard failure shows selectable readonly text. 139 tests and 63-file release verification/ZIP integrity pass. Artifact: `nova-prime-0.18.12-android-package.0-release.zip`. Android clipboard test pending. Not merged or published.
+
 ## Main update requested
 
 User authorizes updating main for ongoing beta testing. README Current status, Development and Current safety boundary sections removed as requested. Calibration/MSYNC remain pending; other checks passed, with second round after both pass. Build metadata now reflects partial beta verification instead of a completed gate. Local ZIPs/builds preserved and excluded from commits.
