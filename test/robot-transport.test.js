@@ -146,3 +146,35 @@ test("executor can send an explicit priority Stop while connected but idle", asy
   assert.deepEqual(writes, [NOVA_PACKETS.stop]);
   assert.equal(executor.state, "stopped");
 });
+
+test('queued transport writes cannot cross a disconnect/reconnect boundary',async()=>{
+  let release; const hold=new Promise(r=>{release=r;}); const sent=[];let serial=0;
+  const transport=new WebBluetoothTransport({bluetooth:{requestDevice:async()=>{
+    const id=++serial;
+    const characteristic={addEventListener(){},startNotifications:async()=>{},async writeValue(bytes){sent.push({id,bytes:[...bytes]});if(id===1)await hold;}};
+    return {gatt:{connected:false,async connect(){this.connected=true;return{getPrimaryService:async()=>({getCharacteristic:async()=>characteristic})};},disconnect(){this.connected=false;}},addEventListener(){},removeEventListener(){}};
+  }}});
+  await transport.connect();const first=transport.write([129,1]);await waitTurn();
+  const queued=transport.write([129,2]);
+  const rejectedFirst=assert.rejects(first,/STALE_WRITE/), rejectedQueued=assert.rejects(queued,/STALE_WRITE/);
+  transport.disconnect();await transport.connect();release();await Promise.all([rejectedFirst,rejectedQueued]);
+  assert.deepEqual(sent,[{id:1,bytes:[129,1]}]);
+  await transport.write([128,1,0,1]);assert.equal(sent.at(-1).id,2);
+});
+
+test('executor refuses Start while priority Stop is unfinished',async()=>{
+  let release;const hold=new Promise(r=>{release=r;});const sent=[];
+  const executor=new RobotExecutor({connection:{ready:true,async write(packet){sent.push([...packet]);if(packet[0]===128)await hold;}}});
+  const stopping=executor.stop({force:true});await waitTurn();
+  await assert.rejects(()=>executor.start([129,1]),/EXECUTOR_BUSY/);
+  release();await stopping;assert.equal(executor.state,'stopped');
+  assert.deepEqual(sent,[NOVA_PACKETS.stop]);
+  await executor.start([129,2]);assert.equal(executor.state,'running');
+});
+
+test('failed Stop retries disconnect and do not claim the robot stopped',async()=>{
+  let disconnected=false;let attempts=0;
+  const executor=new RobotExecutor({connection:{ready:true,async write(){attempts++;throw Error('write failed');},disconnect(){disconnected=true;}}});
+  await assert.rejects(()=>executor.stop({force:true}),/write failed/);
+  assert.equal(attempts,2);assert.equal(disconnected,true);assert.equal(executor.state,'error');
+});

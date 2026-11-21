@@ -20,6 +20,7 @@ export class RobotExecutor {
 
   start(packet) {
     if (this.connection.ready === false) return Promise.reject(new Error("ROBOT_NOT_READY"));
+    if (["running", "stopping", "pausing"].includes(this.#state)) return Promise.reject(new Error("ROBOT_EXECUTOR_BUSY"));
     this.#epoch += 1;
     this.#tail = Promise.resolve();
     this.#priorityPromise = null;
@@ -45,7 +46,7 @@ export class RobotExecutor {
 
   stop({ force = false } = {}) {
     if (["idle", "stopped"].includes(this.#state) && !force) return Promise.resolve(Object.freeze({ status: "IGNORED", reason: "ALREADY_STOPPED" }));
-    if (this.#priorityPromise && this.#state === "stopping") return this.#priorityPromise;
+    if (this.#priorityPromise && ["stopping", "pausing"].includes(this.#state)) return this.#priorityPromise;
     return this.#priorityStop("stopped");
   }
 
@@ -88,12 +89,14 @@ export class RobotExecutor {
         try {
           recordRobotDiagnostic(this.diagnostics, "executor.stop_attempt", { epoch, attempt: attempt + 1, finalState });
           await this.connection.write(NOVA_PACKETS.stop);
+          if (epoch !== this.#epoch) return Object.freeze({ status: "CANCELLED", epoch });
           this.#state = finalState;
           recordRobotDiagnostic(this.diagnostics, "executor.stop_sent", { epoch, attempts: attempt + 1, finalState });
           return Object.freeze({ status: "SENT", epoch, attempts: attempt + 1 });
         } catch (error) { lastError = error; }
       }
-      this.#state = "error";
+      if (epoch === this.#epoch) this.#state = "error";
+      this.connection.disconnect?.();
       recordRobotDiagnostic(this.diagnostics, "executor.stop_failed", { epoch, code: lastError?.message ?? "UNKNOWN" });
       throw lastError;
     })();

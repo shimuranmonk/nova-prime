@@ -17,9 +17,14 @@ export class AudioPlayer {
   #state = "idle";
   #currentUrl = null;
   #error = null;
+  #generation = 0;
+  #watchdog = null;
+  #lastProgress = 0;
+  #lastPosition = 0;
 
-  constructor({ audio = new Audio(), urlObject = URL } = {}) {
+  constructor({ audio = new Audio(), urlObject = URL, now = () => performance.now(), setTimer = setTimeout, clearTimer = clearTimeout, stallTimeoutMs = 5000 } = {}) {
     this.#audio = audio;
+    Object.assign(this, { now, setTimer, clearTimer, stallTimeoutMs });
     this.#urlObject = urlObject;
     audio.addEventListener("timeupdate", () => this.#notify());
     audio.addEventListener("ended", () => { void this.#advance(); });
@@ -71,6 +76,7 @@ export class AudioPlayer {
 
   pause() {
     if (this.#state !== "playing") return false;
+    this.#cancelWatchdog();
     this.#audio.pause();
     this.#state = "paused";
     this.#notify();
@@ -79,18 +85,24 @@ export class AudioPlayer {
 
   async resume() {
     if (this.#state !== "paused") return false;
+    const generation = this.#generation;
+    this.#armWatchdog();
     try {
       await this.#audio.play();
+      if (generation !== this.#generation) return false;
       this.#state = "playing";
       this.#notify();
       return true;
     } catch (error) {
+      if (generation !== this.#generation) return false;
       this.#setError(playbackErrorMessage(error, "Audio playback could not resume"));
       return false;
     }
   }
 
   stop() {
+    this.#generation += 1;
+    this.#cancelWatchdog();
     this.#audio.pause();
     this.#audio.removeAttribute?.("src");
     this.#audio.load?.();
@@ -104,27 +116,33 @@ export class AudioPlayer {
   }
 
   async #playCurrent() {
+    const generation = this.#generation;
     this.#releaseUrl();
     const track = this.#queue[this.#index];
     if (!track?.audioBlob) return this.#setError("The next audio file is missing from local storage");
     this.#state = "loading";
+    this.#armWatchdog();
     this.#notify();
     try {
       this.#currentUrl = this.#urlObject.createObjectURL(track.audioBlob);
       this.#audio.src = this.#currentUrl;
       this.#audio.load?.();
       await this.#audio.play();
+      if (generation !== this.#generation) return;
       this.#state = "playing";
       this.#notify();
     } catch (error) {
+      if (generation !== this.#generation) return;
       this.#setError(playbackErrorMessage(error, "Audio playback could not start"));
       throw error;
     }
   }
 
   async #advance() {
+    if (this.#state !== "playing") return;
     this.#completed += 1;
     if (this.#completed >= this.#queue.length) {
+      this.#cancelWatchdog();
       this.#state = "completed";
       this.#releaseUrl();
       this.#notify();
@@ -136,11 +154,30 @@ export class AudioPlayer {
 
   #setError(message) {
     if (this.#state === "error") return;
+    this.#generation += 1;
+    this.#cancelWatchdog();
     this.#state = "error";
     this.#error = String(message);
     this.#audio.pause();
     this.#releaseUrl();
     this.#notify();
+  }
+
+  #cancelWatchdog() { this.clearTimer(this.#watchdog); this.#watchdog = null; }
+
+  #armWatchdog() {
+    this.#cancelWatchdog();
+    this.#lastProgress = this.now(); this.#lastPosition = this.currentTimeMs();
+    const check = () => {
+      if (!["loading", "playing"].includes(this.#state)) return;
+      const position = this.currentTimeMs();
+      if (position > this.#lastPosition) { this.#lastPosition = position; this.#lastProgress = this.now(); }
+      if (this.now() - this.#lastProgress >= this.stallTimeoutMs) {
+        this.#setError("Audio stopped progressing. Robot Stop requested; check the robot physically."); return;
+      }
+      this.#watchdog = this.setTimer(check, 1000); this.#watchdog?.unref?.();
+    };
+    this.#watchdog = this.setTimer(check, 1000); this.#watchdog?.unref?.();
   }
 
   #releaseUrl() {

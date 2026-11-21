@@ -68,6 +68,9 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   let dispatchedPrograms = 0;
   let lastMsyncEventCount = 0;
   let liveMsync = null;
+  let preparationGeneration = 0;
+  const cancelPreparation = () => { preparationGeneration += 1; };
+  const assertPreparation = (generation) => { if (generation !== preparationGeneration || !connection.ready || document.visibilityState === "hidden") throw new Error("LIVE_START_CANCELLED"); };
   const finiteCompletions = [];
 
   const updateLabels = () => {
@@ -186,6 +189,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
         safety.arm();
         status.textContent = "Connected and authenticated. No command has been sent.";
       } else if (event.snapshot.state === "disconnected") {
+        cancelPreparation();
         safety.disarm();
         if (runContext) {
           bridge.audioPlayer.stop();
@@ -209,6 +213,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     return result;
   }
   async function disconnectSafely() {
+    cancelPreparation();
     if (liveMsync) await liveMsync.stop();
     const result = await priorityStop({ force: true });
     if (result.status !== "SENT") throw new Error("PRIORITY_STOP_NOT_CONFIRMED");
@@ -261,6 +266,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   });
   stopButton.addEventListener("click", async () => {
     if (pending || !connection.ready) return;
+    cancelPreparation();
     pending = true; paint();
     try {
       if (liveMsync) await liveMsync.stop();
@@ -271,7 +277,8 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     finally { pending = false; paint(); }
   });
 
-  async function startLiveSession() {
+  async function startLiveSession(generation) {
+    assertPreparation(generation);
     if (!connection.ready) throw new Error("Connect and authenticate the robot first.");
     if (testOnly && !preflight()) throw new Error("Check both physical safety items first.");
     const mode = bridge.uiState.mode;
@@ -288,14 +295,17 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       const track = bridge.getTrackCache().find((item) => item.id === bridge.uiState.msyncTrackId);
       if (!track?.msyncAttachmentId) throw new Error("Select a track with a validated MSYNC timeline.");
       msync = await bridge.msyncService.revalidate(track.msyncAttachmentId);
+      assertPreparation(generation);
       if (!msync.valid) throw new Error(msync.validation.errors[0]?.message ?? "MSYNC validation failed.");
       if (msync.newWarnings?.length && !globalThis.confirm(`${msync.newWarnings.length} new MSYNC warnings:\n${msync.newWarnings.map(w => w.message).join("\n")}\nContinue?`)) return;
       if (msync.newWarnings?.length) await bridge.msyncService.acceptWarnings(msync.attachment.id, msync.validation.warnings);
+      assertPreparation(generation);
       spec = bridge.createSessionSpec({ mode, level: bridge.uiState.level, msyncAttachmentId: msync.attachment.id, pauseSeconds: 0 });
     } else if (mode === "music") {
       const form = new FormData(document.querySelector("#session-form"));
       bridge.uiState.playlistId = form.get("musicSource") === "quick" ? null : form.get("musicSource");
       const selection = await bridge.musicLibrary.resolve({ playlistId: bridge.uiState.playlistId, quickTrackIds: bridge.uiState.playlistId ? [] : bridge.uiState.quickTrackIds });
+      assertPreparation(generation);
       audioTracks = selection.tracks;
       spec = bridge.createSessionSpec({ mode, level: bridge.uiState.level, drillId: drill.id, randomOrder: bridge.randomOrderFor(drill), playlistId: bridge.uiState.playlistId, quickTrackIds: bridge.uiState.playlistId ? [] : bridge.uiState.quickTrackIds, pauseSeconds: 0 });
       initialPacket = encodeDrillPacket(program, { mode: "endless", amount: 1, randomOrder: spec.randomOrder });
@@ -312,14 +322,17 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (mode === "reps" && bridge.uiState.amount > 255) throw new Error("Repetitions are limited to 255 per robot command.");
     const ballCount = mode === "reps" ? countPacketBalls(initialPacket, bridge.uiState.amount) : 0;
     if (liveMsync) { await liveMsync.destroy(); liveMsync = null; }
+    assertPreparation(generation);
     const result = bridge.controller.start(spec, { countdownSeconds: mode === "msync" ? msync.validation.parsed.session.countdown : ["reps", "time"].includes(mode) ? 3 : 0, liveRun: true, ballsPlanned: ballCount });
     if (result.status !== "EXECUTED") throw new Error("A session is already active or the setup is invalid.");
     runContext = { mode, program, packet: initialPacket, audioTracks, msyncParsed: msync?.validation.parsed, sent: false, failed: false };
     status.textContent = `Live ${mode.toUpperCase()} session armed. Stop remains available above.`;
     if (mode === "music") {
       await sendProgram(program, { mode: "endless", amount: 1, randomOrder: spec.randomOrder });
+      assertPreparation(generation);
       runContext.sent = true;
       await bridge.audioPlayer.start(audioTracks);
+      assertPreparation(generation);
     } else if (mode === "msync") {
       liveMsync = new LiveMsync({ audioPlayer:bridge.audioPlayer, connection, executor,
         projection:bridge.msyncSimulator, controller:bridge.controller,
@@ -338,8 +351,10 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     event.stopImmediatePropagation();
     if (sessionStartPending) return;
     sessionStartPending = true;
-    try { await startLiveSession(); }
+    const generation = ++preparationGeneration;
+    try { await startLiveSession(generation); }
     catch (error) {
+      if (error.message === "LIVE_START_CANCELLED") return;
       if (liveMsync) await liveMsync.destroy().catch(() => {});
       status.textContent = error.message;
       log("session.start_blocked", error.message);
@@ -356,7 +371,8 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
 
   bridge.controller.subscribe((snapshot) => {
     if (!runContext || runContext.sent || runContext.failed || snapshot.state !== "RUNNING" || !["reps", "time"].includes(runContext.mode)) return;
-    runContext.sent = true;
+    const context = runContext;
+    context.sent = true;
     void (async () => {
       try {
         const options = { mode: runContext.mode === "time" ? "time" : "combos", amount: runContext.mode === "time" ? snapshot.spec.durationSeconds : snapshot.spec.repetitions, randomOrder: snapshot.spec.randomOrder };
@@ -364,10 +380,12 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
         const packet = encodeDrillPacket(runContext.program, options);
         const result = await executor.start(packet);
         if (result.status !== "SENT") throw new Error("ROBOT_PACKET_NOT_SENT");
+        if (runContext !== context || context.failed) return;
         bridge.controller.noteDispatched(countPacketBalls(packet, options.mode === "combos" ? options.amount : 1));
         if (runContext.mode === "reps") finiteCompletions.push(countPacketBalls(packet, options.amount));
         log("executor.session_sent", runContext.mode);
       } catch (error) {
+        if (runContext !== context) return;
         runContext.failed = true;
         status.textContent = `Live session start failed (${error.message}). Sending priority Stop.`;
         log("executor.session_failed", error.message);
@@ -378,24 +396,45 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   });
 
   connection.subscribe((event) => {
-    if (event?.type === "done" && finiteCompletions.length) void bridge.recordCompletedBalls(finiteCompletions.shift());
     if (event?.type === "state" && event.snapshot.state === "disconnected") finiteCompletions.length = 0;
-    if (event?.type === "done" && runContext && ["reps", "time"].includes(runContext.mode)) {
-      void (async () => {
-        try {
-          if (executor.state === "running") await priorityStop();
-          bridge.controller.complete({ completedCycles: runContext.mode === "reps" ? bridge.controller.snapshot().spec.repetitions : 0 });
-          status.textContent = "Robot reported the session sequence complete. Verify the physical result.";
-        } catch (error) { status.textContent = `Completion Stop failed (${error.message}). Use physical power if needed.`; }
-        runContext = null;
-      })();
-    }
+    const context = runContext;
+    if (event?.type !== "done" || !context || context.failed || context.completing ||
+        !["reps", "time"].includes(context.mode) || !context.sent ||
+        executor.state !== "running" || bridge.controller.state !== "RUNNING") return;
+    context.completing = true;
+    const completedBalls = finiteCompletions.shift();
+    void (async () => {
+      try {
+        await priorityStop();
+        if (runContext !== context) return;
+        if (completedBalls) await bridge.recordCompletedBalls(completedBalls);
+        bridge.controller.complete({ completedCycles: context.mode === "reps" ? bridge.controller.snapshot().spec.repetitions : 0 });
+        status.textContent = "Sequence completion reported; Stop written. Motor power is not measured.";
+      } catch (error) { status.textContent = `Completion Stop failed (${error.message}). Use physical power.`; }
+      if (runContext === context) runContext = null;
+    })();
   });
+
+  async function failLiveSession(code) {
+    const context = runContext;
+    if (!context || context.failed) return;
+    context.failed = true; cancelPreparation();
+    bridge.audioPlayer.stop();
+    try {
+      if (liveMsync) await liveMsync.stop();
+      await priorityStop({ force: true });
+      status.textContent = `${code}. Stop written; verify the robot is stationary.`;
+    } catch (error) { status.textContent = `${code}. Stop failed (${error.message}); switch off physical power.`; }
+    if (!["IDLE", "COMPLETED"].includes(bridge.controller.state)) bridge.controller.fail(code);
+    if (runContext === context) runContext = null;
+    paint();
+  }
 
   let priorAudioState = bridge.audioPlayer.snapshot().state;
   bridge.audioPlayer.subscribe((snapshot) => {
     const previous = priorAudioState;
     priorAudioState = snapshot.state;
+    if (runContext && snapshot.state === "error" && previous !== "error") { void failLiveSession("AUDIO_PLAYBACK_FAILED"); return; }
     if (runContext?.mode === "music" && snapshot.state === "completed" && previous !== "completed") {
       void sendStopAndReset().then(() => { status.textContent = "Music finished; robot Stop sent."; runContext = null; }).catch((error) => { status.textContent = `Music ended but Stop failed (${error.message}). Use physical power.`; });
     }
@@ -406,6 +445,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
 
   globalThis.NOVA_PRIME_LIVE_COMMAND = async (command) => {
     if (command === "stop") {
+      cancelPreparation();
       if (liveMsync) await liveMsync.stop();
       await sendStopAndReset();
       if (bridge.controller.state !== "IDLE" && bridge.controller.state !== "COMPLETED") bridge.controller.stop();
@@ -445,6 +485,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       return result;
     }
     if (command === "reset") {
+      cancelPreparation();
       if (liveMsync) { await liveMsync.destroy(); liveMsync = null; }
       if (["COMPLETED", "ERROR"].includes(bridge.controller.state)) {
         if (["stopped", "error"].includes(executor.state)) executor.reset();
@@ -459,10 +500,11 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   };
   if (testOnly) globalThis.NOVA_PRIME_FULL_TEST_COMMAND = globalThis.NOVA_PRIME_LIVE_COMMAND;
 
-  window.addEventListener("pagehide", () => { void liveMsync?.stop(); runContext = null; });
+  window.addEventListener("pagehide", () => { cancelPreparation(); void liveMsync?.stop()?.catch(() => {}); runContext = null; });
   document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") cancelPreparation();
     if (document.visibilityState === "hidden" && runContext) {
-      void liveMsync?.stop();
+      void liveMsync?.stop()?.catch(() => {});
       status.textContent = "Page hidden: priority Stop requested. Returning will not resume automatically.";
       bridge.controller.stop();
       runContext = null;
