@@ -1,6 +1,6 @@
 {
   "name": "nova-prime",
-  "version": "0.19.4-msync-controls.0",
+  "version": "0.19.4-live-calibration-test.0",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",

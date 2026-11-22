@@ -120,6 +120,11 @@ const calibrationWizard = createCalibrationWizard({
   dialog: calibrationDialog,
   root: calibrationRoot,
   service: calibrationService,
+  onFire: (ball) => {
+    if (!globalThis.NOVA_PRIME_CALIBRATION_FIRE) throw new Error("Calibration firing is unavailable in this build.");
+    return globalThis.NOVA_PRIME_CALIBRATION_FIRE(ball);
+  },
+  onStop: () => executeSessionCommand("stop"),
   onSaved: async (saved, quick) => {
     calibrationProfile = saved;
     calibrationMessage = quick ? "Quick Check saved." : "Calibration saved and visual previews updated.";
@@ -246,7 +251,7 @@ audioPlayer.subscribe((snapshot) => {
   const activeMode = controller.snapshot().spec?.mode;
   const activeMusic = activeMode === "music";
   const activeMsync = activeMode === "msync";
-  if (snapshot.state === "completed" && previousState !== "completed" && activeMusic) {
+  if (snapshot.state === "completed" && previousState !== "completed" && activeMusic && !controller.snapshot().liveRun) {
     controller.complete({ completedCycles: snapshot.completedTracks });
   }
   if (snapshot.state === "error" && previousState !== "error" && activeMusic) {
@@ -260,7 +265,7 @@ audioPlayer.subscribe((snapshot) => {
     msyncSimulator.stop();
     controller.fail("MSYNC_AUDIO_PLAYBACK_FAILED");
   }
-  if (appReady && ["train", "music", "msync"].includes(activeRoute)) void render(activeRoute);
+  if (appReady && ["train", "music"].includes(activeRoute)) void render(activeRoute);
 });
 
 msyncSimulator.subscribe((snapshot) => {
@@ -334,8 +339,8 @@ function calibrationSettingsCard() {
   const quick = profile?.quickCheck;
   return `
     <section class="app-card calibration-settings-card" aria-labelledby="calibration-title">
-      <div class="section-heading"><div><h2 id="calibration-title">Calibration profile</h2><p>${profile ? `${escapeHtml(profile.name)} · accuracy ±${profile.accuracy} cm` : "Not calibrated · guided setup ready"}</p></div></div>
-      ${profile ? `<dl class="calibration-parameters"><div><dt>Method</dt><dd>${escapeHtml(profile.mode)}</dd></div><div><dt>Observations</dt><dd>${profile.observations.length}</dd></div><div><dt>Accuracy</dt><dd>±${profile.accuracy} cm</dd></div>${profile.scatterEstimate == null ? "" : `<div><dt>Scatter estimate</dt><dd>${profile.scatterEstimate} cm</dd></div>`}${quick ? `<div><dt>Quick Check</dt><dd>${quick.meanErrorCm} cm mean error</dd></div>` : ""}</dl>` : `<p class="calibration-guidance">Record observed landings to create a local profile. Calibration does not enable Bluetooth or send robot commands.</p>`}
+      <div class="section-heading"><div><h2 id="calibration-title">Calibration profile</h2><p>${profile ? `${escapeHtml(profile.name)} · ${profile.physicsModel ? "fit error " : "accuracy ±"}${profile.accuracy} cm` : "Not calibrated · guided setup ready"}</p></div></div>
+      ${profile ? `<dl class="calibration-parameters"><div><dt>Method</dt><dd>${escapeHtml(profile.mode)}</dd></div><div><dt>Observations</dt><dd>${profile.observations.length}</dd></div><div><dt>${profile.physicsModel ? "Fit error" : "Accuracy"}</dt><dd>${profile.physicsModel ? "" : "±"}${profile.accuracy} cm</dd></div>${profile.scatterEstimate == null ? "" : `<div><dt>Scatter estimate</dt><dd>${profile.scatterEstimate} cm</dd></div>`}${quick ? `<div><dt>Quick Check</dt><dd>${quick.landedCount ? `${quick.meanErrorCm} cm mean error` : "No comparable landings"}</dd></div>` : ""}</dl>` : `<p class="calibration-guidance">Record observed landings to create a local profile. Connect your Nova S Pro to fire calibration shots.</p>`}
       <div class="calibration-settings-actions">${profile ? `<button class="outline-button" type="button" data-calibration-quick>Quick Check</button><button class="outline-button" type="button" data-calibration-open>Recalibrate</button><button class="outline-button" type="button" data-calibration-export>Export profile</button>` : `<button class="outline-button" type="button" data-calibration-open>Calibrate</button>`}<label class="outline-button calibration-import">Import profile<input data-calibration-import type="file" accept="application/json,.json"></label></div>
       ${calibrationMessage ? `<p class="calibration-message" role="status">${escapeHtml(calibrationMessage)}</p>` : ""}
     </section>`;
@@ -594,7 +599,7 @@ async function msyncView() {
   const trackOptions = trackCache.map((track) => `<option value="${escapeHtml(track.id)}">${escapeHtml(track.displayName)} · ${formatDuration(track.durationMs)}</option>`).join("");
   return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">FROZEN FORMAT V1</span><h1>MSYNC timelines</h1><p>Validate a timeline against its exact local audio file, then ${FEATURE_FLAGS.robot ? "run synchronized cues on the connected robot" : "simulate synchronized cues"}. Nova Prime never repairs a file silently.${FEATURE_FLAGS.robot ? " Validated cues can command a connected Nova S Pro." : " No robot commands are sent."}</p></div>
     ${storageNotice ? `<div class="notice" role="alert">${escapeHtml(storageNotice)}</div>` : ""}
-    <section class="app-card msync-import-card"><div><h2>Validate and attach</h2><p>The selected track’s SHA-256 identity and measured duration must match the MSYNC file.</p></div><form id="msync-import-form"><label><span>Audio track</span><select name="trackId" required>${trackOptions || '<option value="">Import audio in Music first</option>'}</select></label><label class="file-button">Choose MSYNC<input name="msyncFile" type="file" accept=".ini,.msync,text/plain" required></label><button class="primary-button" type="submit" ${trackCache.length ? "" : "disabled"}>Validate and attach</button></form></section>
+    <section class="app-card msync-import-card"><div><h2>Validate and attach</h2><p>The selected track’s SHA-256 identity and measured duration must match the MSYNC file.</p></div><form id="msync-import-form"><label><span>Audio track</span><select name="trackId" required>${trackOptions || '<option value="">Import audio in Music first</option>'}</select></label><label><span>Choose MSYNC (.ini or .msync)</span><input name="msyncFile" type="file" required></label><button class="primary-button" type="submit" ${trackCache.length ? "" : "disabled"}>Validate and attach</button></form></section>
     ${msyncMessage ? `<p class="notice music-notice" role="status">${escapeHtml(msyncMessage)}</p>` : ""}
     ${msyncIssueList()}
     <section class="msync-list" aria-label="Validated MSYNC timelines">${attachments || '<div class="app-card empty-library"><strong>No validated timeline yet</strong><span>Import audio in Music, then attach its matching MSYNC v1 file here.</span></div>'}</section>`;
@@ -613,7 +618,7 @@ async function trainView() {
 
 async function calibrationView() {
   await refreshCalibrationProfile();
-  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">SETTINGS</span><h1>Calibration</h1><p>Review calibration parameters, run a guided setup or Quick Check, and manage profiles. These tools record observations locally and do not send robot commands.</p></div>${calibrationSettingsCard()}`;
+  return `<div class="page-heading"><a href="#train" class="back-link">← Training</a><span class="eyebrow">SETTINGS</span><h1>Calibration</h1><p>Review calibration parameters, run a guided setup or Quick Check, and manage profiles. Connect your Nova S Pro and fire each calibration shot from the wizard.</p></div>${calibrationSettingsCard()}`;
 }
 
 async function dataView() {
@@ -1044,7 +1049,7 @@ function bindRouteActions(route) {
         try {
           const selection = await musicLibrary.resolve({ playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds });
           const spec = createSessionSpec({ mode: "music", level: uiState.level, drillId: uiState.drillId, randomOrder: randomOrderFor(resolveDrill(uiState.drillId)), playlistId: uiState.playlistId, quickTrackIds: uiState.playlistId ? [] : uiState.quickTrackIds, pauseSeconds: 0 });
-          const result = controller.start(spec, { countdownSeconds: 0 });
+          const result = controller.start(spec, { countdownSeconds: SESSION_START_COUNTDOWN_SECONDS });
           if (result.status !== "EXECUTED") throw new Error("Music session could not start");
           musicMessage = `Playing ${selection.label}.`;
           await audioPlayer.start(selection.tracks);
@@ -1085,7 +1090,7 @@ function bindRouteActions(route) {
     document.querySelector("#msync-import-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
-      const file = form.get("msyncFile");
+      const file = event.currentTarget.elements.msyncFile.files[0];
       try {
         const checked = await msyncService.validateFile(file, form.get("trackId"));
         let accepted = false;
@@ -1411,6 +1416,15 @@ await refreshFooter();
 observeSessionView(controller, {
   render: () => render("train"),
   isVisible: () => appReady && activeRoute === "train",
+});
+
+controller.subscribe(({ state, spec }) => {
+  if (state !== SESSION_STATES.COMPLETED) return;
+  queueMicrotask(async () => {
+    if (controller.state !== SESSION_STATES.COMPLETED || controller.snapshot().spec !== spec) return;
+    await executeSessionCommand("reset");
+    if (activeRoute === "train") void render("train");
+  });
 });
 
 setInterval(() => {

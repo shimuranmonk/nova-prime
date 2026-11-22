@@ -1,5 +1,10 @@
 # Current verification status
 
+## Android status before adaptive Calibration
+
+The maintainer reports that the other features are functioning as designed, with a third test round pending. Earlier Android checks confirmed MSYNC attachment and the normal completion, Time, and Music timing fixes. The five-shot Calibration run produced two confirmed landings, two long shots, and one shot with a bounce on the robot half before reaching the player half. Adaptive Calibration and its Visual Editor predictions await physical testing. The complete physical release gate is NOT PASSED.
+
+
 ## Update - 2026-11-22: MSYNC session controls
 
 Version `0.19.4-msync-controls.0`, branch `fix/msync-session-controls`, starts from main `d532a5c`. User confirms v0.19.3 MSYNC executes and plays, but session Pause/Stop controls do not respond: controls verification FAIL, not a complete MSYNC hardware pass. Frequent audio/MSYNC renders replaced the complete session subtree, detaching buttons during pointer interaction. Focused screen updates now preserve the control row, buttons, handlers and ancestors while updating readouts and disabled states; countdown cancellation is also retained. No transport/protocol, IndexedDB or robot flag changes.

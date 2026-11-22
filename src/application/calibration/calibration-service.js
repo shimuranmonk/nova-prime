@@ -1,3 +1,4 @@
+import { CENTERED_SETUP, landingError } from "../../domain/calibration/trainer-physics.js";
 import { calculateCalibration, summarizeQuickCheck } from "../../domain/calibration/calculation.js";
 import { CALIBRATION_SCHEMA_VERSION, createCalibrationProfile, validateCalibrationProfile } from "../../domain/calibration/schema.js";
 import { createId } from "../../domain/shared/id.js";
@@ -21,8 +22,13 @@ export class CalibrationService {
     return (await this.list()).find((profile) => profile.status === "complete") ?? null;
   }
 
-  async save({ id = null, name, mode, tableSetup, observations }) {
-    const derived = calculateCalibration(observations);
+  async save({ id = null, name, mode, tableSetup, observations, physicsParameters = null }) {
+    const derived = physicsParameters ? null : calculateCalibration(observations);
+    const landed = physicsParameters ? observations.filter(entry => entry.outcome === "landed") : [];
+    if (physicsParameters && landed.length < 3) throw new Error("Record at least three measured landings before saving");
+    const fit = physicsParameters ? landingError(physicsParameters, landed.map(entry => ({
+      ball: entry.ball, result: "ok", x: entry.actual.xCm, y: entry.actual.yCm,
+    })), CENTERED_SETUP) : null;
     const previous = id ? await this.store.get("calibrations", id) : null;
     const timestamp = this.now();
     const profile = createCalibrationProfile({
@@ -32,10 +38,12 @@ export class CalibrationService {
       mode,
       status: "complete",
       tableSetup: { standardTable: true, robotPosition: tableSetup.robotPosition, headOffset: Number(tableSetup.headOffset) || 0, ballNotes: String(tableSetup.ballNotes || "").trim().slice(0, 160) },
-      modelParameters: derived.modelParameters,
+      ...(derived ? { modelParameters: derived.modelParameters } : {
+        physicsModel: { kind: "trainer-v1", parameters: clone(physicsParameters) },
+      }),
       observations: clone(observations),
-      scatterEstimate: derived.scatterEstimate,
-      accuracy: derived.accuracy,
+      scatterEstimate: derived?.scatterEstimate ?? null,
+      accuracy: derived?.accuracy ?? Math.round(fit.meanErrorCm),
       quickCheck: null,
       createdAt: previous?.createdAt ?? timestamp,
       updatedAt: timestamp,

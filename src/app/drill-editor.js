@@ -1,6 +1,6 @@
 import { createMsyncInlineBlock, createMsyncReference } from "../domain/msync/inline-export.js";
 import { createBall, createStep, DRILL_STEP_LIMIT, isServeBall, spinLimitForSpeed } from "../domain/drills/schema.js";
-import { applyCalibration, fitBallToTarget, previewBall, previewPosition, tablePointFromPosition } from "../domain/drills/preview.js";
+import { fitBallToTarget, previewCalibratedBall, previewPosition, tablePointFromPosition } from "../domain/drills/preview.js";
 import { validateDrill } from "../domain/drills/validation.js";
 import { createId } from "../domain/shared/id.js";
 
@@ -72,7 +72,8 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   let placementMessage = "";
   let copyMessage = "";
   let copyFallback = "";
-  const ballPreview = (ball) => applyCalibration(previewBall(ball, draft.robotPosition), calibration, ball);
+  const placementProfile = () => calibration?.physicsModel && draft.robotPosition !== "middle" ? null : calibration;
+  const ballPreview = (ball) => previewCalibratedBall(ball, draft.robotPosition, calibration);
 
   const currentProgram = () => draft?.programs?.[level] ?? null;
   const currentStep = () => currentProgram()?.steps.find((step) => step.id === activeStepId) ?? currentProgram()?.steps[0] ?? null;
@@ -117,7 +118,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     const depth = point.yCm < 46 ? "Deep" : point.yCm > 91 ? "Short" : "Half-long";
     return `
       <section class="preview-panel" aria-labelledby="preview-title">
-        <div class="editor-section-heading"><div><span class="eyebrow">${calibration ? "CALIBRATED PLACEMENT" : "ESTIMATED PLACEMENT"}</span><h3 id="preview-title">Aim on the table</h3></div><span class="preview-key"><i></i> Top <i class="back"></i> Back</span></div>
+        <div class="editor-section-heading"><div><span class="eyebrow">${placementProfile() ? "CALIBRATED PLACEMENT" : "ESTIMATED PLACEMENT"}</span><h3 id="preview-title">Aim on the table</h3></div><span class="preview-key"><i></i> Top <i class="back"></i> Back</span></div>
         <div class="robot-position-selector" role="group" aria-label="Robot position">${["left", "middle", "right"].map((position) => `<button type="button" data-robot-position="${position}" class="${draft.robotPosition === position ? "selected" : ""}" aria-pressed="${draft.robotPosition === position}">${position[0].toUpperCase() + position.slice(1)}</button>`).join("")}</div>
         <div class="table-stage">
           <div class="table-ruler-y" aria-hidden="true"><span style="bottom:0">0</span><span style="bottom:10.95%">30</span><span style="bottom:21.9%">60</span><span style="bottom:32.85%">90</span><span style="bottom:43.8%">120</span><strong class="placement-coordinate-value coordinate-y" style="top:${requested.y}%">${point.yCm.toFixed(0)}</strong></div>
@@ -136,7 +137,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
           <label class="height-adjuster"><span>Height</span><input type="range" min="-50" max="100" step="1" value="${selectedStep.variants[selectedVariant].height}" data-ball-field="height"><output>${selectedStep.variants[selectedVariant].height}</output></label>
         </div>
         <div class="placement-readout"><strong>${depth} · ${side}</strong><span>${Math.abs(point.xCm).toFixed(0)} cm ${point.xCm < -1 ? "left" : point.xCm > 1 ? "right" : "centre"} · ${point.yCm.toFixed(0)} cm from player end</span></div>
-        <p class="helper-text">${escapeHtml(placementMessage || (calibration ? `Adjusted with ${calibration.name} · accuracy ±${calibration.accuracy} cm. Dragging changes Speed and Drop only.` : "Drag the selected ball or tap a target. Height, spin, BPM, repeats, and scatter stay unchanged."))}</p>
+        <p class="helper-text">${escapeHtml(placementMessage || (placementProfile() ? `Adjusted with ${calibration.name} · fit error ${calibration.accuracy} cm. Dragging changes Speed and Drop only.` : "Drag the selected ball or tap a target. Height, spin, BPM, repeats, and scatter stay unchanged."))}</p>
       </section>`;
   }
 

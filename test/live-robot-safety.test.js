@@ -44,7 +44,7 @@ test('successful Stop cancels future firing for thirty virtual minutes',async()=
   const n=f.programs().length;await f.c.advance(1800000);assert.equal(f.programs().length,n);assert.equal(f.controller.state,'IDLE');
 });
 
-for (const mode of ['reps','time']) {
+for (const mode of ['reps']) {
   test(`${mode} lost completion notification triggers deadline Stop`,async()=>{
     const f=fixture(mode);await f.connect();await f.start();await f.c.advance(7000);
     assert.equal(f.controller.state,'ERROR');assert.ok(f.stops().length);
@@ -150,3 +150,38 @@ for(const mode of ['music','msync']) {
     release(await original());await starting;assert.equal(f.programs().length,0);assert.equal(f.header.dataset.connected,'false');
   });
 }
+
+test('Time stops at the configured duration without waiting for DONE', async () => {
+  const f = fixture('time');
+  globalThis.FormData = class { get(key) { return key === 'amount' ? '10' : '0'; } };
+  await f.connect();
+  await f.start();
+  await f.c.advance(9999);
+  assert.equal(f.controller.state, 'RUNNING');
+  assert.equal(f.stops().length, 0);
+  await f.c.advance(1);
+  assert.equal(f.controller.state, 'COMPLETED');
+  assert.equal(f.stops().length, 1);
+  await f.done();
+  await f.c.advance(5000);
+  assert.equal(f.stops().length, 1);
+});
+
+test('Music plays during countdown and dispatches only after it expires', async () => {
+  const f = fixture('music');
+  await f.connect();
+  await f.doc.emit('submit', {
+    target: { matches: selector => selector === '#session-form' },
+    preventDefault() {},
+    stopImmediatePropagation() {},
+  });
+  assert.equal(f.audio.snapshot().state, 'playing');
+  assert.equal(f.controller.state, 'COUNTDOWN');
+  assert.equal(f.programs().length, 0);
+  f.controller.tick(2);
+  await flush();
+  assert.equal(f.programs().length, 0);
+  f.controller.tick(1);
+  await flush();
+  assert.equal(f.programs().length, 1);
+});

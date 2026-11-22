@@ -1,3 +1,4 @@
+import { BALL_LIMITS, BALL_TYPES, spinLimitForSpeed } from "../domain/drills/schema.js";
 import { LiveMsync } from "../application/msync/live-msync.js";
 import { NovaRobotConnection } from "../application/robot/nova-robot-connection.js";
 import { RobotDiagnostics } from "../application/robot/robot-diagnostics.js";
@@ -69,24 +70,28 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   const diagnosticsList = panel.querySelector("#full-test-diagnostics");
   let pending = false;
   let runContext = null;
-  let dispatchedPrograms = 0;
   let lastMsyncEventCount = 0;
   let liveMsync = null;
   let preparationGeneration = 0;
   let sessionStartPending = false;
-  const cancelPreparation = () => { preparationGeneration += 1; sessionStartPending = false; };
+  let calibrationShot = null;
+  const cancelPreparation = () => {
+    preparationGeneration += 1;
+    sessionStartPending = false;
+    calibrationShot?.resolve("cancelled");
+  };
   const assertPreparation = (generation) => { if (generation !== preparationGeneration || !connection.ready || document.visibilityState === "hidden") throw new Error("LIVE_START_CANCELLED"); };
   const finiteCompletions = [];
   let idleTimer = null;
   let completionTimer = null;
   const clearCompletionDeadline = () => { clearTimeout(completionTimer); completionTimer = null; };
   function refreshIdleGuard() {
-    const active = ["RUNNING", "COUNTDOWN"].includes(bridge.controller.state);
+    const active = calibrationShot || ["RUNNING", "COUNTDOWN"].includes(bridge.controller.state);
     if (!connection.ready || active) { clearTimeout(idleTimer); idleTimer = null; return; }
     if (idleTimer !== null) return;
     idleTimer = setTimeout(() => {
       idleTimer = null;
-      if (!connection.ready || ["RUNNING", "COUNTDOWN"].includes(bridge.controller.state)) return;
+      if (!connection.ready || calibrationShot || ["RUNNING", "COUNTDOWN"].includes(bridge.controller.state)) return;
       void disconnectSafely().then(() => {
         status.textContent = "Disconnected after two minutes without active training. Motor power is unverified; switch off when unused.";
         paint();
@@ -106,6 +111,12 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   function armCompletionDeadline(context, packet) {
     clearCompletionDeadline();
     const expectedMs = expectedPacketDuration(packet, context.mode);
+    if (context.mode === "time") {
+      completionTimer = setTimeout(() => {
+        if (runContext === context && bridge.controller.state === "RUNNING") void finishLiveSession(context);
+      }, expectedMs);
+      return;
+    }
     // Duration estimates are watchdog bounds, never grounds for discarding DONE.
     const configuredPause = bridge.controller.snapshot().spec?.pauseSeconds || 0;
     const allowanceMs = Math.max(5000, expectedMs * 0.2) + configuredPause * 1000 * packet[4];
@@ -174,18 +185,10 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (helper?.textContent.includes("Sends no robot commands")) helper.textContent = helper.textContent.replace("Sends no robot commands and records zero dispatched balls.", "Live robot commands are enabled in this isolated test build. Confirm the area is clear before every session.");
     const sessionHelper = document.querySelector("#route-view .session-console .helper-text");
     if (sessionHelper?.textContent.includes("never transmitted")) sessionHelper.textContent = sessionHelper.textContent.replace("planned robot cues are displayed only and never transmitted.", "validated robot cues are transmitted in this physical test build.");
-    const calibrationIntro = document.querySelector("#route-view .page-heading h1");
-    if (calibrationIntro?.textContent === "Calibration") {
-      const description = calibrationIntro.parentElement.querySelector("p");
-      if (description) description.textContent = "Calibration profiles and observed landings remain available. Robot-powered calibration shots are not included in this test build.";
-    }
-    const calibrationGuidance = document.querySelector("#route-view .calibration-guidance");
-    if (calibrationGuidance) calibrationGuidance.textContent = "Record observed landings to create a local profile. This test build does not fire calibration balls automatically.";
     for (const paragraph of document.querySelectorAll("#route-view p")) {
       if (paragraph.textContent.includes("sends no robot commands in this release")) paragraph.textContent = "Validated timelines can send robot cues in this isolated physical-test build; production main remains gated.";
       else if (paragraph.textContent.includes("simulate cues with adjustable Robot Lead without transport")) paragraph.textContent = "Validate exact audio identity and test scheduled cues with adjustable Robot Lead on the connected robot.";
       else if (paragraph.textContent.includes("available in simulation.")) paragraph.textContent = paragraph.textContent.replace("available in simulation.", "available in the isolated physical-test build.");
-      else if (paragraph.textContent.includes("without robot commands.")) paragraph.textContent = paragraph.textContent.replace("without robot commands.", "using observed landings; automated robot calibration shots are not included.");
       else if (paragraph.textContent.includes("Bluetooth stays off until physical tests pass.")) paragraph.textContent = "Production Bluetooth remains gated; live controls are active only in this isolated test copy.";
     }
     const buildVersion = document.querySelector("#build-version");
@@ -275,19 +278,6 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     executor.reset();
     connection.disconnect();
   }
-  async function sendProgram(program, options = {}) {
-    if (!connection.ready || !program?.steps?.length) throw new Error("ROBOT_NOT_READY_OR_PROGRAM_EMPTY");
-    const packet = encodeDrillPacket(program, options);
-    const result = ["idle", "stopped", "error"].includes(executor.state)
-      ? await executor.start(packet)
-      : await executor.enqueue(packet);
-    if (result.status !== "SENT") throw new Error("ROBOT_PACKET_NOT_SENT");
-    bridge.controller.noteDispatched(countPacketBalls(packet, options.mode === "combos" ? options.amount : 1));
-    if (options.mode === "combos") finiteCompletions.push(countPacketBalls(packet, options.amount));
-    dispatchedPrograms += 1;
-    log("executor.program_sent", `programs=${dispatchedPrograms}`);
-    return result;
-  }
   async function sendStopAndReset() {
     clearCompletionDeadline();
     finiteCompletions.length = 0;
@@ -345,7 +335,6 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     const program = bridge.programForDrill(drill);
     if (mode !== "msync" && !program) throw new Error("Select a drill before starting.");
     if (testOnly && !globalThis.confirm(`This is a LIVE physical robot session (${mode.toUpperCase()}). Balls may launch. Keep the area clear and physical power within reach. Continue?`)) return;
-    dispatchedPrograms = 0;
     let spec;
     let initialPacket = null;
     let audioTracks = null;
@@ -382,14 +371,11 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     const ballCount = mode === "reps" ? countPacketBalls(initialPacket, bridge.uiState.amount) : 0;
     if (liveMsync) { await liveMsync.destroy(); liveMsync = null; }
     assertPreparation(generation);
-    const result = bridge.controller.start(spec, { countdownSeconds: mode === "msync" ? msync.validation.parsed.session.countdown : ["reps", "time"].includes(mode) ? 3 : 0, liveRun: true, ballsPlanned: ballCount });
+    const result = bridge.controller.start(spec, { countdownSeconds: mode === "msync" ? msync.validation.parsed.session.countdown : 3, liveRun: true, ballsPlanned: ballCount });
     if (result.status !== "EXECUTED") throw new Error("A session is already active or the setup is invalid.");
-    runContext = { mode, program, packet: initialPacket, audioTracks, msyncParsed: msync?.validation.parsed, sent: false, failed: false };
+    runContext = { mode, program, packet: initialPacket, generation, sent: false, failed: false };
     status.textContent = `Live ${mode.toUpperCase()} session armed. Stop remains available above.`;
     if (mode === "music") {
-      await sendProgram(program, { mode: "endless", amount: 1, randomOrder: spec.randomOrder });
-      assertPreparation(generation);
-      runContext.sent = true;
       await bridge.audioPlayer.start(audioTracks);
       assertPreparation(generation);
     } else if (mode === "msync") {
@@ -407,7 +393,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (!(testOnly ? globalThis.NOVA_PRIME_FULL_TEST_BUILD : true) || !event.target.matches("#session-form")) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (sessionStartPending) return;
+    if (sessionStartPending || calibrationShot) return;
     sessionStartPending = true;
     const generation = ++preparationGeneration;
     try { await startLiveSession(generation); }
@@ -427,70 +413,73 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     } finally { if (generation === preparationGeneration) sessionStartPending = false; paint(); }
   }, true);
 
-  bridge.controller.subscribe((snapshot) => {
-    refreshIdleGuard();
-    if (!runContext || runContext.sent || runContext.failed || snapshot.state !== "RUNNING" || !["reps", "time"].includes(runContext.mode)) return;
+  function dispatchReadySession(snapshot) {
     const context = runContext;
+    if (!context || context.generation !== preparationGeneration || context.sent || context.failed || context.completing ||
+        snapshot.state !== "RUNNING" || context.mode === "msync") return;
+    if (context.mode === "music" && bridge.audioPlayer.snapshot().state !== "playing") return;
     context.sent = true;
-    context.awaitingDone = false;
+    const packet = context.packet;
     void (async () => {
       try {
-        const options = { mode: runContext.mode === "time" ? "time" : "combos", amount: runContext.mode === "time" ? snapshot.spec.durationSeconds : snapshot.spec.repetitions, randomOrder: snapshot.spec.randomOrder };
-        if (options.amount > 255) throw new Error("Robot packet count exceeds this firmware profile’s tested limit (255).");
-        const packet = encodeDrillPacket(runContext.program, options);
         const result = await executor.start(packet);
+        if (runContext !== context || context.failed || context.completing) return;
         if (result.status !== "SENT") throw new Error("ROBOT_PACKET_NOT_SENT");
-        if (runContext !== context || context.failed) return;
-        context.awaitingDone = true;
-        armCompletionDeadline(context, packet);
-        bridge.controller.noteDispatched(countPacketBalls(packet, options.mode === "combos" ? options.amount : 1));
-        if (runContext.mode === "reps") finiteCompletions.push(countPacketBalls(packet, options.amount));
-        log("executor.session_sent", runContext.mode);
+        if (context.mode !== "music") armCompletionDeadline(context, packet);
+        if (context.mode === "reps") {
+          context.awaitingDone = true;
+          finiteCompletions.push(countPacketBalls(packet, snapshot.spec.repetitions));
+        }
+        bridge.controller.noteDispatched(countPacketBalls(packet, context.mode === "reps" ? snapshot.spec.repetitions : 1));
+        log("executor.session_sent", context.mode);
       } catch (error) {
-        if (runContext !== context) return;
-        runContext.failed = true;
-        status.textContent = `Live session start failed (${error.message}). Sending priority Stop.`;
-        log("executor.session_failed", error.message);
-        await priorityStop({ force: true }).catch(() => {});
-        bridge.controller.fail("LIVE_COMMAND_FAILED");
+        if (runContext === context && !context.completing) await failLiveSession(error.message || "LIVE_COMMAND_FAILED");
       }
     })();
+  }
+
+  bridge.controller.subscribe((snapshot) => {
+    refreshIdleGuard();
+    dispatchReadySession(snapshot);
   });
+
+  async function finishLiveSession(context, completedTracks = 0) {
+    if (runContext !== context || context.failed || context.completing) return;
+    context.completing = true;
+    const completedBalls = context.mode === "reps" ? finiteCompletions.shift() : 0;
+    try { await sendStopAndReset(); }
+    catch (error) {
+      if (runContext === context) {
+        bridge.controller.fail("COMPLETION_STOP_FAILED");
+        runContext = null;
+      }
+      status.textContent = `Completion Stop failed (${error.message}). Use physical power.`;
+      paint();
+      return;
+    }
+    if (runContext !== context || context.failed) return;
+    const completedCycles = context.mode === "reps" ? bridge.controller.snapshot().spec.repetitions : completedTracks;
+    runContext = null;
+    bridge.controller.complete({ completedCycles });
+    status.textContent = "Training completed; Stop written. Motor power is not measured.";
+    paint();
+    if (completedBalls) {
+      Promise.resolve().then(() => bridge.recordCompletedBalls(completedBalls)).catch(error => {
+        log("statistics.save_failed", error.message);
+        status.textContent = `Training completed, but statistics could not be saved (${error.message}). Robot Stop was written; motor power is unverified.`;
+        paint();
+      });
+    }
+  }
 
   connection.subscribe((event) => {
     if (event?.type === "state" && event.snapshot.state === "disconnected") finiteCompletions.length = 0;
+    if (event?.type === "done") calibrationShot?.resolve("done");
     const context = runContext;
-    if (event?.type !== "done" || !context || context.failed || context.completing ||
-        !["reps", "time"].includes(context.mode) || !context.sent || !context.awaitingDone ||
-        executor.state !== "running" || bridge.controller.state !== "RUNNING") return;
-    context.completing = true;
-    context.awaitingDone = false;
-    clearCompletionDeadline();
-    const completedBalls = finiteCompletions.shift();
-    void (async () => {
-      try { await priorityStop(); }
-      catch (error) {
-        if (runContext === context) {
-          bridge.controller.fail("COMPLETION_STOP_FAILED");
-          runContext = null;
-        }
-        status.textContent = `Completion Stop failed (${error.message}). Use physical power.`;
-        paint(); return;
-      }
-      if (runContext !== context) return;
-      // The robot lifecycle completes before non-critical statistics persistence.
-      bridge.controller.complete({ completedCycles: context.mode === "reps" ? bridge.controller.snapshot().spec.repetitions : 0 });
-      runContext = null;
-      status.textContent = "Sequence completion reported; Stop written. Motor power is not measured.";
-      paint();
-      if (completedBalls) {
-        Promise.resolve().then(() => bridge.recordCompletedBalls(completedBalls)).catch(error => {
-          log("statistics.save_failed", error.message);
-          status.textContent = `Training completed, but statistics could not be saved (${error.message}). Robot Stop was written; motor power is unverified.`;
-          paint();
-        });
-      }
-    })();
+    if (event?.type === "done" && context?.mode === "reps" && context.awaitingDone &&
+        executor.state === "running" && bridge.controller.state === "RUNNING") {
+      void finishLiveSession(context);
+    }
   });
 
   async function failLiveSession(code) {
@@ -515,12 +504,59 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     priorAudioState = snapshot.state;
     if (runContext && snapshot.state === "error" && previous !== "error") { void failLiveSession("AUDIO_PLAYBACK_FAILED"); return; }
     if (runContext?.mode === "music" && snapshot.state === "completed" && previous !== "completed") {
-      void sendStopAndReset().then(() => { status.textContent = "Music finished; robot Stop sent."; runContext = null; }).catch((error) => { status.textContent = `Music ended but Stop failed (${error.message}). Use physical power.`; });
+      void finishLiveSession(runContext, snapshot.completedTracks);
     }
+    if (snapshot.state === "playing") dispatchReadySession(bridge.controller.snapshot());
     if (!liveMsync && runContext?.mode === "msync" && snapshot.state === "completed" && previous !== "completed") {
       void sendStopAndReset().then(() => { status.textContent = "MSYNC audio finished; robot Stop sent."; runContext = null; }).catch((error) => { status.textContent = `MSYNC ended but Stop failed (${error.message}). Use physical power.`; });
     }
   });
+
+  async function fireCalibrationShot(ball) {
+    if (!connection.ready) throw new Error("Connect the Nova S Pro before firing.");
+    if (document.visibilityState === "hidden" || pending || calibrationShot || sessionStartPending ||
+        runContext || bridge.controller.state !== "IDLE" || executor.state !== "idle") {
+      throw new Error("The robot must be idle and the app visible before firing.");
+    }
+    if (testOnly && !preflight()) throw new Error("Complete the physical test safety checks first.");
+    if (!BALL_TYPES.includes(ball?.type) || ["speed", "spin", "height", "drop", "bpm"].some(key =>
+      !Number.isFinite(ball[key]) || ball[key] < BALL_LIMITS[key][0] || ball[key] > BALL_LIMITS[key][1]) ||
+      ball.spin > spinLimitForSpeed(ball.speed)) {
+      throw new Error("The calibration shot settings are outside the supported range.");
+    }
+
+    const program = { steps: [{ enabled: true, scatter: 0, variants: [{ ...ball, repetitions: 1 }] }] };
+    const packet = encodeDrillPacket(program, { mode: "combos", amount: 1 });
+    let resolve;
+    const completion = new Promise(done => { resolve = done; });
+    const generation = preparationGeneration;
+    calibrationShot = { resolve };
+    refreshIdleGuard();
+    const timer = setTimeout(() => resolve("timeout"), 8000);
+    try {
+      const sent = await executor.start(packet);
+      if (sent.status !== "SENT" || generation !== preparationGeneration) return false;
+      const outcome = await completion;
+      if (generation !== preparationGeneration || outcome === "cancelled") return false;
+      await sendStopAndReset();
+      if (generation !== preparationGeneration) return false;
+      if (outcome !== "done") throw new Error("Shot completion was not reported. Stop was sent. Check the robot before retrying.");
+      return true;
+    } catch (error) {
+      if (generation !== preparationGeneration) return false;
+      if (connection.ready && executor.state !== "idle") {
+        await sendStopAndReset().catch(() => { connection.disconnect(); });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      calibrationShot = null;
+      refreshIdleGuard();
+      paint();
+    }
+  }
+
+  globalThis.NOVA_PRIME_CALIBRATION_FIRE = fireCalibrationShot;
 
   const executeLiveCommand = async (command) => {
     if (command === "stop") {
@@ -537,7 +573,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     }
     if (command === "pause") {
       if (runContext?.mode === "msync" && liveMsync) return liveMsync.pause();
-      if (!runContext || !connection.ready) return { status: "REJECTED" };
+      if (!runContext || runContext.completing || !connection.ready) return { status: "REJECTED" };
       const context = runContext;
       const generation = preparationGeneration;
       context.awaitingDone = false;
@@ -574,7 +610,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
         if (runContext.mode === "msync") bridge.msyncSimulator.resume();
         bridge.controller.resume();
         runContext.sent = true;
-        if (["reps", "time"].includes(runContext.mode)) { runContext.awaitingDone = true; armCompletionDeadline(runContext, packet); }
+        if (["reps", "time"].includes(runContext.mode)) { runContext.awaitingDone = runContext.mode === "reps"; armCompletionDeadline(runContext, packet); }
         status.textContent = "Resumed. Verify the robot follows the remaining session.";
       }
       return result;

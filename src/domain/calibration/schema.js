@@ -1,3 +1,4 @@
+import { BOUNDS } from "./trainer-physics.js";
 import { createId } from "../shared/id.js";
 import { issue, validationResult } from "../shared/errors.js";
 
@@ -43,11 +44,19 @@ export function validateCalibrationProfile(profile) {
     if (model == null) continue;
     for (const field of fields) if (!Number.isFinite(model[field]) || Math.abs(model[field]) > 200) issues.push(issue("CALIBRATION_MODEL", `${modelName}.${field} is outside the supported range`, `modelParameters.${modelName}.${field}`));
   }
+  if (profile.physicsModel != null) {
+    const { kind, parameters } = profile.physicsModel;
+    if (kind !== "trainer-v1" || profile.tableSetup?.robotPosition !== "middle" ||
+        profile.tableSetup.headOffset !== 0 || Object.entries(BOUNDS).some(([key, [min, max]]) =>
+          !Number.isFinite(parameters?.[key]) || parameters[key] < min || parameters[key] > max)) {
+      issues.push(issue("CALIBRATION_PHYSICS", "Invalid centered Trainer physics profile", "physicsModel"));
+    }
+  }
   if (!Array.isArray(profile.observations)) issues.push(issue("CALIBRATION_OBSERVATIONS", "Observations must be an array", "observations"));
   else profile.observations.forEach((observation, index) => {
     const path = `observations[${index}]`;
     if (!CALIBRATION_OUTCOMES.includes(observation?.outcome)) issues.push(issue("CALIBRATION_OUTCOME", "Observation outcome is unsupported", `${path}.outcome`));
-    if (observation?.outcome === "landed" && (!["xCm", "yCm"].every((field) => Number.isFinite(observation.actual?.[field])) || !["xCm", "yCm"].every((field) => Number.isFinite(observation.predicted?.[field])))) issues.push(issue("CALIBRATION_LANDING", "Landed observations require predicted and actual coordinates", path));
+    if (observation?.outcome === "landed" && (!["xCm", "yCm"].every((field) => Number.isFinite(observation.actual?.[field])) || ((!profile.physicsModel || observation.predicted != null) && !["xCm", "yCm"].every((field) => Number.isFinite(observation.predicted?.[field]))))) issues.push(issue("CALIBRATION_LANDING", "Landed observations require predicted and actual coordinates", path));
   });
   if (profile.accuracy != null && (!Number.isFinite(profile.accuracy) || profile.accuracy < 0 || profile.accuracy > 200)) issues.push(issue("CALIBRATION_ACCURACY", "Calibration accuracy is outside the supported range", "accuracy"));
   if (profile.quickCheck != null && (!Number.isFinite(profile.quickCheck.meanErrorCm) || profile.quickCheck.meanErrorCm < 0)) issues.push(issue("CALIBRATION_QUICK_CHECK", "Quick Check result is invalid", "quickCheck"));

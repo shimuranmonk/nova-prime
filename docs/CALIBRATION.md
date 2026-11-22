@@ -1,25 +1,18 @@
 # Guided calibration and Quick Check
 
-## Implemented scope
+## Adaptive calibration
 
-Nova Prime provides two transport-free calibration plans:
+Place the robot centrally, flush with the end line, facing straight down the table with no head rotation. Standard starts with three alignment directions, then searches for net and long limits, tests high arcs, and aims at the middle for topspin, no-spin, and backspin. Complete adds up to 15 shots that broaden coverage. Serve tests are optional.
 
-- **Standard:** five observations covering topspin, no spin, backspin, fast topspin, and a short serve.
-- **Complete:** ten observations that repeat the Standard plan so shot-to-shot scatter can be estimated.
+Connect the Nova S Pro before opening the wizard. Tap **Fire one ball** to send the displayed setting through Prime's training encoder. Once the robot reports completion and Prime sends Stop, mark the first bounce on the player half. Mark Net, Long, or Wide when applicable. These outcomes constrain the physics fit and help the planner choose subsequent shots. Not seen is retained as a run observation but excluded from the fit. During delivery, Stop cancels the shot. A missing completion triggers Stop and leaves the shot available for an explicit retry.
 
-For each observation, Nova Prime displays the ball settings and a predicted landing. The user sends one ball using the robot's own controls or another safe controller, then taps the observed first bounce or records Net, Long, Wide, or Not seen. Undo returns to the previous observation.
+## Saved profiles and Visual Editor
 
-Nova Prime never connects to the robot or sends a calibration ball in this increment.
-
-## Calculated profile
-
-At least three landed observations are required. Saving fits a regularized response model for Drop/lateral placement and Speed, Height, and signed Top/Back Spin depth behavior. It also retains backward-compatible average offsets, calculates residual accuracy, and—when repeated observations exist—scatter. The validated profile is written once to the local `calibrations` store. Its corrections adjust successful visual drill-preview landings; they do not alter stored drill parameters or create robot commands. Because robot position is part of each profile, Left, Middle, and Right setups can be calibrated independently.
-
-Profiles use the versioned `nova-prime-calibrations` JSON format for atomic import and export. Complete application backup also includes calibration profiles.
+At least three measured landings are required to save. The adaptive planner and bounded physics fit are adapted from nova_fan's Nova Trainer 0.1.0-beta.9. A `trainer-v1` model stores its physics parameters inside the normal local calibration profile and is used directly for centered landing previews and target placement. The displayed fit error is the mean error on the calibration data. Existing profiles still use their original landing correction. A centered physics profile uses baseline estimates for corner positions.
 
 ## Quick Check
 
-Quick Check records three representative observations against the active calibrated estimate. It reports mean placement error and provides conservative Net, Long, Wide, and recalibration guidance. Quick Check does not refit the saved profile.
+Use fresh shots after saving. For a physics profile, Quick Check reports baseline and calibrated mean error on the same comparable landings and counts predicted misses separately. Quick Check does not refit the saved profile.
 
 ## Responsive layouts
 

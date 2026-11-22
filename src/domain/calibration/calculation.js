@@ -108,6 +108,22 @@ export function summarizeQuickCheck(observations) {
   if (outcomes.long) suggestions.push("Lower height or speed slightly for balls that run long.");
   if (outcomes.wide) suggestions.push("Reduce direction magnitude and recheck robot alignment.");
   if (landed.length && meanErrorCm > 20) suggestions.push("Run a new Standard calibration before relying on placement previews.");
-  if (!suggestions.length) suggestions.push("Placement is consistent with the saved profile.");
-  return Object.freeze({ checkedAt: new Date().toISOString(), meanErrorCm, landedCount: landed.length, outcomes: Object.freeze(outcomes), suggestions: Object.freeze(suggestions) });
+  if (!suggestions.length) suggestions.push(landed.length ? "Placement is consistent with the saved profile." : "No predicted and measured landings were available to compare.");
+  const comparison = observations.some(entry => "baseline" in entry) ? compareQuickCheck(observations) : null;
+  return Object.freeze({ checkedAt: new Date().toISOString(), meanErrorCm, landedCount: landed.length, ...(comparison ? { comparison } : {}), outcomes: Object.freeze(outcomes), suggestions: Object.freeze(suggestions) });
+}
+
+function compareQuickCheck(observations) {
+  const measured = observations.filter(entry => entry.outcome === "landed" && entry.actual);
+  const paired = measured.filter(entry => entry.predicted && entry.baseline);
+  const meanError = key => paired.length ? rounded(average(paired.map(entry =>
+    Math.hypot(entry.actual.xCm - entry[key].xCm, entry.actual.yCm - entry[key].yCm)))) : null;
+  return Object.freeze({
+    paired: paired.length,
+    measured: measured.length,
+    baselineMisses: measured.filter(entry => !entry.baseline).length,
+    calibratedMisses: measured.filter(entry => !entry.predicted).length,
+    baselineMeanCm: meanError("baseline"),
+    calibratedMeanCm: meanError("predicted"),
+  });
 }

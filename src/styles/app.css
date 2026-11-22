@@ -302,7 +302,9 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 .calibration-file-actions { display: flex; gap: 7px; margin-top: 9px; }
 .calibration-file-actions button, .calibration-file-actions label { position: relative; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--teal-dark); font-size: .68rem; font-weight: 800; cursor: pointer; }
 .calibration-file-actions input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.calibration-shell { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; overflow: hidden; }
+#calibration-root { height: 100%; }
+.calibration-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; overflow: hidden; }
+.calibration-shell:has(.calibration-progress) { grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .calibration-setup, .calibration-observation, .calibration-review { min-height: 0; padding: 18px; overflow-y: auto; }
 .calibration-setup { display: grid; align-content: start; gap: 15px; max-width: 850px; width: 100%; margin-inline: auto; }
 .calibration-intro, .calibration-safety, .calibration-ball-card, .calibration-suggestions { padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
@@ -314,7 +316,6 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 .calibration-notes { grid-column: 1 / -1; }
 .calibration-mode-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .calibration-mode-grid button { display: grid; gap: 5px; min-height: 86px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
-.calibration-mode-grid button.selected { border-color: var(--teal); background: var(--teal-soft); box-shadow: inset 0 0 0 1px var(--teal); }
 .calibration-mode-grid span { color: var(--muted); font-size: .72rem; line-height: 1.35; }
 .calibration-progress { height: 5px; background: var(--line); }
 .calibration-progress span { display: block; height: 100%; background: var(--teal); transition: width 180ms ease; }
@@ -325,7 +326,7 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 .calibration-ball-values b { display: block; color: var(--ink); font-size: 1rem; }
 .calibration-landing { grid-column: 2; grid-row: 1 / span 3; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .calibration-table { position: relative; width: min(100%, 410px); aspect-ratio: 1.525 / 1.37; margin-inline: auto; overflow: hidden; border: 7px solid #e9f1f4; border-radius: 8px; background: linear-gradient(to right, transparent calc(50% - 1px), rgba(255,255,255,.76) calc(50% - 1px), rgba(255,255,255,.76) calc(50% + 1px), transparent calc(50% + 1px)), repeating-linear-gradient(to bottom, transparent 0, transparent calc(21.9% - 1px), rgba(255,255,255,.25) 21.9%, transparent calc(21.9% + 1px)), #188d94; box-shadow: inset 0 0 0 2px rgba(255,255,255,.78); }
-.calibration-table.interactive { cursor: crosshair; touch-action: none; }
+.calibration-table.interactive { cursor: crosshair; touch-action: pan-y pinch-zoom; }
 .calibration-net, .calibration-player { position: absolute; left: 8px; z-index: 1; color: rgba(255,255,255,.86); font-size: .62rem; font-weight: 900; text-transform: uppercase; }
 .calibration-net { top: 6px; }
 .calibration-player { bottom: 6px; }

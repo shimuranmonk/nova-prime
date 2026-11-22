@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AdaptiveCalibrationPlan } from "../src/domain/calibration/adaptive-plan.js";
+import { CENTERED_SETUP, PRIOR, objective, simulate } from "../src/domain/calibration/trainer-physics.js";
+import { fitBallToTarget, previewBall, previewCalibratedBall } from "../src/domain/drills/preview.js";
 import { CalibrationService } from "../src/application/calibration/calibration-service.js";
 import { calculateCalibration, calibrationPlan, summarizeQuickCheck } from "../src/domain/calibration/calculation.js";
 import { validateCalibrationProfile } from "../src/domain/calibration/schema.js";
@@ -71,4 +74,55 @@ test("service saves, validates, exports, imports, and Quick Checks profiles", as
 test("Quick Check suggests corrective action for misses", () => {
   const summary = summarizeQuickCheck([{ outcome: "net" }, { outcome: "long" }, { outcome: "wide" }]);
   assert.equal(summary.suggestions.length, 3);
+});
+
+test("adaptive calibration learns from long shots and improves an independent landing", () => {
+  const truth = { ...PRIOR, a: PRIOR.a + 0.4 };
+  const planner = new AdaptiveCalibrationPlan({ setup: CENTERED_SETUP, cover: 15 });
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const pending = planner.next();
+    if (!pending) break;
+    const actual = simulate(pending.ball, truth, CENTERED_SETUP);
+    planner.record({
+      result: actual.ok ? "ok" : actual.net ? "net" : actual.out === "long" ? "long" : "side",
+      x: actual.x,
+      y: actual.y,
+    });
+  }
+  assert.equal(planner.next(), null);
+  assert.ok(planner.shots.some(shot => shot.result === "long"));
+  const physics = planner.finish();
+  assert.ok(objective(physics, planner.shots, CENTERED_SETUP) < objective(PRIOR, planner.shots, CENTERED_SETUP));
+  const ball = { speed: 3.1, spin: 3.2, type: "top", height: 35, drop: 2 };
+  const actual = simulate(ball, truth, CENTERED_SETUP);
+  const fitted = simulate(ball, physics, CENTERED_SETUP);
+  const baseline = simulate(ball, PRIOR, CENTERED_SETUP);
+  assert.ok(actual.ok && fitted.ok && baseline.ok);
+  assert.ok(Math.hypot(actual.x - fitted.x, actual.y - fitted.y) <
+    Math.hypot(actual.x - baseline.x, actual.y - baseline.y));
+});
+
+test("physics profiles round-trip and drive centered editor aiming without legacy offsets", async () => {
+  const service = new CalibrationService(new MemoryStore());
+  const profile = await service.save({
+    name: "Centered",
+    mode: "standard",
+    tableSetup: { robotPosition: "middle", headOffset: 0 },
+    observations: observations().map(entry => ({ ...entry, predicted: null })),
+    physicsParameters: { ...PRIOR, a: PRIOR.a + 0.4 },
+  });
+  const imported = new CalibrationService(new MemoryStore());
+  await imported.import(await service.export());
+  assert.deepEqual(await imported.active(), profile);
+
+  const ball = { speed: 3.1, spin: 3.2, type: "top", height: 35, drop: 2 };
+  const point = previewCalibratedBall(ball, "middle", profile);
+  const simulation = simulate(ball, profile.physicsModel.parameters, CENTERED_SETUP);
+  assert.equal(point.xCm, simulation.x);
+  assert.equal(point.yCm, simulation.y);
+  assert.deepEqual(previewCalibratedBall(ball, "left", profile), previewBall(ball, "left"));
+  const fit = fitBallToTarget(ball, point, "middle", { calibration: profile });
+  assert.deepEqual(fit.result, previewCalibratedBall(fit.ball, "middle", profile));
+  assert.equal(fit.ball.height, ball.height);
+  assert.equal(fit.ball.spin, ball.spin);
 });
