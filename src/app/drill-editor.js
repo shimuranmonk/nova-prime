@@ -68,7 +68,8 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   let dirty = false;
   let editorTab = "placement";
   let calibration = null;
-  let placementTarget = null;
+  let requestedPositions = new WeakMap();
+  let bulkEditing = false;
   let placementMessage = "";
   let copyMessage = "";
   let copyFallback = "";
@@ -82,7 +83,6 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     const step = currentProgram()?.steps[0] ?? null;
     activeStepId = step?.id ?? null;
     activeVariant = 0;
-    placementTarget = null;
     placementMessage = "";
   }
 
@@ -90,29 +90,43 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     dirty = true;
   }
 
+  function ballLabel(stepIndex, variantIndex, variantCount) {
+    let suffix = "";
+    if (variantCount > 1) {
+      for (let n = variantIndex + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+        suffix = String.fromCharCode(97 + (n - 1) % 26) + suffix;
+      }
+    }
+    return `${stepIndex + 1}${suffix}`;
+  }
+
+  function renderBallSelector(program, step, variant) {
+    return `<div class="variant-tabs placement-ball-selector" role="group" aria-label="Select ball">${program.steps.flatMap((entry, stepIndex) =>
+      entry.variants.map((_, index) => {
+        const selected = entry.id === step.id && index === variant;
+        return `<button type="button" data-preview-step="${escapeHtml(entry.id)}" data-preview-variant="${index}" class="${selected ? "selected" : ""}" aria-pressed="${selected}">${ballLabel(stepIndex, index, entry.variants.length)}</button>`;
+      })).join("")}<button type="button" data-editor-add-step ${program.steps.length >= DRILL_STEP_LIMIT ? "disabled" : ""}>＋ Ball</button><button type="button" data-variant-duplicate>＋ Variant</button></div>`;
+  }
+
   function renderTable(program, selectedStep, selectedVariant) {
     const markers = [];
     let selectedPosition = { x: 50, y: 75 };
     let selectedServePosition = null;
-    const activeRequested = placementTarget?.stepId === selectedStep?.id && placementTarget?.variant === selectedVariant
-      ? placementTarget.position
-      : null;
     for (const [stepIndex, step] of program.steps.entries()) {
       for (const [variantIndex, ball] of step.variants.entries()) {
         const result = ballPreview(ball);
         const position = previewPosition(result);
         const selected = step.id === selectedStep?.id && variantIndex === selectedVariant;
-        const markerPosition = selected && activeRequested ? activeRequested : position;
+        const markerPosition = requestedPositions.get(ball) ?? position;
+        const label = ballLabel(stepIndex, variantIndex, step.variants.length);
         if (selected) {
           selectedPosition = markerPosition;
           selectedServePosition = result.serveBounce ? previewPosition({ ok: true, ...result.serveBounce }) : null;
         }
-        markers.push(`<button type="button" class="preview-marker ${ball.type === "back" ? "back" : "top"} ${isServeBall(ball) ? "serve" : ""} ${step.enabled ? "" : "disabled"} ${selected ? "selected" : ""} ${result.ok ? "" : "warning"}" style="left:${markerPosition.x}%;top:${markerPosition.y}%" data-preview-step="${escapeHtml(step.id)}" data-preview-variant="${variantIndex}" aria-label="Edit step ${stepIndex + 1}, ball ${variantIndex + 1}: ${escapeHtml(outcomeLabel(result))}">${stepIndex + 1}${isServeBall(ball) ? "S" : ""}</button>`);
+        markers.push(`<button type="button" class="preview-marker ${ball.type === "back" ? "back" : "top"} ${isServeBall(ball) ? "serve" : ""} ${step.enabled ? "" : "disabled"} ${selected ? "selected" : ""} ${result.ok ? "" : "warning"}" style="left:${markerPosition.x}%;top:${markerPosition.y}%" data-preview-step="${escapeHtml(step.id)}" data-preview-variant="${variantIndex}" aria-pressed="${selected}" aria-label="Ball ${label}: ${escapeHtml(outcomeLabel(result))}">${label}${isServeBall(ball) ? "S" : ""}</button>`);
       }
     }
-    const requested = placementTarget?.stepId === selectedStep?.id && placementTarget?.variant === selectedVariant
-      ? placementTarget.position
-      : selectedPosition;
+    const requested = selectedPosition;
     const point = tablePointFromPosition(requested);
     const side = point.xCm < -1 ? "Backhand" : point.xCm > 1 ? "Forehand" : "Middle";
     const depth = point.yCm < 46 ? "Deep" : point.yCm > 91 ? "Short" : "Half-long";
@@ -122,14 +136,14 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         <div class="robot-position-selector" role="group" aria-label="Robot position">${["left", "middle", "right"].map((position) => `<button type="button" data-robot-position="${position}" class="${draft.robotPosition === position ? "selected" : ""}" aria-pressed="${draft.robotPosition === position}">${position[0].toUpperCase() + position.slice(1)}</button>`).join("")}</div>
         <div class="table-stage">
           <div class="table-ruler-y" aria-hidden="true"><span style="bottom:0">0</span><span style="bottom:10.95%">30</span><span style="bottom:21.9%">60</span><span style="bottom:32.85%">90</span><span style="bottom:43.8%">120</span><strong class="placement-coordinate-value coordinate-y" style="top:${requested.y}%">${point.yCm.toFixed(0)}</strong></div>
-          <div class="table-preview" data-placement-table role="group" aria-label="Interactive table. Drag the selected ball or tap the player half to choose a landing target.">
+          <div class="table-preview" data-placement-table role="group" aria-label="Interactive table. Drag a ball or tap the player half to choose a landing target.">
             <span class="table-landing-zone"><small>Tap or drag here</small></span><span class="table-net"></span><span class="table-label player">Player</span><span class="table-label robot">Robot</span>
             <svg class="placement-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <line class="placement-direction" x1="50" y1="3" x2="${requested.x}" y2="${requested.y}" data-placement-line></line>
               <line class="placement-coordinate" x1="0" y1="${requested.y}" x2="${requested.x}" y2="${requested.y}"></line>
               <line class="placement-coordinate" x1="${requested.x}" y1="${requested.y}" x2="${requested.x}" y2="100"></line>
             </svg>
-            <span class="placement-target ${placementTarget ? "requested" : ""}" style="left:${requested.x}%;top:${requested.y}%" data-placement-target aria-hidden="true"></span>
+            <span class="placement-target ${requestedPositions.has(selectedStep.variants[selectedVariant]) ? "requested" : ""}" style="left:${requested.x}%;top:${requested.y}%" data-placement-target aria-hidden="true"></span>
             ${selectedServePosition ? `<span class="serve-bounce" style="left:${selectedServePosition.x}%;top:${selectedServePosition.y}%" aria-label="Estimated first serve bounce"></span>` : ""}
             ${markers.join("")}
           </div>
@@ -159,11 +173,24 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     activeVariant = Math.min(activeVariant, step.variants.length - 1);
     const ball = step.variants[activeVariant];
     const result = ballPreview(ball);
-    const scatterMaximum = Math.max(0, 10 - Math.abs(Number(ball.drop)));
+    const scatterMaximum = Math.min(...step.variants.map((entry) => 10 - Math.abs(entry.drop)));
+    const scope = `<div class="variant-tabs" role="group" aria-label="Parameter editing scope"><button type="button" data-edit-scope="one" aria-pressed="${!bulkEditing}" class="${bulkEditing ? "" : "selected"}">This Ball</button><button type="button" data-edit-scope="all" aria-pressed="${bulkEditing}" class="${bulkEditing ? "selected" : ""}">All Balls</button></div>`;
+    if (bulkEditing) {
+      return `<section class="ball-panel" aria-label="All ball parameters">${scope}
+        <form data-bulk-parameters>
+          <div class="parameter-grid">
+            <label>Speed change<input name="speed" type="number" min="-10" max="10" step="0.5" value="0" required></label>
+            <label>Spin change<input name="spin" type="number" min="-10" max="10" step="0.5" value="0" required></label>
+            <label>BPM change<input name="bpm" type="number" min="-60" max="60" step="1" value="0" required></label>
+          </div>
+          <button type="submit">Apply to all balls in Level ${level}</button>
+        </form></section>`;
+    }
     const spinMaximum = spinLimitForSpeed(ball.speed);
     return `
       <section class="ball-panel" aria-labelledby="ball-title">
         <div class="editor-section-heading ball-panel-heading"><div><span class="eyebrow">STEP ${stepIndex + 1}</span><h3 id="ball-title">Ball parameters</h3></div><div class="ball-heading-controls"><div class="level-selector editor-levels" role="group" aria-label="Program level">${[1, 2, 3].map((entry) => `<button type="button" data-editor-level="${entry}" class="level-button ${entry === level ? "selected" : ""}" aria-pressed="${entry === level}">${entry}${draft.programs[entry] ? "" : "·"}</button>`).join("")}</div></div></div>
+        ${scope}
         ${level !== 1 ? `<div class="editor-level-actions"><button type="button" data-editor-copy-level="1">Copy Level 1</button><button type="button" class="danger-button" data-editor-clear-level>Clear Level ${level}</button></div>` : ""}
         <div class="step-actions">
           <button type="button" data-step-move="-1" ${stepIndex === 0 ? "disabled" : ""}>↑ Up</button>
@@ -172,7 +199,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
           <button type="button" class="danger-button" data-step-delete ${program.steps.length === 1 ? "disabled" : ""}>Delete</button>
         </div>
         <label class="editor-range"><span>Scatter<output>${step.scatter}</output></span><input type="range" min="0" max="${scatterMaximum}" step="0.5" value="${Math.min(step.scatter, scatterMaximum)}" data-step-scatter></label>
-        <div class="variant-heading"><div class="variant-tabs" role="tablist" aria-label="Ball variants">${step.variants.map((_, index) => `<button type="button" role="tab" data-editor-variant="${index}" class="${index === activeVariant ? "selected" : ""}" aria-selected="${index === activeVariant}">Ball ${index + 1}</button>`).join("")}</div>
+        <div class="variant-heading"><div class="variant-tabs" role="tablist" aria-label="Ball variants">${step.variants.map((_, index) => `<button type="button" role="tab" data-editor-variant="${index}" class="${index === activeVariant ? "selected" : ""}" aria-selected="${index === activeVariant}">Ball ${ballLabel(stepIndex, index, step.variants.length)}</button>`).join("")}</div>
         <div class="ball-kind" role="group" aria-label="Spin type"><button type="button" data-ball-type="top" class="${ball.type === "top" ? "selected" : ""}" aria-pressed="${ball.type === "top"}">Topspin</button><button type="button" data-ball-type="back" class="${ball.type === "back" ? "selected" : ""}" aria-pressed="${ball.type === "back"}">Backspin</button></div></div>
         <div class="parameter-grid">
           ${rangeControl("Speed", "speed", ball.speed, 0, 10, 0.5)}
@@ -216,7 +243,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         </div>
         ${program ? `
           <div class="editor-workspace editor-tabbed-workspace">
-            <div id="editor-view-placement" class="editor-placement-view" role="tabpanel" aria-labelledby="editor-tab-placement" ${editorTab === "placement" ? "" : "hidden"}>${renderTable(program, step, activeVariant)}</div>
+            <div id="editor-view-placement" class="editor-placement-view" role="tabpanel" aria-labelledby="editor-tab-placement" ${editorTab === "placement" ? "" : "hidden"}>${renderBallSelector(program, step, activeVariant)}${renderTable(program, step, activeVariant)}</div>
             <div id="editor-view-parameters" class="editor-parameters-view" role="tabpanel" aria-labelledby="editor-tab-parameters" ${editorTab === "parameters" ? "" : "hidden"}>${renderStepList(program, step)}${renderBallControls(program, step)}</div>
           </div>
         ` : `<section class="editor-empty"><span class="editor-empty-icon">${level}</span><h3>Level ${level} has no program yet</h3><p>Start from Level ${sourceLevel}, then adjust its steps and ball parameters.</p><button class="primary-button" type="button" data-editor-create-level="${sourceLevel}">Create from Level ${sourceLevel}</button></section>`}
@@ -231,11 +258,11 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     if (!step) return;
     const ball = step.variants[activeVariant];
     const ranges = { speed: [0, 10], spin: [0, spinLimitForSpeed(ball.speed)], height: [-50, 100], drop: [-10, 10], bpm: [30, 90], repetitions: [1, 100] };
+    requestedPositions.delete(ball);
     ball[field] = clamp(value, ...ranges[field]);
     if (field === "speed") ball.spin = Math.min(ball.spin, spinLimitForSpeed(ball.speed));
-    if (field === "drop") step.scatter = Math.min(step.scatter, Math.max(0, 10 - Math.abs(ball.drop)));
+    if (field === "drop") step.scatter = Math.min(step.scatter, Math.max(0, Math.min(...step.variants.map((entry) => 10 - Math.abs(entry.drop)))));
     if (["bpm", "repetitions", "height"].includes(field)) ball[field] = Math.round(ball[field]);
-    placementTarget = null;
     placementMessage = "";
     markDirty();
     render();
@@ -244,10 +271,11 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
   function placeActiveBall(position) {
     const step = currentStep();
     if (!step) return;
-    const point = tablePointFromPosition(position);
+    const target = { x: clamp(position.x, 2, 98), y: clamp(position.y, 52, 98) };
+    const point = tablePointFromPosition(target);
     const fit = fitBallToTarget(step.variants[activeVariant], point, draft.robotPosition, { scatter: step.scatter, calibration });
     step.variants[activeVariant] = mutableBall(fit.ball);
-    placementTarget = { stepId: step.id, variant: activeVariant, position: { x: Math.min(98, Math.max(2, position.x)), y: Math.min(98, Math.max(52, position.y)) } };
+    requestedPositions.set(step.variants[activeVariant], target);
     placementMessage = fit.reachable
       ? `Target fitted within ${fit.errorCm.toFixed(0)} cm · Speed ${fit.ball.speed} · Drop ${fit.ball.drop}.`
       : `Closest safe estimate is ${fit.errorCm.toFixed(0)} cm away · Speed ${fit.ball.speed} · Drop ${fit.ball.drop}.`;
@@ -289,7 +317,7 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
     root.querySelector("[data-editor-cancel]")?.addEventListener("click", requestClose);
     root.querySelectorAll("[data-editor-level]").forEach((button) => button.addEventListener("click", () => { level = Number(button.dataset.editorLevel); setActiveFromProgram(); render(); }));
     root.querySelector("[data-editor-random]")?.addEventListener("change", (event) => { draft.random = event.target.checked; markDirty(); render(); });
-    root.querySelectorAll("[data-robot-position]").forEach((button) => button.addEventListener("click", () => { draft.robotPosition = button.dataset.robotPosition; placementTarget = null; placementMessage = ""; markDirty(); render(); }));
+    root.querySelectorAll("[data-robot-position]").forEach((button) => button.addEventListener("click", () => { draft.robotPosition = button.dataset.robotPosition; requestedPositions = new WeakMap(); placementMessage = ""; markDirty(); render(); }));
     root.querySelector("[data-editor-create-level]")?.addEventListener("click", (event) => { draft.programs[level] = programCopy(draft.programs[Number(event.currentTarget.dataset.editorCreateLevel)]); markDirty(); setActiveFromProgram(); render(); });
     root.querySelector("[data-editor-copy-level]")?.addEventListener("click", (event) => {
       const sourceLevel = Number(event.currentTarget.dataset.editorCopyLevel);
@@ -302,16 +330,40 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
       draft.programs[level] = null;
       markDirty(); setActiveFromProgram(); render();
     });
-    root.querySelectorAll("[data-editor-step]").forEach((button) => button.addEventListener("click", () => { activeStepId = button.dataset.editorStep; activeVariant = 0; placementTarget = null; placementMessage = ""; render(); }));
+    root.querySelectorAll("[data-edit-scope]").forEach((button) => button.addEventListener("click", () => {
+      bulkEditing = button.dataset.editScope === "all";
+      render();
+      root.querySelector(`[data-edit-scope="${button.dataset.editScope}"]`)?.focus();
+    }));
+    root.querySelector("[data-bulk-parameters]")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const fields = new FormData(event.currentTarget);
+      const speed = Number(fields.get("speed"));
+      const spin = Number(fields.get("spin"));
+      const bpm = Number(fields.get("bpm"));
+      if (speed || spin || bpm) {
+        for (const step of currentProgram().steps) {
+          for (const ball of step.variants) {
+            if (speed || spin) requestedPositions.delete(ball);
+            ball.speed = clamp(ball.speed + speed, 0, 10);
+            ball.spin = clamp(ball.spin + spin, 0, spinLimitForSpeed(ball.speed));
+            ball.bpm = clamp(ball.bpm + bpm, 30, 90);
+          }
+        }
+        placementMessage = "";
+        markDirty();
+      }
+      bulkEditing = false;
+      render();
+    });
+    root.querySelectorAll("[data-editor-step]").forEach((button) => button.addEventListener("click", () => { activeStepId = button.dataset.editorStep; activeVariant = 0; placementMessage = ""; render(); }));
     root.querySelectorAll("[data-preview-step]").forEach((button) => {
-      button.addEventListener("click", () => { activeStepId = button.dataset.previewStep; activeVariant = Number(button.dataset.previewVariant); placementTarget = null; placementMessage = ""; render(); });
+      button.addEventListener("click", () => { activeStepId = button.dataset.previewStep; activeVariant = Number(button.dataset.previewVariant); placementMessage = ""; render(); });
       button.addEventListener("keydown", (event) => {
         if (button.dataset.previewStep !== activeStepId || Number(button.dataset.previewVariant) !== activeVariant || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
         event.preventDefault();
         const result = ballPreview(currentStep().variants[activeVariant]);
-        const requested = placementTarget?.stepId === activeStepId && placementTarget?.variant === activeVariant
-          ? placementTarget.position
-          : previewPosition(result);
+        const requested = requestedPositions.get(currentStep().variants[activeVariant]) ?? previewPosition(result);
         const position = { ...requested };
         const delta = event.shiftKey ? 5 : 2;
         if (event.key === "ArrowLeft") position.x -= delta;
@@ -319,11 +371,12 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
         if (event.key === "ArrowUp") position.y -= delta;
         if (event.key === "ArrowDown") position.y += delta;
         placeActiveBall(position);
+        root.querySelector(`.preview-marker.selected`)?.focus();
       });
     });
     const table = root.querySelector("[data-placement-table]");
     if (table) {
-      let dragging = false;
+      let drag = null;
       const positionFromEvent = (event) => {
         const bounds = table.getBoundingClientRect();
         return { x: ((event.clientX - bounds.left) / bounds.width) * 100, y: ((event.clientY - bounds.top) / bounds.height) * 100 };
@@ -348,26 +401,54 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
       table.addEventListener("pointerdown", (event) => {
         if (event.button !== 0) return;
         const marker = event.target.closest?.("[data-preview-step]");
-        if (marker && (marker.dataset.previewStep !== activeStepId || Number(marker.dataset.previewVariant) !== activeVariant)) return;
-        event.preventDefault(); dragging = true; table.setPointerCapture?.(event.pointerId); showTarget(positionFromEvent(event));
+        if (drag) return;
+        event.preventDefault();
+        drag = { id: event.pointerId, x: event.clientX, y: event.clientY, marker, moved: false };
+        table.setPointerCapture(event.pointerId);
+        if (!marker) showTarget(positionFromEvent(event));
       });
-      table.addEventListener("pointermove", (event) => { if (dragging) showTarget(positionFromEvent(event)); });
+      table.addEventListener("pointermove", (event) => {
+        if (drag?.id !== event.pointerId) return;
+        drag.moved ||= Math.hypot(event.clientX - drag.x, event.clientY - drag.y) >= 4;
+        if (!drag.moved && drag.marker) return;
+        const { x, y } = showTarget(positionFromEvent(event));
+        if (drag.marker) {
+          drag.marker.style.left = `${x}%`;
+          drag.marker.style.top = `${y}%`;
+        }
+      });
       table.addEventListener("pointerup", (event) => {
-        if (!dragging) return;
-        dragging = false; event.preventDefault(); placeActiveBall(showTarget(positionFromEvent(event)));
+        if (drag?.id !== event.pointerId) return;
+        const { marker, moved } = drag;
+        drag = null;
+        event.preventDefault();
+        if (marker) {
+          activeStepId = marker.dataset.previewStep;
+          activeVariant = Number(marker.dataset.previewVariant);
+          placementMessage = "";
+        }
+        if (!marker || moved) placeActiveBall(positionFromEvent(event));
+        else render();
       });
-      table.addEventListener("pointercancel", () => { dragging = false; });
+      for (const type of ["pointercancel", "lostpointercapture"]) {
+        table.addEventListener(type, (event) => {
+          if (drag?.id !== event.pointerId) return;
+          drag = null;
+          render();
+        });
+      }
     }
-    root.querySelector("[data-editor-add-step]")?.addEventListener("click", () => {
+    root.querySelectorAll("[data-editor-add-step]").forEach((button) => button.addEventListener("click", () => {
       const program = currentProgram();
       const step = inheritedStep(program.steps.at(-1));
       program.steps.push(step); activeStepId = step.id; activeVariant = 0; markDirty(); render();
-    });
+    }));
     root.querySelector("[data-step-enabled]")?.addEventListener("change", (event) => { currentStep().enabled = event.target.checked; markDirty(); render(); });
     root.querySelector("[data-ball-serve]")?.addEventListener("change", (event) => {
       const ball = currentStep().variants[activeVariant];
+      requestedPositions.delete(ball);
       ball.height = event.target.checked ? -30 : 35;
-      placementTarget = null; placementMessage = ""; markDirty(); render();
+      placementMessage = ""; markDirty(); render();
     });
     root.querySelector("[data-step-scatter]")?.addEventListener("input", (event) => { currentStep().scatter = clamp(event.target.value, 0, 10); markDirty(); render(); });
     root.querySelectorAll("[data-step-move]").forEach((button) => button.addEventListener("click", () => {
@@ -388,12 +469,23 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
       const index = program.steps.findIndex((step) => step.id === activeStepId);
       program.steps.splice(index, 1); activeStepId = program.steps[Math.min(index, program.steps.length - 1)].id; activeVariant = 0; markDirty(); render();
     });
-    root.querySelectorAll("[data-editor-variant]").forEach((button) => button.addEventListener("click", () => { activeVariant = Number(button.dataset.editorVariant); placementTarget = null; placementMessage = ""; render(); }));
+    root.querySelectorAll("[data-editor-variant]").forEach((button) => button.addEventListener("click", () => { activeVariant = Number(button.dataset.editorVariant); placementMessage = ""; render(); }));
     root.querySelector("[data-variant-add]")?.addEventListener("click", () => { const step = currentStep(); step.variants.push(mutableBall()); activeVariant = step.variants.length - 1; markDirty(); render(); });
-    root.querySelector("[data-variant-duplicate]")?.addEventListener("click", () => { const step = currentStep(); step.variants.splice(activeVariant + 1, 0, clone(step.variants[activeVariant])); activeVariant += 1; markDirty(); render(); });
+    root.querySelectorAll("[data-variant-duplicate]").forEach((button) => button.addEventListener("click", () => {
+      const step = currentStep();
+      step.variants.push(clone(step.variants[activeVariant]));
+      activeVariant = step.variants.length - 1;
+      placementMessage = "";
+      markDirty();
+      render();
+    }));
     root.querySelector("[data-variant-delete]")?.addEventListener("click", () => { const step = currentStep(); step.variants.splice(activeVariant, 1); activeVariant = Math.min(activeVariant, step.variants.length - 1); markDirty(); render(); });
-    root.querySelectorAll("[data-ball-type]").forEach((button) => button.addEventListener("click", () => { currentStep().variants[activeVariant].type = button.dataset.ballType; markDirty(); render(); }));
-    root.querySelectorAll("[data-ball-field]").forEach((input) => input.addEventListener("input", () => updateBall(input.dataset.ballField, input.value)));
+    root.querySelectorAll("[data-ball-type]").forEach((button) => button.addEventListener("click", () => { requestedPositions.delete(currentStep().variants[activeVariant]); placementMessage = ""; currentStep().variants[activeVariant].type = button.dataset.ballType; markDirty(); render(); }));
+    root.querySelectorAll("[data-ball-field]").forEach((input) => input.addEventListener("change", () => {
+      updateBall(input.dataset.ballField, input.value);
+      const view = root.querySelector(`#editor-view-${editorTab}`);
+      view?.querySelector(`[data-ball-field="${input.dataset.ballField}"]`)?.focus();
+    }));
     root.querySelector("[data-editor-save]")?.addEventListener("click", async () => {
       const button = root.querySelector("[data-editor-save]");
       button.disabled = true; button.textContent = "Saving…";
@@ -416,6 +508,8 @@ export function createDrillEditor({ dialog, root, service, getCalibration = asyn
       draft = clone(stored);
       calibration = await getCalibration();
       level = initialLevel;
+      requestedPositions = new WeakMap();
+      bulkEditing = false;
       dirty = false;
       setActiveFromProgram();
       render();

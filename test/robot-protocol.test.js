@@ -74,3 +74,17 @@ test("done notification detection tolerates framed bytes", () => {
   assert.equal(containsDoneSignal(framed), true);
   assert.equal(bytesToHex(Uint8Array.from([0, 15, 255])), "000fff");
 });
+
+test("random order fixes serve-only steps and draws one independent variant per position", () => {
+  const step = (variants, enabled = true) => ({ enabled, scatter: 0, variants });
+  const ball = (drop, height = 40) => ({ drop, height });
+  const program = { steps: [
+    step([ball(1, -30), ball(2)]),
+    step([ball(3, -30), ball(4, -30)]),
+    step([ball(5), ball(6)]),
+    step([ball(7)], false),
+  ] };
+  const draws = [0, 0.9, 0.9, 0];
+  assert.deepEqual(selectProgramBalls(program, { randomOrder: true, random: () => draws.shift() }),
+    [ball(6), ball(4, -30), ball(1, -30)]);
+});

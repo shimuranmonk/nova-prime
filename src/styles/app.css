@@ -864,3 +864,21 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 
 /* Safety failures remain visible above the focused training view. */
 .robot-safety-feedback:not([hidden]) { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 35; width: min(720px, calc(100vw - 32px)); max-height: 25dvh; overflow: auto; margin: 0; padding: 14px 18px; border: 2px solid var(--danger, #b42318); border-radius: 12px; background: var(--surface, #fff); color: var(--text, #172b3a); box-shadow: 0 4px 16px #0002; }
+
+#editor-dialog .editor-placement-view:not([hidden]) {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+#editor-dialog .placement-ball-selector {
+  padding: 2px 0;
+}
+#editor-dialog .preview-marker.selected {
+  z-index: 3;
+}
+#session-form .remote-arm-controls {
+  grid-column: 1 / -1;
+}
+.remote-arm-controls button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--surface);
+}
