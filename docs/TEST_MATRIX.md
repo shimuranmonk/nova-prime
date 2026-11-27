@@ -1,5 +1,11 @@
 # Nova Prime Test Matrix
 
+## Layout Test .9 verification · 2026-11-27
+
+PR #42 (`61c239d`) passed all 223 automated tests and [GitHub CI](https://github.com/shimuranmonk/nova-prime/actions/runs/46014453354). The local production build verifier and 72-file ZIP integrity check passed. The automated editor workflow covered shared selection, dragging, deletion protection, serve preview and order toggles. The packet tests cover random ordering around serve-only positions; the remote tests cover key learning, press handling and submission scoping.
+
+Pending Android checks include narrow-screen layout, two-row scrolling, ruler and slider alignment, confirming and cancelling drill deletion, all themes for Intensity contrast, and a real keyboard-style remote. Calibration and MSYNC physical tests remain pending in the [run sheet](PHYSICAL_TEST_RUN.md).
+
 ## Automated foundation checks
 
 - Canonical drill creation and validation
@@ -9,8 +15,8 @@
 - Explicit Pause and Resume
 - Mode-specific session validation
 - Calibration, Track, Playlist, MSYNC, and statistics schemas
-- Robot feature flag remains disabled
-- Build allows `requestDevice` only inside the unimported gated transport
+- Production robot flag enables authorized beta testing
+- Build allows `requestDevice` only inside the gated transport
 - Static bundle rejects root-relative assets and missing/non-relative module imports
 - Release bundle contains the complete AGPL v3 text and third-party notices; About exposes the source and license link
 - Device-local subdirectory server redirect, path isolation, traversal containment, JavaScript/JSON MIME types, and `nosniff` behavior

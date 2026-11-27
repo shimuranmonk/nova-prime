@@ -6,7 +6,11 @@
 
 Nova Prime uses Nova Trainer as its primary interaction model: a compact application header, prominent connection and calibration status, card-based drill libraries, custom-drill groups, and training totals. It incorporates Nova Plus controls where they improve the training workflow: difficulty levels, Reps/Time/Music/MSYNC mode selection, count or duration, pause, and compact session actions.
 
-## Implemented app shell
+## Layout Test .9 direction
+
+Connected tabs group training modes, the two drill libraries, Placement/Parameters, and This Ball/All Balls. Session Setup uses an italic intensity label and green, yellow, and red level circles. Compact drill cards and the editor's distinct Placement and Parameters footers reclaim space on Android. See [editor controls](INTERACTIVE_EDITOR.md) and [handover](HANDOVER.md) for the merged scope and test status.
+
+## Historical app-shell implementation
 
 - Training is the default route; the development-style landing hero is removed.
 - Connection and calibration appear first. Calibration is operational through manual observations; robot connection states that simulated executor checks pass but remains disabled until the physical release gate is complete.
