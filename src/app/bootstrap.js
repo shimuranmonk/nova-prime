@@ -421,7 +421,7 @@ function repetitionLogicButton(locked) {
       Plus
     </span>
     <span class="repetition-logic-trainer" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3c5 0 6 12 12 12h3m-4-4 4 4-4 4M3 18h3c5 0 6-12 12-12h3m-4-4 4 4-4 4"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3"/></svg>
       Trainer
     </span>
   </button>`;
@@ -469,7 +469,7 @@ function setupCard(session) {
       <form id="session-form" class="session-form">
         <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
         <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
-        <div class="training-start-row training-start-row-with-logic"><button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>${voiceControlSlot()}${repetitionLogicButton(locked)}</div>
+        <div class="training-start-row training-start-row-with-logic"><button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button><div class="training-start-tools">${voiceControlSlot()}${repetitionLogicButton(locked)}</div></div>
         ${remoteArmControls}
       </form>`;
   return `
