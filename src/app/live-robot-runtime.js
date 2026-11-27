@@ -23,7 +23,7 @@ function toInlineProgram(balls = []) {
   }] })) };
 }
 
-export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIME_FULL_TEST_BUILD === true, now = () => performance.now(), idleDisconnectMs = 120000 } = {}) {
+export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIME_FULL_TEST_BUILD === true, now = () => performance.now(), idleDisconnectMs = 120000, random = Math.random } = {}) {
   const diagnostics = new RobotDiagnostics({ limit: 200 });
   const transport = new WebBluetoothTransport();
   const connection = new NovaRobotConnection({ transport, diagnostics });
@@ -85,7 +85,13 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   const finiteCompletions = [];
   let idleTimer = null;
   let completionTimer = null;
-  const clearCompletionDeadline = () => { clearTimeout(completionTimer); completionTimer = null; };
+  let nextCycleTimer = null;
+  let sessionDeadlineTimer = null;
+  const clearCompletionDeadline = () => {
+    clearTimeout(completionTimer); completionTimer = null;
+    clearTimeout(nextCycleTimer); nextCycleTimer = null;
+    clearTimeout(sessionDeadlineTimer); sessionDeadlineTimer = null;
+  };
   function refreshIdleGuard() {
     const active = calibrationShot || ["RUNNING", "COUNTDOWN"].includes(bridge.controller.state);
     if (!connection.ready || active) { clearTimeout(idleTimer); idleTimer = null; return; }
@@ -110,9 +116,9 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     return cycleMs * packet[4];
   }
   function armCompletionDeadline(context, packet) {
-    clearCompletionDeadline();
-    const expectedMs = expectedPacketDuration(packet, context.mode);
-    if (context.mode === "time") {
+    clearTimeout(completionTimer);
+    const expectedMs = expectedPacketDuration(packet, context.series ? "reps" : context.mode);
+    if (context.mode === "time" && !context.series) {
       completionTimer = setTimeout(() => {
         if (runContext === context && bridge.controller.state === "RUNNING") void finishLiveSession(context);
       }, expectedMs);
@@ -120,7 +126,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     }
     // Duration estimates are watchdog bounds, never grounds for discarding DONE.
     const configuredPause = bridge.controller.snapshot().spec?.pauseSeconds || 0;
-    const allowanceMs = Math.max(5000, expectedMs * 0.2) + configuredPause * 1000 * packet[4];
+    const allowanceMs = Math.max(5000, expectedMs * 0.2) + (context.series ? 0 : configuredPause * 1000 * packet[4]);
     completionTimer = setTimeout(() => {
       completionTimer = null;
       if (runContext === context && !context.failed && !context.completing && bridge.controller.state === "RUNNING") {
@@ -347,6 +353,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (testOnly && !globalThis.confirm(`This is a LIVE physical robot session (${mode.toUpperCase()}). Balls may launch. Keep the area clear and physical power within reach. Continue?`)) return;
     let spec;
     let initialPacket = null;
+    let series = null;
     let audioTracks = null;
     let msync = null;
     if (mode === "msync") {
@@ -375,17 +382,27 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       bridge.uiState.amount = amount;
       bridge.uiState.pauseSeconds = pauseSeconds;
       spec = bridge.createSessionSpec({ mode, level: bridge.uiState.level, drillId: drill.id, randomOrder: bridge.randomOrderFor(drill), repetitions: mode === "reps" ? amount : 10, durationSeconds: mode === "time" ? amount : 60, pauseSeconds });
-      initialPacket = encodeDrillPacket(program, { mode: mode === "time" ? "time" : "combos", amount, randomOrder: spec.randomOrder });
+      const enabledSteps = program.steps.filter(step => step.enabled);
+      if (spec.randomOrder || enabledSteps.some(step => step.variants.length > 1 || step.scatter > 0)) {
+        const options = { mode: "combos", amount: 1, randomOrder: spec.randomOrder, firmwareRandomOrder: false, random };
+        initialPacket = encodeDrillPacket(program, options);
+        series = { options, completedBalls: 0, remainingMs: spec.durationSeconds * 1000,
+          deadline: null, target: spec.repetitions, pauseMs: spec.pauseSeconds * 1000 };
+      } else {
+        initialPacket = encodeDrillPacket(program, { mode: mode === "time" ? "time" : "combos", amount });
+      }
     }
     if (mode === "reps" && bridge.uiState.amount > 255) throw new Error("Repetitions are limited to 255 per robot command.");
-    const ballCount = mode === "reps" ? countPacketBalls(initialPacket, bridge.uiState.amount) : 0;
+    const predictableCount = !series || program.steps.filter(step => step.enabled).every(step =>
+      step.variants.every(ball => ball.repetitions === step.variants[0].repetitions));
+    const ballCount = mode === "reps" && predictableCount ? countPacketBalls(initialPacket, spec.repetitions) : 0;
     if (liveMsync) { await liveMsync.destroy(); liveMsync = null; }
     assertPreparation(generation);
     const countdownSeconds = mode === "msync" ? msync.validation.parsed.session.countdown
       : immediate ? 0 : 3;
-    const result = bridge.controller.start(spec, { countdownSeconds, liveRun: true, ballsPlanned: ballCount });
+    const result = bridge.controller.start(spec, { countdownSeconds, liveRun: true, ballsPlanned: ballCount, reportsCycles: Boolean(series) });
     if (result.status !== "EXECUTED") throw new Error("A session is already active or the setup is invalid.");
-    runContext = { mode, program, packet: initialPacket, generation, sent: false, failed: false };
+    runContext = { mode, program, packet: initialPacket, series, generation, sent: false, failed: false };
     status.textContent = `Live ${mode.toUpperCase()} session armed. Stop remains available above.`;
     if (mode === "music") {
       await bridge.audioPlayer.start(audioTracks);
@@ -432,6 +449,11 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
         snapshot.state !== "RUNNING" || context.mode === "msync") return;
     if (context.mode === "music" && bridge.audioPlayer.snapshot().state !== "playing") return;
     context.sent = true;
+    if (context.series) {
+      armSeriesTimeLimit(context);
+      void sendSeriesCycle(context, "start");
+      return;
+    }
     const packet = context.packet;
     void (async () => {
       try {
@@ -451,6 +473,67 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     })();
   }
 
+  function isRunningContext(context) {
+    return runContext === context && context.generation === preparationGeneration &&
+      !context.failed && !context.completing && bridge.controller.state === "RUNNING";
+  }
+
+  function armSeriesTimeLimit(context) {
+    if (context.mode !== "time") return;
+    context.series.deadline = now() + context.series.remainingMs;
+    sessionDeadlineTimer = setTimeout(() => {
+      if (isRunningContext(context)) void finishLiveSession(context);
+    }, context.series.remainingMs);
+    sessionDeadlineTimer?.unref?.();
+  }
+
+  async function sendSeriesCycle(context, command) {
+    if (!isRunningContext(context)) return { status: "CANCELLED" };
+    const { series } = context;
+    if (series.deadline !== null && now() >= series.deadline) {
+      await finishLiveSession(context);
+      return { status: "CANCELLED" };
+    }
+    let writeEpoch = executor.epoch;
+    try {
+      context.packet ??= encodeDrillPacket(context.program, series.options);
+      armCompletionDeadline(context, context.packet);
+      const writing = executor[command](context.packet);
+      writeEpoch = executor.epoch;
+      const result = await writing;
+      if (!isRunningContext(context) || executor.epoch !== writeEpoch) return { status: "CANCELLED" };
+      if (result.status !== "SENT") throw new Error("ROBOT_PACKET_NOT_SENT");
+      context.awaitingDone = true;
+      bridge.controller.noteDispatched(countPacketBalls(context.packet));
+      log("executor.session_sent", context.mode);
+      return result;
+    } catch (error) {
+      if (isRunningContext(context) && executor.epoch === writeEpoch) {
+        await failLiveSession(error.message || "LIVE_COMMAND_FAILED");
+      }
+      return { status: "FAILED" };
+    }
+  }
+
+  function onSeriesCycleDone(context) {
+    const { series } = context;
+    context.awaitingDone = false;
+    clearTimeout(completionTimer);
+    series.completedBalls += countPacketBalls(context.packet);
+    context.packet = null;
+    bridge.controller.noteCycleCompleted();
+    if (context.mode === "reps" && bridge.controller.snapshot().completedCycles >= series.target) {
+      void finishLiveSession(context);
+      return;
+    }
+    // Let the current notification finish before arming the next command.
+    nextCycleTimer = setTimeout(() => {
+      nextCycleTimer = null;
+      void sendSeriesCycle(context, "enqueue");
+    }, series.pauseMs);
+    nextCycleTimer?.unref?.();
+  }
+
   bridge.controller.subscribe((snapshot) => {
     refreshIdleGuard();
     dispatchReadySession(snapshot);
@@ -459,7 +542,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   async function finishLiveSession(context, completedTracks = 0) {
     if (runContext !== context || context.failed || context.completing) return;
     context.completing = true;
-    const completedBalls = context.mode === "reps" ? finiteCompletions.shift() : 0;
+    const completedBalls = context.series?.completedBalls ?? (context.mode === "reps" ? finiteCompletions.shift() : 0);
     try { await sendStopAndReset(); }
     catch (error) {
       if (runContext === context) {
@@ -470,8 +553,10 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       paint();
       return;
     }
-    if (runContext !== context || context.failed) return;
-    const completedCycles = context.mode === "reps" ? bridge.controller.snapshot().spec.repetitions : completedTracks;
+    if (runContext !== context || context.failed || context.generation !== preparationGeneration) return;
+    const snapshot = bridge.controller.snapshot();
+    const completedCycles = context.series ? snapshot.completedCycles
+      : context.mode === "reps" ? snapshot.spec.repetitions : completedTracks;
     runContext = null;
     bridge.controller.complete({ completedCycles });
     status.textContent = "Training completed; Stop written. Motor power is not measured.";
@@ -489,10 +574,10 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (event?.type === "state" && event.snapshot.state === "disconnected") finiteCompletions.length = 0;
     if (event?.type === "done") calibrationShot?.resolve("done");
     const context = runContext;
-    if (event?.type === "done" && context?.mode === "reps" && context.awaitingDone &&
-        executor.state === "running" && bridge.controller.state === "RUNNING") {
-      void finishLiveSession(context);
-    }
+    if (event?.type !== "done" || !context?.awaitingDone || executor.state !== "running" ||
+        !isRunningContext(context)) return;
+    if (context.series) onSeriesCycleDone(context);
+    else if (context.mode === "reps") void finishLiveSession(context);
   });
 
   async function failLiveSession(code) {
@@ -589,7 +674,11 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       if (!runContext || runContext.completing || !connection.ready) return { status: "REJECTED" };
       const context = runContext;
       const generation = preparationGeneration;
+      if (context.series && executor.state !== "running") return executor.pause();
       context.awaitingDone = false;
+      if (context.series?.deadline != null) {
+        context.series.remainingMs = Math.max(0, context.series.deadline - now());
+      }
       clearCompletionDeadline();
       const result = await executor.pause();
       if (runContext !== context || generation !== preparationGeneration) return { status: "CANCELLED" };
@@ -605,6 +694,13 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       if (!runContext || !connection.ready || executor.state !== "paused") return { status: "REJECTED" };
       const context = runContext;
       const generation = preparationGeneration;
+      if (context.series) {
+        bridge.controller.resume();
+        armSeriesTimeLimit(context);
+        const result = await sendSeriesCycle(context, "resume");
+        if (result.status === "SENT") status.textContent = "Resumed. Verify the robot follows the remaining session.";
+        return result;
+      }
       const snapshot = bridge.controller.snapshot();
       const options = { mode: runContext.mode === "time" ? "time" : runContext.mode === "music" ? "endless" : "combos",
         amount: runContext.mode === "time" ? Math.max(1, Math.ceil(snapshot.spec.durationSeconds - snapshot.elapsedSeconds))

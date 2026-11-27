@@ -99,7 +99,7 @@ export function selectProgramBalls(program, { random = Math.random, randomOrder 
   });
 }
 
-export function encodeDrillPacket(program, { mode = "combos", amount = 1, mirror = false, randomOrder = false, random = Math.random } = {}) {
+export function encodeDrillPacket(program, { mode = "combos", amount = 1, mirror = false, randomOrder = false, firmwareRandomOrder = randomOrder, random = Math.random } = {}) {
   if (!(mode in MODE_BYTES)) throw new Error("NOVA_MODE_INVALID");
   const selected = selectProgramBalls(program, { random, randomOrder });
   const balls = selected.map(encodeBall);
@@ -111,7 +111,7 @@ export function encodeDrillPacket(program, { mode = "combos", amount = 1, mirror
   view.setUint8(3, MODE_BYTES[mode]);
   view.setUint8(4, Math.floor(clamp(amount, 0, 255)));
   view.setUint8(5, mirror ? 1 : 0);
-  view.setUint8(6, randomOrder && !selected.some(isServeBall) ? 1 : 0);
+  view.setUint8(6, firmwareRandomOrder && !selected.some(isServeBall) ? 1 : 0);
   balls.forEach((ball, index) => packet.set(ball, 7 + index * 24));
   return packet;
 }

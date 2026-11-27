@@ -24,7 +24,7 @@ class Target{
  querySelector(s){return this.fields?.[s]??null;} querySelectorAll(){return[];}
 }
 function clock(){let now=0,id=0;const jobs=new Map();return{jobs,get now(){return now;},set(fn,ms=0){const i=++id;jobs.set(i,{at:now+ms,fn});return i;},clear(i){jobs.delete(i);},async advance(ms){const end=now+ms;let n=0;for(;;){await flush();const next=[...jobs].filter(([,j])=>j.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;if(++n>100000)throw Error('TIMER_LOOP');jobs.delete(next[0]);now=next[1].at;next[1].fn();}now=end;await flush();}};}
-function fixture(mode='reps'){
+function fixture(mode='reps', {random} = {}){
  const c=clock();globalThis.setTimeout=(f,ms)=>c.set(f,ms);globalThis.clearTimeout=i=>c.clear(i);
  const doc=new Target(),win=new Target(),panel=new Target(),header=new Target(),route=new Target(),form=new Target();
  panel.fields=Object.fromEntries(['area','power','connect','disconnect','stop','status','connection','diagnostics'].map(k=>['#full-test-'+k,k==='diagnostics'?null:new Target()]));
@@ -49,7 +49,7 @@ function fixture(mode='reps'){
  // Same canonical audio state reactions as production bootstrap (no synthetic robot Stop).
  let prior='idle';audio.subscribe(s=>{const prev=prior;prior=s.state;const m=controller.snapshot().spec?.mode;if(m==='music'&&s.state==='completed'&&prev!=='completed')controller.complete({completedCycles:s.completedTracks});if(m==='music'&&s.state==='error'&&prev!=='error')controller.fail('AUDIO_PLAYBACK_FAILED');if(m==='msync'&&s.state==='error'&&prev!=='error'){projection.stop();controller.fail('MSYNC_AUDIO_PLAYBACK_FAILED');}});
  let oldProjection='idle';projection.subscribe(s=>{const prev=oldProjection;oldProjection=s.state;if(controller.snapshot().spec?.mode==='msync'&&s.state==='completed'&&prev!=='completed'){audio.stop();controller.complete({completedCycles:s.activations});}});
- mountLiveRobotControls(bridge,{testOnly:false,now:()=>c.now});
+ mountLiveRobotControls(bridge,{testOnly:false,now:()=>c.now,random});
  return{c,doc,win,panel,header,writes,rawAudio,audio,controller,parsed,track,projection,bridge,device,
   async connect(){await panel.fields['#full-test-connect'].click();assert.equal(header.dataset.connected,'true');connectionWriteCount=writes.length;},
   async start(){await doc.emit('submit',{target:{matches:s=>s==='#session-form'},preventDefault(){},stopImmediatePropagation(){}});if(controller.state==='COUNTDOWN')controller.tick(3);await flush();},

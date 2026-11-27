@@ -20,6 +20,7 @@ export class LocalSessionController {
   #recordError = null;
   #simulation = true;
   #liveRun = false;
+  #reportsCycles = false;
   #ballsPlanned = 0;
   #ballsDispatched = 0;
   #now;
@@ -55,7 +56,7 @@ export class LocalSessionController {
     return () => this.#listeners.delete(listener);
   }
 
-  start(spec, { countdownSeconds = 3, liveRun = false, ballsPlanned = 0 } = {}) {
+  start(spec, { countdownSeconds = 3, liveRun = false, ballsPlanned = 0, reportsCycles = false } = {}) {
     if (this.state !== SESSION_STATES.IDLE) return freezeSnapshot({ status: COMMAND_RESULTS.BLOCKED, reason: "SESSION_ACTIVE" });
     const validation = validateSessionSpec(spec);
     if (!validation.valid || !["reps", "time", "music", "msync"].includes(spec.mode)) {
@@ -73,6 +74,7 @@ export class LocalSessionController {
     this.#recordError = null;
     this.#liveRun = liveRun === true;
     this.#simulation = !this.#liveRun;
+    this.#reportsCycles = this.#liveRun && reportsCycles;
     this.#ballsPlanned = Math.max(0, Math.floor(Number(ballsPlanned) || 0));
     this.#ballsDispatched = 0;
     this.#machine.dispatch(SESSION_EVENTS.PREPARE);
@@ -90,9 +92,8 @@ export class LocalSessionController {
       if (this.#countdownRemaining === 0 && !(this.#liveRun && this.#spec.mode === "msync")) this.#machine.dispatch(SESSION_EVENTS.START);
     } else if (this.state === SESSION_STATES.RUNNING) {
       this.#elapsedSeconds += amount;
-      if (["music", "msync"].includes(this.#spec.mode)) {
-        // Audio owns completion; the canonical session still owns elapsed time,
-        // Pause, Resume, Stop, recording, and failure recovery.
+      if (this.#reportsCycles || ["music", "msync"].includes(this.#spec.mode)) {
+        // The live runtime reports completed cycles. This clock tracks elapsed time.
       } else if (this.#spec.mode === "reps") {
         if (this.#cyclePauseRemaining > 0) {
           this.#cyclePauseRemaining = Math.max(0, this.#cyclePauseRemaining - amount);
@@ -144,6 +145,13 @@ export class LocalSessionController {
     }
     this.#notify();
     return result;
+  }
+
+  noteCycleCompleted() {
+    if (this.#reportsCycles && this.state === SESSION_STATES.RUNNING) {
+      this.#completedCycles += 1;
+      this.#notify();
+    }
   }
 
   noteDispatched(count = 1) {
@@ -234,6 +242,7 @@ export class LocalSessionController {
     this.#recorded = false;
     this.#simulation = true;
     this.#liveRun = false;
+    this.#reportsCycles = false;
     this.#ballsPlanned = 0;
     this.#ballsDispatched = 0;
   }
