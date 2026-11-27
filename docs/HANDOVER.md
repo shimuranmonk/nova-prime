@@ -1,5 +1,32 @@
 # Nova Prime project handover
 
+## Current handover · 2026-11-27
+
+### Source and artifacts
+
+| Item | Verified state |
+| --- | --- |
+| Parsed reference | User-supplied `Downloads/Nova Trainer3.html` at SHA-256 `DFB4E0C238596CF9BD8A9CAD8D51CE889B0BEF4EC23559F13E81FEB38691BDDF` |
+| Editor and remote foundation | [PR #41](https://github.com/shimuranmonk/nova-prime/pull/41), merged at `de1021c` |
+| Final Android layout | [PR #42](https://github.com/shimuranmonk/nova-prime/pull/42), merged at `61c239d`; [CI run 171](https://github.com/shimuranmonk/nova-prime/actions/runs/46014453354) passed |
+| Local Android candidate | Workspace `artifacts/nova-prime-0.19.4-editor-layout-test.9-release.zip`, SHA-256 `925D695739E097833413C59020AA6CF20B86678B229843619E4360EE20F40F71` |
+| Branch recovery | Workspace `artifacts/nova-prime-branches-before-cleanup-2026-11-27.bundle`; verified complete history for all 24 original branch tips. Pre-merge main at `de1021c` is also backed by `backup/main-before-editor-layout-2026-11-27` |
+
+### Implemented scope and limits
+
+- The editor shares a single drill draft and selection across Placement and Parameters. Numbered markers and variants remain selectable, the player-side table rulers show centimeter ticks, and a serve-only first-bounce marker follows the preview. Placement and Parameters have distinct save controls. This Ball and All Balls use the existing program data. See [editor behavior](INTERACTIVE_EDITOR.md) and [custom drills](CUSTOM_DRILLS.md).
+- The dashboard uses connected tabs, compact cards, green/yellow/red intensity levels, and confirmed deletion from My Drills. Basic and Mixed use two cards per row. Multi retains its responsive grid. Existing backup formats and stored drill identities are compatible.
+- Browser keyboard events implement the [remote learner](REMOTE_BUTTON.md). Live remote starts require one-time arming in Reps or Time. Manual starts keep the countdown and Music/MSYNC retain their existing timing. No automatic dashboard return was added on normal completion.
+- Trainer chooses a variant and Scatter offset for each repetition. Prime chooses them at robot-packet construction, which can cover multiple repetitions. Serve-only positions stay fixed under Random order.
+
+### Resume and verification
+
+The .9 build passed 223 Node tests, production build verification, and local ZIP integrity verification. The browser UI and live robot were outside this increment's verification. The user approved the connected-tab visual direction before the final .9 changes. The final Android appearance, remote hardware behavior, Calibration, and MSYNC physical checks remain pending. The previous full-gate assertion is superseded by the current [run sheet](PHYSICAL_TEST_RUN.md). Hosted deployment and GitHub release asset publication were outside the verified work.
+
+The remote cleanup target is exactly `main`, `fix/android-editor-layout`, and `fix/msync-session-controls`. The other 21 branches were archived locally and were still present after the failed authenticated-write attempt. Resume by obtaining GitHub write access, checking current tips against the archive, deleting the archived branches with guarded references, then verifying the keep set remotely. Preserve unrelated local worktrees.
+
+## Historical handovers
+
 ## Update - 2026-11-22: MSYNC session controls
 
 Version `0.19.4-msync-controls.0`, branch `fix/msync-session-controls`, starts from main `d532a5c`. User confirms v0.19.3 MSYNC executes and plays, but session Pause/Stop controls do not respond: controls verification FAIL, not a complete MSYNC hardware pass. Frequent audio/MSYNC renders replaced the complete session subtree, detaching buttons during pointer interaction. Focused screen updates now preserve the control row, buttons, handlers and ancestors while updating readouts and disabled states; countdown cancellation is also retained. No transport/protocol, IndexedDB or robot flag changes.

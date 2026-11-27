@@ -1,5 +1,11 @@
 # Interactive Ball Placement Editor
 
+## Current layout and controls
+
+Placement and Parameters share the selected numbered ball and the same unsaved drill draft. Swipe the Placement picker or use its arrows. Drag a numbered marker to edit that ball's Speed and Drop. The player-half ruler uses 10 cm ticks and 30 cm labels. The Serve icon above Height toggles the selected variant, and the robot-side bounce dot appears only for a selected serve with a predicted first bounce. Placement shows the ball's description and location by the compact Save and Cancel icons.
+
+The left toolbar adds balls and variants, deletes the selected ball or variant, and groups robot-position controls separately. Deletion preserves a playable step. Program Order shows two cards per row and scrolls after four balls. The order icon toggles the drill-wide Sequential or Random setting, reflected by SEQ or RND in each card. This Ball edits the selected variant. All Balls applies relative Speed, Spin and BPM changes to the current level. The level selectors use green, yellow, and red. Parameters retains labeled Save and Cancel buttons.
+
 ## JewelFlow
 
 1. **Business challenge** — The existing editor placed a tall table inside a constrained three-column workspace, so its lower portion appeared cut off. Landing markers were generated from sliders but could not be moved, forcing players to guess how the controls affected placement.
@@ -23,7 +29,7 @@ Test, Add variant, and Delete are compact icon buttons beside Active and Serve, 
 - Use arrow keys on the selected ball for small adjustments, or Shift+Arrow for larger adjustments.
 - Direct placement changes only Speed and Drop.
 - Manual parameter changes clear the requested target and recompute the normal estimate.
-- The requested target ring and calculated landing marker remain separate when the target cannot be matched exactly.
+- The requested target ring and selected marker stay aligned during editing. Reopening recalculates locations from the saved parameters.
 
 ## Safety and accuracy boundary
 

@@ -1,5 +1,15 @@
 # Nova Prime continuation memory
 
+## Current checkpoint · 2026-11-27
+
+- **Merged source:** Main at `61c239dd735fd682dfda0fbd92d04479f7759819` contains Layout Test .9 via PR #42, following the editor and remote integration in PR #41. GitHub CI for PR #42 passed (run 46014453354).
+- **Android candidate:** `nova-prime-0.19.4-editor-layout-test.9-release.zip` is a local 72-file test package. All 223 automated tests and build/ZIP checks passed. No hosted deployment, GitHub release asset, or final Android layout pass was confirmed during this work.
+- **Open gates:** Calibration and MSYNC physical verification remain pending. The keyboard-style remote and one-time remote arming still need an Android/device check. Per-repetition Trainer variant redraw remains an open difference.
+- **Branch cleanup:** The approved keep set is `main`, `fix/android-editor-layout`, and `fix/msync-session-controls`. Deletion attempts failed for lack of authenticated GitHub write access. All 24 pre-cleanup branch tips are preserved in the verified local recovery bundle.
+- **First action:** After GitHub write access is available, re-list the branches and compare their tips with the recovery bundle before pruning. Independently, transfer the .9 ZIP for Android verification using the existing origin. See [handover](HANDOVER.md), [install instructions](ANDROID_INSTALL.md), and the [physical run sheet](PHYSICAL_TEST_RUN.md).
+
+## Historical checkpoints
+
 ## Update - 2026-11-22: MSYNC session controls
 
 Version `0.19.4-msync-controls.0`, branch `fix/msync-session-controls`, starts from main `d532a5c`. User confirms v0.19.3 MSYNC executes and plays, but session Pause/Stop controls do not respond: controls verification FAIL, not a complete MSYNC hardware pass. Frequent audio/MSYNC renders replaced the complete session subtree, detaching buttons during pointer interaction. Focused screen updates now preserve the control row, buttons, handlers and ancestors while updating readouts and disabled states; countdown cancellation is also retained. No transport/protocol, IndexedDB or robot flag changes.

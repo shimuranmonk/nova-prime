@@ -22,4 +22,6 @@ The database name `nova_ultimate` remains a compatibility identifier. App upgrad
 
 ## Included package and robot status
 
-The ZIP contains the complete production `dist/` payload at archive root, including `index.html`, runtime modules, build metadata, AGPL license, and third-party notices. It does not contain an experimental hardware-test application. Live robot control remains disabled in production until the physical release gate in [ROBOT.md](ROBOT.md) is passed.
+The latest verified local transfer candidate is `nova-prime-0.19.4-editor-layout-test.9-release.zip`. See [handover](HANDOVER.md) for its commit, checksum, and test status.
+
+The ZIP contains the complete production `dist/` payload at archive root, including `index.html`, runtime modules, build metadata, AGPL license, and third-party notices. It does not contain an experimental hardware-test application. Live robot control is enabled for authorized beta testing. Calibration and MSYNC physical verification remain pending. See [robot status](ROBOT.md).

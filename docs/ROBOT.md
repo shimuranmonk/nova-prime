@@ -23,7 +23,7 @@ Verified facts include the advertised service and GATT UUIDs, handshake packets 
 
 ## Release gate
 
-The maintainer reported that the complete documented physical release gate passed on 2026-11-20; see [PHYSICAL_TEST_RUN.md](PHYSICAL_TEST_RUN.md). Production live control is enabled in the current candidate. This status is user-reported and the run-specific phone/robot matrix may be appended to the run sheet.
+Production live control is enabled for authorized beta testing. Calibration and MSYNC physical verification remain pending, and the complete physical release gate remains open. See [the physical run sheet](PHYSICAL_TEST_RUN.md) for the current candidate and build-specific evidence.
 
 The required checks for future firmware, protocol, transport, or safety changes are:
 

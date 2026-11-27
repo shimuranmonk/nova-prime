@@ -1,5 +1,9 @@
 # MSYNC v1
 
+## Current status · 2026-11-27
+
+Main contains the live MSYNC beta path. Layout Test .9 retains the existing MSYNC start, countdown, and timing paths. Immediate keyboard-remote start applies to armed Reps and Time sessions. Android physical MSYNC verification remains pending. See [the run sheet](PHYSICAL_TEST_RUN.md) for the current evidence. The dated entries below describe earlier stages.
+
 ## Update — 2026-11-21 · isolated robot idle/safety fixes
 
 Branch `fix/robot-idle-safety`, candidate version `0.19.1-robot-safety.0`, started from main `09abc2e`. Original uncommitted worktree preserved in `work/nova-prime`; this branch uses `work/nova-prime-robot-safety`. Main/Pages and robot feature flags are unchanged.
@@ -57,7 +61,7 @@ Version `0.3.0-msync.0` adds a responsive MSYNC management route, track/file att
 
 ## Safety boundary
 
-`ROBOT_PLAN` is diagnostic output, not transport. Live Bluetooth remains disabled until a later executor has queue cancellation, priority Stop, disconnect handling, fake-transport tests, and physical Nova S Pro verification.
+`ROBOT_PLAN` remains simulation diagnostic output. The live beta path sends validated cues through the canonical executor, which owns cancellation, priority Stop, and disconnect handling.
 
 
 ## Update — 2026-11-22 · browser audio startup correction

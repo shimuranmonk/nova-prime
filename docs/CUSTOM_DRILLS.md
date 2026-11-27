@@ -2,7 +2,7 @@
 
 ## Implemented scope
 
-Nova Prime stores custom drills in Groups A, B, and C. Users can create, rename, duplicate, move between groups, reorder, delete, select, export, import, and run custom drills in Reps or Time simulation. Each group accepts up to 100 drills, matching the Nova Trainer library boundary.
+Nova Prime stores custom drills in Groups A, B, and C. Users can create, rename, duplicate, move between groups, reorder, delete, select, export, import, and run custom drills in supported training modes. Each group accepts up to 100 drills, matching the Nova Trainer library boundary.
 
 New drills receive immutable drill and step identities and begin with one valid canonical ball program. Names are trimmed, restricted to 40 characters, cleaned of Trainer-incompatible separators, and made unique within their group.
 
@@ -11,6 +11,8 @@ The visual editor builds independent programs for Levels 1–3. Each program sup
 Adding a step inherits the preceding step’s first ball. A copied Serve becomes a normal Height 40 ball while retaining the remaining useful settings, and scatter is inherited only when the preceding step has exactly one variant.
 
 `Active` is the user-facing form of the canonical step `enabled` flag inherited from Nova Plus and Nova Trainer. Turning it off preserves the step and all variants but excludes it from execution. `Serve` follows Nova Trainer exactly: it is derived from Height below zero, switches to −30 when enabled and 35 when disabled, uses the same robot Height packet, and displays the estimated first bounce on the robot side. When Random order is selected, serve positions remain fixed while only non-serve positions are shuffled.
+
+Each My Drills card shows enabled steps for the selected intensity and a serve marker if any enabled step includes a serve variant. Edit opens Manage Drill. Delete asks for confirmation before removal.
 
 Editor changes remain an in-memory draft until **Save program**. Cancelling or closing leaves the stored drill unchanged; saving validates the complete drill before one storage write.
 
@@ -29,11 +31,11 @@ The custom-drill file is distinct from the complete application backup. A drill 
 
 ## Table preview
 
-The table preview adapts Nova Trainer's uncalibrated start-value physics by nova_fan. It is a visual estimate, not a promise of physical placement. When an active calibration exists, its learned Drop/lateral, Speed/depth, Height, and signed Spin responses adjust the estimate and the preview reports the profile's accuracy. The draggable marker and target ring stay aligned; any remaining calculated error is reported as text instead of a misleading second marker.
+The table preview adapts Nova Trainer's uncalibrated start-value physics by nova_fan. It is a visual estimate, not a promise of physical placement. When an active calibration exists, its learned Drop/lateral, Speed/depth, Height, and signed Spin responses adjust the estimate when the profile applies to the current robot position. The draggable marker and target ring stay aligned during editing. On reopening, marker positions are recalculated from saved parameters.
 
 ## Current boundary
 
-Library management, visual editing, guided manual calibration, and simulation are complete for this increment. Live Bluetooth execution remains disabled. Custom sessions use the existing safety lifecycle, send no robot commands, and record zero physically dispatched balls.
+The current build enables live Bluetooth for authorized beta testing through the canonical session lifecycle. Calibration and MSYNC physical verification remain pending. See the [physical run sheet](PHYSICAL_TEST_RUN.md).
 
 ## Source alignment
 

@@ -1,5 +1,9 @@
 # Current verification status
 
+## Current Android candidate · 2026-11-27
+
+**LIVE TRAINING BETA — Calibration and MSYNC PENDING.** The complete physical release gate remains open. Layout Test .9 at `61c239d` is a verified software package. No live robot test was performed for the editor and remote increments. The final Android UI retest, a keyboard-style remote check, adaptive Calibration, and physical MSYNC controls/timing are pending. Historical device results below apply to the builds named in their individual entries.
+
 ## Android status before adaptive Calibration
 
 The maintainer reports that the other features are functioning as designed, with a third test round pending. Earlier Android checks confirmed MSYNC attachment and the normal completion, Time, and Music timing fixes. The five-shot Calibration run produced two confirmed landings, two long shots, and one shot with a bounce on the robot half before reaching the player half. Adaptive Calibration and its Visual Editor predictions await physical testing. The complete physical release gate is NOT PASSED.

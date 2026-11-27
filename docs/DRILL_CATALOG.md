@@ -9,6 +9,10 @@ Nova Prime’s built-in catalogue is migrated from `shimuranmonk/nova-advance`, 
 
 The source reference is embedded in the catalogue module so later updates can identify the exact definitions that were migrated.
 
+## Dashboard display
+
+The dashboard calls the Combined group **Mixed** and the Complex group **Multi**. Basic and Mixed show two compact cards per row. Multi keeps its responsive grid. The library tab displays the total and current intensity, and each drill card identifies the drill by name. The order icon changes the selected built-in drill's per-level preference when it has at least two active steps. Reset restores built-in preferences.
+
 ## Inventory
 
 | Category | Count | Contents |
