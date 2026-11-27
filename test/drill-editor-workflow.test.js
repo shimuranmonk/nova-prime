@@ -23,6 +23,7 @@ test("Add Step converts an inherited Serve to a normal ball and avoids ambiguous
 
 test("placement and parameter controls edit and save the same variant", async () => {
   const first = inheritedStep();
+  Object.assign(first.variants[0], { speed: 1.8, spin: 5.5, type: "back", height: -30 });
   const second = inheritedStep(first);
   second.variants.push({ ...second.variants[0], bpm: 75 });
   const drill = {
@@ -60,6 +61,9 @@ test("placement and parameter controls edit and save the same variant", async ()
   });
   const bpm = control("[data-ball-field]", { dataset: { ballField: "bpm" }, value: "80" });
   const save = control("[data-editor-save]");
+  const remove = control("[data-placement-delete]");
+  const serveToggle = control("[data-placement-serve]");
+  const orderToggle = control("[data-editor-random]");
   let saved;
   const editor = createDrillEditor({
     dialog: { addEventListener() {}, showModal() {}, close() {} },
@@ -71,12 +75,24 @@ test("placement and parameter controls edit and save the same variant", async ()
   });
 
   await editor.open(drill.id);
+  assert.match(root.innerHTML, /class="serve-bounce"/);
+  assert.match(root.innerHTML, /BPM · SEQ/);
+  orderToggle.fire("click");
+  assert.match(root.innerHTML, /data-editor-random aria-pressed="true"/);
+  assert.match(root.innerHTML, /BPM · RND/);
+  orderToggle.fire("click");
+  assert.match(root.innerHTML, /BPM · SEQ/);
+  serveToggle.fire("click");
+  assert.match(root.innerHTML, /data-placement-serve aria-pressed="false"/);
+  assert.doesNotMatch(root.innerHTML, /class="serve-bounce"/);
+  await editor.open(drill.id);
   assert.match(root.innerHTML, /Ball 2a/);
   assert.match(root.innerHTML, /Ball 2b/);
   table.fire("pointerdown", { button: 0, pointerId: 1, clientX: 50, clientY: 75, target: { closest: () => marker } });
   table.fire("pointermove", { pointerId: 1, clientX: 25, clientY: 80 });
   table.fire("pointerup", { pointerId: 1, clientX: 25, clientY: 80 });
   assert.match(root.innerHTML, /aria-selected="true">Ball 2b/);
+  assert.doesNotMatch(root.innerHTML, /class="serve-bounce"/);
   firstSelector.fire("click");
   assert.match(root.innerHTML, /style="left:25%;top:80%"[^>]*aria-pressed="false" aria-label="Ball 2b/);
   marker.fire("click");
@@ -87,4 +103,15 @@ test("placement and parameter controls edit and save the same variant", async ()
   assert.deepEqual(edited[1].variants[0], second.variants[0]);
   assert.equal(edited[1].variants[1].bpm, 80);
   assert.notEqual(edited[1].variants[1].drop, second.variants[1].drop);
+
+  await editor.open(drill.id);
+  marker.fire("click");
+  remove.fire("click");
+  assert.doesNotMatch(root.innerHTML, /Ball 2b/);
+  assert.match(root.innerHTML, /aria-selected="true">Ball 2/);
+  remove.fire("click");
+  assert.match(root.innerHTML, /data-placement-delete[^>]* disabled>/);
+  remove.fire("click");
+  await save.fire("click");
+  assert.deepEqual(saved.programs[1].steps, [first]);
 });
