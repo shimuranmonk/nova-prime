@@ -2,7 +2,7 @@
 
 ## Trainer parity branch · 2026-11-28
 
-- `fix/trainer-repetition-parity` implements Trainer-style per-repetition draws in live Reps and Time. See the [handover](HANDOVER.md#trainer-parity-branch--2026-11-28) for scope and pending physical verification.
+- `fix/trainer-repetition-parity` adds a Plus/Trainer icon beside Voice in Reps and Time. Plus is the default and Trainer enables per-repetition draws in live runs. See the [handover](HANDOVER.md#trainer-parity-branch--2026-11-28) for scope and pending physical verification.
 
 ## Layout checkpoint · 2026-11-27
 

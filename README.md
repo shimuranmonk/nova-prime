@@ -8,6 +8,8 @@ The project combines Nova Trainer's calibration, physics, and visual drill editi
 
 **Repository:** [github.com/shimuranmonk/nova-prime](https://github.com/shimuranmonk/nova-prime)
 
+In Reps and Time, Session Setup defaults to **Plus** repetition logic. Tap the icon beside **Voice** to switch to **Trainer** for fresh draws each repetition. See [custom drill behavior](docs/CUSTOM_DRILLS.md).
+
 ## Android installation
 
 Download the production ZIP from [GitHub Releases](https://github.com/shimuranmonk/nova-prime/releases), extract it into your Android HTTP server's document directory, and open `http://127.0.0.1:8080/` in Chrome. No compilation is needed on Android. See [installation and upgrades](docs/ANDROID_INSTALL.md). Robot inactivity and Stop behavior are documented in [robot safety](docs/ROBOT_IDLE_SAFETY.md).

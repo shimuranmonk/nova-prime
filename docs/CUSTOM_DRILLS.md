@@ -12,7 +12,12 @@ Adding a step inherits the preceding step’s first ball. A copied Serve becomes
 
 `Active` is the user-facing form of the canonical step `enabled` flag inherited from Nova Plus and Nova Trainer. Turning it off preserves the step and all variants but excludes it from execution. `Serve` follows Nova Trainer exactly: it is derived from Height below zero, switches to −30 when enabled and 35 when disabled, uses the same robot Height packet, and displays the estimated first bounce on the robot side. When Random order is selected, a position whose variants are all Serves stays fixed while the other positions are shuffled.
 
-In live Reps and Time, each repetition independently selects variants and Scatter, even in Sequential order. Random also reshuffles the movable positions each repetition. Independent draws may repeat an earlier result. Sequential programs with one variant per enabled step and zero Scatter keep batched execution. Pause stops firing. Resume replays any unfinished repetition with its existing draw, and paused time does not count toward the Time limit.
+In Reps and Time, tap the **Plus** icon beside **Voice** in **Session Setup** to switch to **Trainer**. The page opens in Plus and keeps the selection while it is open. The selection applies to the next live run and stays fixed during that run.
+
+- **Plus** uses the existing batched robot commands and selects variants and Scatter when it builds a command.
+- **Trainer** selects variants and Scatter for each repetition, including in Sequential order. Random also reshuffles the movable positions each repetition. Independent draws may repeat an earlier result. Sequential programs with one variant per enabled step and zero Scatter keep batching. Pause stops firing. Resume replays an unfinished repetition with its existing draw, and paused time does not count toward the Time limit.
+
+The icon controls live execution. The drill editor's Sequential and Random settings keep their role, and the choice is stored only in the open page.
 
 Each My Drills card shows enabled steps for the selected intensity and a serve marker if any enabled step includes a serve variant. Edit opens Manage Drill. Delete asks for confirmation before removal.
 

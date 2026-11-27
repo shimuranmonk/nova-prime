@@ -23,7 +23,7 @@ Verified facts include the advertised service and GATT UUIDs, handshake packets 
 
 ## Live Reps and Time
 
-Random order, multiple variants, or Scatter on an enabled step trigger one finite packet per repetition. Prime selects the complete sequence and disables firmware shuffling for these packets. The next packet waits for the current completion notification and the configured rest. A missing notification triggers the completion watchdog and Stop. Time also has an independent session deadline that can stop an unfinished repetition. Deterministic programs keep their original batched commands. Music and MSYNC keep their own dispatch paths.
+The Reps and Time toggle in Session Setup defaults to **Plus**, which retains the existing batched command path and firmware shuffle flag. With **Trainer** selected, Random order, multiple variants, or Scatter on an enabled step trigger one finite packet per repetition. Prime selects the complete sequence and disables firmware shuffling for these packets. The next packet waits for the current completion notification and the configured rest. A missing notification triggers the completion watchdog and Stop. Time also has an independent session deadline that can stop an unfinished repetition. Deterministic programs keep their original batched commands. Music and MSYNC keep their own dispatch paths.
 
 The completion notification has no per-packet identifier. Verify inter-repetition timing with zero and nonzero rest and check late notifications around Stop and Resume on authorized hardware. The seeded ten-ball simulation in [the runtime tests](../test/trainer-repetition-parity.test.js) exercises both modes, including a fixed Serve in slot 5.
 

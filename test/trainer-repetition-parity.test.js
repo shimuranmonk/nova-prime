@@ -20,6 +20,7 @@ function setup(mode, { randomOrder = false, amount = 2, pause = 0, draws = [] } 
     get(key) { return String(key === "amount" ? amount : pause); }
   };
   f.bridge.randomOrderFor = () => randomOrder;
+  f.bridge.uiState.trainerRepetitionLogic = true;
   return f;
 }
 
@@ -62,7 +63,7 @@ for (const mode of ["reps", "time"]) {
   });
 
   test(`${mode} preserves batched deterministic packets and ignores inactive randomness`, async () => {
-    const f = setup(mode, { amount: 5 });
+    const f = setup(mode, { amount: 5, draws: [0] });
     f.bridge.programForDrill = () => ({ steps: [
       step([ball(2)]), { ...step([ball(1), ball(2)], 2), enabled: false },
     ] });
@@ -221,6 +222,7 @@ for (const mode of ["reps", "time"]) {
     });
     f.bridge.programForDrill = () => ({ steps: playingSteps });
     f.bridge.randomOrderFor = () => true;
+    f.bridge.uiState.trainerRepetitionLogic = true;
     await f.connect();
     await f.start();
     const matrix = [];
@@ -257,5 +259,27 @@ for (const mode of ["reps", "time"]) {
       "I B(-1) D A Serve C(-3) F E G(1) H(3)",
     ]);
     t.diagnostic(`${mode} matrix:\n${matrix.join("\n")}`);
+  });
+}
+
+for (const mode of ["reps", "time"]) {
+  test(`${mode} defaults to Plus and retains legacy randomized batching`, async () => {
+    const draws = [0, 0, 0.99, 0.99];
+    const f = fixture(mode, { random: () => {
+      assert.ok(draws.length);
+      return draws.shift();
+    } });
+    f.bridge.randomOrderFor = () => true;
+    f.bridge.programForDrill = () => ({ steps: [step([ball(-2), ball(2)], 1), step([ball(6)])] });
+    await f.connect();
+    await f.start();
+    const [first] = f.programs();
+    assert.deepEqual(first.p.slice(3, 7), [mode === "time" ? 0 : 1, 2, 0, 1]);
+    assert.deepEqual(first.p.slice(7), bytes(ball(6), ball(3)));
+    if (mode === "time") await f.c.advance(2000);
+    else await f.done();
+    assert.equal(f.controller.state, "COMPLETED");
+    assert.equal(f.programs().length, 1);
+    assert.deepEqual(draws, []);
   });
 }

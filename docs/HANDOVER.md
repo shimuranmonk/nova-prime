@@ -2,7 +2,7 @@
 
 ## Trainer parity branch · 2026-11-28
 
-Branch `fix/trainer-repetition-parity` starts from main at `2ac9ad8`. It reuses the selection rules verified against the supplied Trainer reference below. Live Reps and Time now select order, variants, and Scatter per repetition. Deterministic drills retain batching and Serve-only positions stay fixed. The shared executor, MSYNC coordinator and format, storage schema, robot flags, and physical release gate retain their existing behavior. See [custom drills](CUSTOM_DRILLS.md) and [robot verification](ROBOT.md).
+Branch `fix/trainer-repetition-parity` starts from main at `2ac9ad8`. It reuses the selection rules verified against the supplied Trainer reference below. The Reps and Time toggle beside Voice defaults to Plus. Selecting Trainer enables per-repetition draws for order, variants, and Scatter. Deterministic drills retain batching and Serve-only positions stay fixed. The shared executor, MSYNC coordinator and format, storage schema, robot flags, and physical release gate retain their existing behavior. See [custom drills](CUSTOM_DRILLS.md) and [robot verification](ROBOT.md).
 
 The seeded ten-ball simulation covers five repetitions in both modes. Physical Bluetooth timing, late completion signals around Pause and Resume, and the existing Calibration and MSYNC checks remain pending.
 

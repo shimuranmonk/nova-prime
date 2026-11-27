@@ -85,6 +85,7 @@ const uiState = {
   sharingTitle: "My Nova Prime drills",
   sharingNote: "",
   sharingDrillIds: [],
+  trainerRepetitionLogic: false,
   voiceEnabled: false,
   voicePendingStart: false,
 };
@@ -411,6 +412,21 @@ function voiceControlSlot() {
     </div>`;
 }
 
+function repetitionLogicButton(locked) {
+  return `<button type="button" class="repetition-logic-button" data-repetition-logic
+    aria-label="Use Trainer repetition logic" aria-pressed="${uiState.trainerRepetitionLogic}"
+    title="Switch between Plus batch logic and Trainer per-repetition logic" ${locked ? "disabled" : ""}>
+    <span class="repetition-logic-plus" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M6 3h12M3 12h18"/></svg>
+      Plus
+    </span>
+    <span class="repetition-logic-trainer" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3c5 0 6 12 12 12h3m-4-4 4 4-4 4M3 18h3c5 0 6-12 12-12h3m-4-4 4 4-4 4"/></svg>
+      Trainer
+    </span>
+  </button>`;
+}
+
 function msyncActivity() {
   const selected = selectedMsync();
   const snapshot = controller.state === SESSION_STATES.IDLE ? null : msyncSnapshot;
@@ -453,7 +469,7 @@ function setupCard(session) {
       <form id="session-form" class="session-form">
         <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
         <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
-        <div class="training-start-row">        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>${voiceControlSlot()}</div>
+        <div class="training-start-row training-start-row-with-logic"><button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>${voiceControlSlot()}${repetitionLogicButton(locked)}</div>
         ${remoteArmControls}
       </form>`;
   return `
@@ -896,6 +912,11 @@ function bindRouteActions(route) {
     }));
   }
   if (route === "train") {
+    document.querySelector("[data-repetition-logic]")?.addEventListener("click", (event) => {
+      if (controller.state !== SESSION_STATES.IDLE) return;
+      uiState.trainerRepetitionLogic = !uiState.trainerRepetitionLogic;
+      event.currentTarget.setAttribute("aria-pressed", String(uiState.trainerRepetitionLogic));
+    });
     document.querySelector("[data-voice-enable]")?.addEventListener("click", async () => {
       uiState.voiceEnabled = true;
       voiceStatus = "ready";

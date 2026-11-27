@@ -383,13 +383,16 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       bridge.uiState.pauseSeconds = pauseSeconds;
       spec = bridge.createSessionSpec({ mode, level: bridge.uiState.level, drillId: drill.id, randomOrder: bridge.randomOrderFor(drill), repetitions: mode === "reps" ? amount : 10, durationSeconds: mode === "time" ? amount : 60, pauseSeconds });
       const enabledSteps = program.steps.filter(step => step.enabled);
-      if (spec.randomOrder || enabledSteps.some(step => step.variants.length > 1 || step.scatter > 0)) {
+      if (bridge.uiState.trainerRepetitionLogic === true &&
+          (spec.randomOrder || enabledSteps.some(step => step.variants.length > 1 || step.scatter > 0))) {
         const options = { mode: "combos", amount: 1, randomOrder: spec.randomOrder, firmwareRandomOrder: false, random };
         initialPacket = encodeDrillPacket(program, options);
         series = { options, completedBalls: 0, remainingMs: spec.durationSeconds * 1000,
           deadline: null, target: spec.repetitions, pauseMs: spec.pauseSeconds * 1000 };
       } else {
-        initialPacket = encodeDrillPacket(program, { mode: mode === "time" ? "time" : "combos", amount });
+        initialPacket = encodeDrillPacket(program, {
+          mode: mode === "time" ? "time" : "combos", amount, randomOrder: spec.randomOrder, random,
+        });
       }
     }
     if (mode === "reps" && bridge.uiState.amount > 255) throw new Error("Repetitions are limited to 255 per robot command.");
@@ -705,7 +708,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       const options = { mode: runContext.mode === "time" ? "time" : runContext.mode === "music" ? "endless" : "combos",
         amount: runContext.mode === "time" ? Math.max(1, Math.ceil(snapshot.spec.durationSeconds - snapshot.elapsedSeconds))
           : runContext.mode === "reps" ? Math.max(1, snapshot.spec.repetitions - snapshot.completedCycles) : 1,
-        randomOrder: snapshot.spec.randomOrder };
+        randomOrder: snapshot.spec.randomOrder, random };
       const packet = encodeDrillPacket(runContext.program, options);
       context.awaitingDone = false;
       const result = await executor.resume(packet);

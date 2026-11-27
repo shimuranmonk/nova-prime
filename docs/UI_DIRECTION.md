@@ -8,7 +8,7 @@ Nova Prime uses Nova Trainer as its primary interaction model: a compact applica
 
 ## Layout Test .9 direction
 
-Connected tabs group training modes, the two drill libraries, Placement/Parameters, and This Ball/All Balls. Session Setup uses an italic intensity label and green, yellow, and red level circles. Compact drill cards and the editor's distinct Placement and Parameters footers reclaim space on Android. See [editor controls](INTERACTIVE_EDITOR.md) and [handover](HANDOVER.md) for the merged scope and test status.
+Connected tabs group training modes, the two drill libraries, Placement/Parameters, and This Ball/All Balls. Session Setup uses an italic intensity label and green, yellow, and red level circles. In Reps and Time, the toggle beside Voice shows stacked packets for the default Plus logic and crossing arrows for Trainer logic. Compact drill cards and the editor's distinct Placement and Parameters footers reclaim space on Android. See [editor controls](INTERACTIVE_EDITOR.md) and [handover](HANDOVER.md) for the merged scope and test status.
 
 ## Historical app-shell implementation
 
