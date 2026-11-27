@@ -1,3 +1,4 @@
+import { createRemotePressHandler, learnRemoteKey, matchesRemoteKey, remoteStartMode, submitRemoteStart } from "./remote-button.js";
 import { BallStatistics } from "../application/ball-statistics.js";
 import { updateSessionScreen } from "./session-screen.js";
 import { createBackup, restoreBackup } from "../application/backup/backup-service.js";
@@ -443,11 +444,17 @@ function setupCard(session) {
         ${msyncActivity()}
         <div class="training-start-row">        <button class="primary-button" type="submit" ${locked || !msync.attachment ? "disabled" : ""}>Start MSYNC simulation</button>${voiceControlSlot()}</div>
       </form>`;
+  const remoteArmControls = remoteBinding && !locked ? `
+    <div class="training-start-row remote-arm-controls" role="group" aria-label="Arm remote start">
+      <button type="button" data-remote-arm="countdown" aria-pressed="false" ${FEATURE_FLAGS.robot ? "disabled" : ""}>Arm remote</button>
+      <button type="button" data-remote-arm="immediate" aria-pressed="false" ${FEATURE_FLAGS.robot ? "disabled" : ""}>Arm immediate start</button>
+    </div>` : "";
   const standardForm = `
       <form id="session-form" class="session-form">
         <label><span>${amountLabel}</span><input name="amount" type="number" min="1" max="3600" value="${uiState.amount}" ${locked ? "disabled" : ""} required></label>
         <label><span>Pause (s)</span><input name="pause" type="number" min="0" max="30" step="1" value="${uiState.pauseSeconds}" ${locked ? "disabled" : ""} required></label>
         <div class="training-start-row">        <button class="primary-button" type="submit" ${locked ? "disabled" : ""}>Start dry run</button>${voiceControlSlot()}</div>
+        ${remoteArmControls}
       </form>`;
   return `
     <section class="app-card setup-card" aria-labelledby="setup-title">
@@ -744,6 +751,7 @@ const renderers = { train: trainView, calibration: calibrationView, music: music
 let renderRevision = 0;
 async function render(route) {
   const revision = ++renderRevision;
+  if (activeRoute !== route) disarmRemote();
   activeRoute = route;
   document.querySelectorAll("[data-menu-route]").forEach((link) => link.toggleAttribute("aria-current", link.dataset.menuRoute === route));
   const html = await renderers[route]();
@@ -1003,7 +1011,15 @@ function bindRouteActions(route) {
       }
       await render("train");
     });
+    document.querySelectorAll("[data-remote-arm]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const armed = button.getAttribute("aria-pressed") === "true";
+        clearRemoteArm();
+        if (!armed) button.setAttribute("aria-pressed", "true");
+      });
+    });
     document.querySelector("#session-form")?.addEventListener("input", (event) => {
+      clearRemoteArm();
       const form = new FormData(event.currentTarget);
       if (form.has("amount")) uiState.amount = Number(form.get("amount"));
       if (form.has("pause")) uiState.pauseSeconds = Number(form.get("pause"));
@@ -1061,7 +1077,7 @@ function bindRouteActions(route) {
         uiState.amount = Number(form.get("amount"));
         uiState.pauseSeconds = Number(form.get("pause"));
         const spec = createSessionSpec({ mode: uiState.mode, level: uiState.level, drillId: uiState.drillId, randomOrder: randomOrderFor(resolveDrill(uiState.drillId)), repetitions: uiState.mode === "reps" ? uiState.amount : 10, durationSeconds: uiState.mode === "time" ? uiState.amount : 60, pauseSeconds: uiState.pauseSeconds });
-        controller.start(spec, { countdownSeconds: SESSION_START_COUNTDOWN_SECONDS });
+        controller.start(spec, { countdownSeconds: remoteStartMode(event.currentTarget) === "immediate" ? 0 : SESSION_START_COUNTDOWN_SECONDS });
       }
       await render("train");
     });
@@ -1314,7 +1330,135 @@ async function openBallStatistics() {
   dialog.addEventListener("close", () => dialog.remove());
 }
 
+const REMOTE_SETTING_ID = "training-remote-button";
+const storedRemoteBinding = (await store.get("settings", REMOTE_SETTING_ID).catch(() => null))?.binding;
+let remoteBinding = typeof storedRemoteBinding?.key === "string" && typeof storedRemoteBinding?.code === "string"
+  ? learnRemoteKey(storedRemoteBinding) : null;
+let learningRemote = false;
+
+function clearRemoteArm() {
+  document.querySelectorAll('[data-remote-arm][aria-pressed="true"]').forEach((button) => {
+    button.setAttribute("aria-pressed", "false");
+  });
+}
+
+const remoteAllowed = () => activeRoute === "train" && document.visibilityState === "visible"
+  && document.hasFocus() && !learningRemote && !menu.classList.contains("open")
+  && !document.querySelector("dialog[open]");
+
+const remotePress = createRemotePressHandler({
+  snapshot: () => controller.snapshot(),
+  allowed: remoteAllowed,
+  start() {
+    const form = document.querySelector("#session-form");
+    const armed = form?.querySelector('[data-remote-arm][aria-pressed="true"]:not(:disabled)');
+    if (!armed || !["reps", "time"].includes(uiState.mode)) return;
+    clearRemoteArm();
+    submitRemoteStart(form, armed.dataset.remoteArm === "immediate");
+  },
+  async command(command) {
+    await executeSessionCommand(command);
+    if (activeRoute === "train") await render("train");
+  },
+});
+
+window.addEventListener("keydown", (event) => {
+  if (!event.isTrusted || !remoteAllowed() || !matchesRemoteKey(event, remoteBinding)) return;
+  if (event.target.closest?.("input, textarea, select, [contenteditable]:not([contenteditable=false])")) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (!event.repeat) remotePress.press();
+}, true);
+
+function disarmRemote() {
+  clearRemoteArm();
+  remotePress.clear();
+}
+window.addEventListener("blur", disarmRemote);
+window.addEventListener("pagehide", disarmRemote);
+document.addEventListener("visibilitychange", disarmRemote);
+document.addEventListener("submit", clearRemoteArm, true);
+document.addEventListener("click", (event) => {
+  if (!event.target.closest?.("[data-remote-arm]")) clearRemoteArm();
+}, true);
+
+function openRemoteLearner() {
+  closeMenu();
+  disarmRemote();
+  const dialog = document.createElement("dialog");
+  dialog.className = "drill-dialog";
+  dialog.setAttribute("aria-label", "Remote button");
+  dialog.innerHTML = `<h2>Remote button</h2>
+    <p>Pair a remote that sends keyboard keys. Choose Learn, then press its button. Browser volume buttons are unavailable.</p>
+    <p>Arm remote start in Reps or Time setup. During training, press once to pause or resume, or twice quickly to stop.</p>
+    <p role="status"></p><div class="dialog-actions">
+      <button type="button" data-learn>Learn</button>
+      <button type="button" data-disable>Turn off</button>
+      <button type="button" data-cancel>Cancel</button>
+      <button type="button" class="primary-button" data-save>Save</button>
+    </div>`;
+  let picked = remoteBinding;
+  let saving = false;
+  const status = dialog.querySelector('[role="status"]');
+  const save = dialog.querySelector("[data-save]");
+  const showBinding = () => {
+    status.textContent = picked ? `Button: ${picked.key === " " ? "Space" : picked.key}` : "Remote is off.";
+    save.disabled = !picked;
+  };
+  const capture = (event) => {
+    if (!dialog.open || !event.isTrusted || event.key === "Escape" || event.key === "Tab") return;
+    if (!learningRemote && !(event.repeat && matchesRemoteKey(event, picked))) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.repeat) return;
+    const binding = learnRemoteKey(event);
+    if (!binding) { status.textContent = "Choose another button."; return; }
+    picked = binding;
+    learningRemote = false;
+    showBinding();
+    save.focus();
+  };
+  const persist = async (binding) => {
+    if (saving) return;
+    saving = true;
+    dialog.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    learningRemote = false;
+    try {
+      if (binding) await store.put("settings", { id: REMOTE_SETTING_ID, binding });
+      else await store.delete("settings", REMOTE_SETTING_ID);
+      remoteBinding = binding;
+    } catch {
+      status.textContent = "Could not save the remote setting.";
+      saving = false;
+      dialog.querySelectorAll("button").forEach((button) => { button.disabled = false; });
+      save.disabled = !picked;
+      return;
+    }
+    dialog.close();
+    await render(activeRoute);
+  };
+  dialog.querySelector("[data-learn]").onclick = () => {
+    learningRemote = true;
+    status.textContent = "Press the remote button.";
+  };
+  dialog.querySelector("[data-disable]").onclick = () => void persist(null);
+  dialog.querySelector("[data-cancel]").onclick = () => dialog.close();
+  save.onclick = () => { if (picked) void persist(picked); };
+  dialog.addEventListener("cancel", (event) => { if (saving) event.preventDefault(); });
+  dialog.addEventListener("close", () => {
+    learningRemote = false;
+    window.removeEventListener("keydown", capture, true);
+    dialog.remove();
+  });
+  window.addEventListener("keydown", capture, true);
+  document.body.append(dialog);
+  showBinding();
+  dialog.showModal();
+}
+
 function openMenu() {
+  clearRemoteArm();
+  remotePress.clear();
   menu.classList.add("open");
   menu.setAttribute("aria-hidden", "false");
   menu.removeAttribute("inert");
@@ -1337,6 +1481,7 @@ async function refreshFooter() {
   document.querySelector("#training-total").textContent = `${totals.balls} balls · ${totals.drills} drills`;
 }
 
+document.querySelector("#remote-button-menu").addEventListener("click", (event) => { event.preventDefault(); openRemoteLearner(); });
 document.querySelector("#about-menu").addEventListener("click", (event) => { event.preventDefault(); void openAbout(); });
 document.querySelector("#ball-statistics-menu").addEventListener("click", (event) => { event.preventDefault(); void openBallStatistics(); });
 menuToggle.addEventListener("click", openMenu);

@@ -1,4 +1,5 @@
 import { BALL_LIMITS, BALL_TYPES, spinLimitForSpeed } from "../domain/drills/schema.js";
+import { remoteStartMode } from "./remote-button.js";
 import { LiveMsync } from "../application/msync/live-msync.js";
 import { NovaRobotConnection } from "../application/robot/nova-robot-connection.js";
 import { RobotDiagnostics } from "../application/robot/robot-diagnostics.js";
@@ -139,6 +140,10 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
   }
   const updateLabels = () => {
     paintSafetyFeedback();
+    for (const button of document.querySelectorAll("[data-remote-arm]")) {
+      button.disabled = testOnly || !connection.ready || pending || sessionStartPending || executor.state !== "idle";
+      if (button.disabled) button.setAttribute("aria-pressed", "false");
+    }
     const currentHost = document.querySelector("#robot-control-root");
     if (testOnly && currentHost && panel.parentElement !== currentHost) currentHost.append(panel);
     if (!testOnly) {
@@ -326,11 +331,16 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     finally { pending = false; paint(); }
   });
 
-  async function startLiveSession(generation) {
+  async function startLiveSession(generation, remoteMode) {
     if (!connection.ready) throw new Error("Connect and authenticate the robot first.");
     assertPreparation(generation);
     if (testOnly && !preflight()) throw new Error("Check both physical safety items first.");
     const mode = bridge.uiState.mode;
+    const immediate = remoteMode === "immediate";
+    if (remoteMode && (testOnly || pending || executor.state !== "idle" || !document.hasFocus()
+      || document.querySelector("dialog[open]") || !["reps", "time"].includes(mode))) {
+      throw new Error("Remote start canceled because the setup is no longer ready.");
+    }
     const drill = bridge.resolveDrill(bridge.uiState.drillId);
     const program = bridge.programForDrill(drill);
     if (mode !== "msync" && !program) throw new Error("Select a drill before starting.");
@@ -365,13 +375,15 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       bridge.uiState.amount = amount;
       bridge.uiState.pauseSeconds = pauseSeconds;
       spec = bridge.createSessionSpec({ mode, level: bridge.uiState.level, drillId: drill.id, randomOrder: bridge.randomOrderFor(drill), repetitions: mode === "reps" ? amount : 10, durationSeconds: mode === "time" ? amount : 60, pauseSeconds });
-      initialPacket = encodeDrillPacket(program, { mode: mode === "time" ? "time" : "combos", amount: mode === "time" ? amount : amount, randomOrder: spec.randomOrder });
+      initialPacket = encodeDrillPacket(program, { mode: mode === "time" ? "time" : "combos", amount, randomOrder: spec.randomOrder });
     }
     if (mode === "reps" && bridge.uiState.amount > 255) throw new Error("Repetitions are limited to 255 per robot command.");
     const ballCount = mode === "reps" ? countPacketBalls(initialPacket, bridge.uiState.amount) : 0;
     if (liveMsync) { await liveMsync.destroy(); liveMsync = null; }
     assertPreparation(generation);
-    const result = bridge.controller.start(spec, { countdownSeconds: mode === "msync" ? msync.validation.parsed.session.countdown : 3, liveRun: true, ballsPlanned: ballCount });
+    const countdownSeconds = mode === "msync" ? msync.validation.parsed.session.countdown
+      : immediate ? 0 : 3;
+    const result = bridge.controller.start(spec, { countdownSeconds, liveRun: true, ballsPlanned: ballCount });
     if (result.status !== "EXECUTED") throw new Error("A session is already active or the setup is invalid.");
     runContext = { mode, program, packet: initialPacket, generation, sent: false, failed: false };
     status.textContent = `Live ${mode.toUpperCase()} session armed. Stop remains available above.`;
@@ -386,6 +398,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
       });
       await liveMsync.start(msync.validation.parsed, msync.track, bridge.uiState.robotLeadSeconds);
     }
+    if (immediate) dispatchReadySession(bridge.controller.snapshot());
     await bridge.render("train");
   }
 
@@ -396,7 +409,7 @@ export function mountLiveRobotControls(bridge, { testOnly = globalThis.NOVA_PRIM
     if (sessionStartPending || calibrationShot) return;
     sessionStartPending = true;
     const generation = ++preparationGeneration;
-    try { await startLiveSession(generation); }
+    try { await startLiveSession(generation, remoteStartMode(event.target)); }
     catch (error) {
       if (error.message === "LIVE_START_CANCELLED" || generation !== preparationGeneration) return;
       if (liveMsync) await liveMsync.destroy().catch(() => {});

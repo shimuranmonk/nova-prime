@@ -77,8 +77,18 @@ export function encodeBall(ball) {
 
 export function selectProgramBalls(program, { random = Math.random, randomOrder = false } = {}) {
   if (!program?.steps?.length) throw new Error("NOVA_PROGRAM_EMPTY");
-  const balls = program.steps.filter((step) => step.enabled).map((step) => {
-    if (!step.variants?.length) throw new Error("NOVA_STEP_VARIANTS_EMPTY");
+  const steps = program.steps.filter((step) => step.enabled);
+  if (steps.some((step) => !step.variants?.length)) throw new Error("NOVA_STEP_VARIANTS_EMPTY");
+  if (randomOrder) {
+    // A serve-only position stays fixed even before a variant has been drawn.
+    const movable = steps.flatMap((step, index) => step.variants.every(isServeBall) ? [] : [index]);
+    for (let index = movable.length - 1; index > 0; index -= 1) {
+      const source = movable[index];
+      const target = movable[Math.floor(random() * (index + 1))];
+      [steps[source], steps[target]] = [steps[target], steps[source]];
+    }
+  }
+  return steps.map((step) => {
     const index = Math.min(step.variants.length - 1, Math.floor(random() * step.variants.length));
     const selected = { ...step.variants[index] };
     if (step.scatter > 0) {
@@ -87,16 +97,6 @@ export function selectProgramBalls(program, { random = Math.random, randomOrder 
     }
     return selected;
   });
-  if (!randomOrder) return balls;
-  const movableIndexes = balls.map((ball, index) => isServeBall(ball) ? -1 : index).filter((index) => index >= 0);
-  const shuffled = movableIndexes.map((index) => balls[index]);
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const target = Math.floor(random() * (index + 1));
-    [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
-  }
-  const ordered = [...balls];
-  movableIndexes.forEach((position, index) => { ordered[position] = shuffled[index]; });
-  return ordered;
 }
 
 export function encodeDrillPacket(program, { mode = "combos", amount = 1, mirror = false, randomOrder = false, random = Math.random } = {}) {
