@@ -10,7 +10,9 @@ The visual editor builds independent programs for Levels 1–3. Each program sup
 
 Adding a step inherits the preceding step’s first ball. A copied Serve becomes a normal Height 40 ball while retaining the remaining useful settings, and scatter is inherited only when the preceding step has exactly one variant.
 
-`Active` is the user-facing form of the canonical step `enabled` flag inherited from Nova Plus and Nova Trainer. Turning it off preserves the step and all variants but excludes it from execution. `Serve` follows Nova Trainer exactly: it is derived from Height below zero, switches to −30 when enabled and 35 when disabled, uses the same robot Height packet, and displays the estimated first bounce on the robot side. When Random order is selected, serve positions remain fixed while only non-serve positions are shuffled.
+`Active` is the user-facing form of the canonical step `enabled` flag inherited from Nova Plus and Nova Trainer. Turning it off preserves the step and all variants but excludes it from execution. `Serve` follows Nova Trainer exactly: it is derived from Height below zero, switches to −30 when enabled and 35 when disabled, uses the same robot Height packet, and displays the estimated first bounce on the robot side. When Random order is selected, a position whose variants are all Serves stays fixed while the other positions are shuffled.
+
+In live Reps and Time, each repetition independently selects variants and Scatter, even in Sequential order. Random also reshuffles the movable positions each repetition. Independent draws may repeat an earlier result. Sequential programs with one variant per enabled step and zero Scatter keep batched execution. Pause stops firing. Resume replays any unfinished repetition with its existing draw, and paused time does not count toward the Time limit.
 
 Each My Drills card shows enabled steps for the selected intensity and a serve marker if any enabled step includes a serve variant. Edit opens Manage Drill. Delete asks for confirmation before removal.
 

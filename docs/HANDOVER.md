@@ -1,6 +1,12 @@
 # Nova Prime project handover
 
-## Current handover · 2026-11-27
+## Trainer parity branch · 2026-11-28
+
+Branch `fix/trainer-repetition-parity` starts from main at `2ac9ad8`. It reuses the selection rules verified against the supplied Trainer reference below. Live Reps and Time now select order, variants, and Scatter per repetition. Deterministic drills retain batching and Serve-only positions stay fixed. The shared executor, MSYNC coordinator and format, storage schema, robot flags, and physical release gate retain their existing behavior. See [custom drills](CUSTOM_DRILLS.md) and [robot verification](ROBOT.md).
+
+The seeded ten-ball simulation covers five repetitions in both modes. Physical Bluetooth timing, late completion signals around Pause and Resume, and the existing Calibration and MSYNC checks remain pending.
+
+## Layout handover · 2026-11-27
 
 ### Source and artifacts
 
@@ -17,7 +23,7 @@
 - The editor shares a single drill draft and selection across Placement and Parameters. Numbered markers and variants remain selectable, the player-side table rulers show centimeter ticks, and a serve-only first-bounce marker follows the preview. Placement and Parameters have distinct save controls. This Ball and All Balls use the existing program data. See [editor behavior](INTERACTIVE_EDITOR.md) and [custom drills](CUSTOM_DRILLS.md).
 - The dashboard uses connected tabs, compact cards, green/yellow/red intensity levels, and confirmed deletion from My Drills. Basic and Mixed use two cards per row. Multi retains its responsive grid. Existing backup formats and stored drill identities are compatible.
 - Browser keyboard events implement the [remote learner](REMOTE_BUTTON.md). Live remote starts require one-time arming in Reps or Time. Manual starts keep the countdown and Music/MSYNC retain their existing timing. No automatic dashboard return was added on normal completion.
-- Trainer chooses a variant and Scatter offset for each repetition. Prime chooses them at robot-packet construction, which can cover multiple repetitions. Serve-only positions stay fixed under Random order.
+- In Layout Test .9, Prime selected variants and Scatter at robot-packet construction. The Trainer parity branch above updates live Reps and Time.
 
 ### Resume and verification
 

@@ -196,3 +196,66 @@ test("A randomized continuation write failure requests Stop and fails the sessio
   await f.c.advance(10000);
   assert.equal(f.programs().length, 2);
 });
+
+function seededRandom(seed) {
+  return () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 2 ** 32;
+  };
+}
+
+for (const mode of ["reps", "time"]) {
+  test(`${mode} ten-ball matrix keeps the Serve in slot 5`, async t => {
+    const f = fixture(mode, { random: seededRandom(42) });
+    globalThis.FormData = class {
+      get(key) { return key === "amount" ? (mode === "reps" ? "5" : "55") : "1"; }
+    };
+    const ids = ["A", "B", "C", "D", "Serve", "E", "F", "G", "H", "I"];
+    const playingSteps = ids.map(id => {
+      if (id === "Serve") return step([ball(0, { speed: 2, spin: 0, height: -30 })]);
+      const speed = id.charCodeAt(0) - 64;
+      const drop = speed - 5;
+      const base = ball(drop, { speed, spin: 0 });
+      if (["B", "H"].includes(id)) return step([base, { ...base, drop: drop + 2 }]);
+      return step([base], ["C", "G"].includes(id) ? 1 : 0);
+    });
+    f.bridge.programForDrill = () => ({ steps: playingSteps });
+    f.bridge.randomOrderFor = () => true;
+    await f.connect();
+    await f.start();
+    const matrix = [];
+    for (let repetition = 0; repetition < 5; repetition += 1) {
+      assert.equal(f.programs().length, repetition + 1);
+      const { t: writeTime, p } = f.programs()[repetition];
+      assert.equal(writeTime, repetition * 11000);
+      assert.deepEqual(p.slice(3, 7), [1, 1, 0, 0]);
+      const view = new DataView(Uint8Array.from(p).buffer);
+      const row = [];
+      for (let offset = 7; offset < p.length; offset += 24) {
+        const height = view.getFloat32(offset + 8, true);
+        const speed = Math.round((view.getUint32(offset, true) - 970) / 630.5);
+        const drop = Math.round(view.getFloat32(offset + 12, true) / 2.2 * 2) / 2;
+        const id = height < 0 ? "Serve" : String.fromCharCode(64 + speed);
+        row.push(["B", "C", "G", "H"].includes(id) ? `${id}(${drop})` : id);
+      }
+      assert.equal(row[4], "Serve");
+      assert.deepEqual(row.map(cell => cell.split("(")[0]).sort(), [...ids].sort());
+      matrix.push(row.join(" "));
+      await f.c.advance(10000);
+      await f.done();
+      if (repetition < 4 || mode === "time") await f.c.advance(1000);
+    }
+    assert.equal(f.controller.state, "COMPLETED");
+    assert.equal(f.controller.snapshot().completedCycles, 5);
+    assert.equal(f.programs().length, 5);
+    assert.equal(f.stops().length, 1);
+    assert.deepEqual(matrix, [
+      "I D G(2) H(5) Serve F B(-3) E A C(-1)",
+      "C(-3) F A G(3) Serve I H(5) D B(-1) E",
+      "H(5) F E G(1) Serve C(-1) B(-1) A D I",
+      "B(-1) E H(3) I Serve G(2.5) F A C(-2.5) D",
+      "I B(-1) D A Serve C(-3) F E G(1) H(3)",
+    ]);
+    t.diagnostic(`${mode} matrix:\n${matrix.join("\n")}`);
+  });
+}

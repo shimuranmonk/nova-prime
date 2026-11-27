@@ -1,10 +1,14 @@
 # Nova Prime continuation memory
 
-## Current checkpoint · 2026-11-27
+## Trainer parity branch · 2026-11-28
+
+- `fix/trainer-repetition-parity` implements Trainer-style per-repetition draws in live Reps and Time. See the [handover](HANDOVER.md#trainer-parity-branch--2026-11-28) for scope and pending physical verification.
+
+## Layout checkpoint · 2026-11-27
 
 - **Merged source:** Main at `61c239dd735fd682dfda0fbd92d04479f7759819` contains Layout Test .9 via PR #42, following the editor and remote integration in PR #41. GitHub CI for PR #42 passed (run 46014453354).
 - **Android candidate:** `nova-prime-0.19.4-editor-layout-test.9-release.zip` is a local 72-file test package. All 223 automated tests and build/ZIP checks passed. No hosted deployment, GitHub release asset, or final Android layout pass was confirmed during this work.
-- **Open gates:** Calibration and MSYNC physical verification remain pending. The keyboard-style remote and one-time remote arming still need an Android/device check. Per-repetition Trainer variant redraw remains an open difference.
+- **Open gates:** Calibration and MSYNC physical verification remain pending. The keyboard-style remote and one-time remote arming still need an Android/device check.
 - **Branch cleanup:** The approved keep set is `main`, `fix/android-editor-layout`, and `fix/msync-session-controls`. Deletion attempts failed for lack of authenticated GitHub write access. All 24 pre-cleanup branch tips are preserved in the verified local recovery bundle.
 - **First action:** After GitHub write access is available, re-list the branches and compare their tips with the recovery bundle before pruning. Independently, transfer the .9 ZIP for Android verification using the existing origin. See [handover](HANDOVER.md), [install instructions](ANDROID_INSTALL.md), and the [physical run sheet](PHYSICAL_TEST_RUN.md).
 

@@ -21,6 +21,12 @@ The protocol facts were independently implemented from the public `olanga/nova` 
 
 Verified facts include the advertised service and GATT UUIDs, handshake packets and salt-derived MD5 response, ready and Stop packets, completion marker, seven-byte drill header, 24-byte little-endian ball payload, and motor-speed conversion.
 
+## Live Reps and Time
+
+Random order, multiple variants, or Scatter on an enabled step trigger one finite packet per repetition. Prime selects the complete sequence and disables firmware shuffling for these packets. The next packet waits for the current completion notification and the configured rest. A missing notification triggers the completion watchdog and Stop. Time also has an independent session deadline that can stop an unfinished repetition. Deterministic programs keep their original batched commands. Music and MSYNC keep their own dispatch paths.
+
+The completion notification has no per-packet identifier. Verify inter-repetition timing with zero and nonzero rest and check late notifications around Stop and Resume on authorized hardware. The seeded ten-ball simulation in [the runtime tests](../test/trainer-repetition-parity.test.js) exercises both modes, including a fixed Serve in slot 5.
+
 ## Release gate
 
 Production live control is enabled for authorized beta testing. Calibration and MSYNC physical verification remain pending, and the complete physical release gate remains open. See [the physical run sheet](PHYSICAL_TEST_RUN.md) for the current candidate and build-specific evidence.
