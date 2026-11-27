@@ -22,7 +22,7 @@ import { IndexedDbStore } from "../infrastructure/storage/indexed-db-store.js";
 import { MemoryStore } from "../infrastructure/storage/memory-store.js";
 import { detectCapabilities } from "./capabilities.js";
 import { createCalibrationWizard } from "./calibration-wizard.js";
-import { createDrillEditor } from "./drill-editor.js";
+import { createDrillEditor, editorIcon } from "./drill-editor.js";
 import { FEATURE_FLAGS } from "./feature-flags.js";
 import { createRouter } from "./router.js";
 import { ThemeController } from "./theme-controller.js";
@@ -458,11 +458,11 @@ function setupCard(session) {
       </form>`;
   return `
     <section class="app-card setup-card" aria-labelledby="setup-title">
-      <div class="section-heading"><div><span class="eyebrow">QUICK TRAINING</span><h2 id="setup-title">Session setup</h2></div><span class="simulation-pill">Dry run</span></div>
+      <div class="section-heading setup-heading"><h2 id="setup-title" class="eyebrow">Session Setup</h2><span class="simulation-pill">Dry run</span></div>
 
       <div class="control-group">
-        <span class="control-label">Difficulty level</span>
-        <div class="level-selector" role="group" aria-label="Difficulty level">
+        <span class="control-label intensity-label" data-intensity="${uiState.level}">Intensity</span>
+        <div class="level-selector" role="group" aria-label="Intensity">
           ${[1, 2, 3].map((level) => `<button type="button" data-level="${level}" class="level-button ${uiState.level === level ? "selected" : ""}" aria-pressed="${uiState.level === level}" ${locked ? "disabled" : ""}>${level}</button>`).join("")}
         </div>
       </div>
@@ -482,14 +482,8 @@ function setupCard(session) {
 }
 
 function drillCard(drill, locked) {
-  const steps = drill.programs[uiState.level].steps.filter((step) => step.enabled);
-  const dots = steps.slice(0, 8).map((step) => {
-    const ball = step.variants[0];
-    const kind = ball.height < 0 ? "serve" : ball.type === "back" ? "back" : "top";
-    return `<i class="ball-dot ${kind}"></i>`;
-  }).join("");
   const selected = uiState.drillId === drill.id;
-  return `<button class="drill-tile ${selected ? "selected" : ""}" type="button" data-drill-id="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}><span><strong>${escapeHtml(drill.name)}</strong>${randomOrderFor(drill) ? '<small class="random-tag">Random</small>' : ""}</span><span class="ball-detail"><span class="ball-dots">${dots}</span>${steps.length} ball${steps.length === 1 ? "" : "s"}</span></button>`;
+  return `<button class="drill-tile ${selected ? "selected" : ""}" type="button" data-drill-id="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}><span><strong>${escapeHtml(drill.name)}</strong>${randomOrderFor(drill) ? '<small class="random-tag">Random</small>' : ""}</span></button>`;
 }
 
 function drillLibrary(session) {
@@ -500,26 +494,33 @@ function drillLibrary(session) {
   const random = randomOrderFor(selected);
   return `
     <section id="drill-panel-builtin" class="app-card library-card" role="tabpanel" tabindex="0" aria-labelledby="drill-tab-builtin" aria-hidden="${uiState.drillTab !== "builtin"}" ${uiState.drillTab !== "builtin" ? "hidden" : ""}>
-      <div class="section-heading"><div><h2 id="library-title">Built-in drills</h2><p>${BUILTIN_DRILLS.length} drills · level ${uiState.level}</p></div><div class="library-heading-actions"><button class="small-button ${random ? "active" : ""}" type="button" data-builtin-order ${locked || !selected || activeSteps < 2 ? "disabled" : ""}>${random ? "Random order" : "Sequential"}</button><button class="small-button" type="button" data-builtin-reset ${locked || !Object.keys(builtinPreferences).length ? "disabled" : ""}>Reset settings</button></div></div>
+      <div class="library-controls">
+        <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${id === "combined" ? "Mixed" : id === "complex" ? "Multi" : label} <small>${count}</small></button>`).join("")}</div>
+        <div class="library-heading-actions"><button class="small-button order-toggle ${random ? "active" : ""}" type="button" data-builtin-order aria-pressed="${random}" aria-label="Random order" title="${random ? "Random order · switch to sequential" : "Sequential order · switch to random"}" ${locked || !selected || activeSteps < 2 ? "disabled" : ""}>${editorIcon(random ? "random" : "sequential")}</button><button class="small-button library-icon-button" type="button" data-builtin-reset aria-label="Reset settings" title="Reset settings" ${locked || !Object.keys(builtinPreferences).length ? "disabled" : ""}>${editorIcon("reset")}</button></div>
+      </div>
       ${builtinMessage ? `<p class="helper-text" role="status">${escapeHtml(builtinMessage)}</p>` : ""}
-      <div class="pill-row" role="group" aria-label="Drill category">${BUILTIN_GROUPS.map(({ id, label, count }) => `<button type="button" data-category="${id}" class="pill ${uiState.category === id ? "selected" : ""}" aria-pressed="${uiState.category === id}" ${locked ? "disabled" : ""}>${id === "combined" ? "Mixed" : id === "complex" ? "Multi" : label} <small>${count}</small></button>`).join("")}</div>
-      <div class="drill-grid">${drills.map((drill) => drillCard(drill, locked)).join("")}</div>
+      <div class="drill-grid ${uiState.category === "complex" ? "" : "drill-grid-paired"}">${drills.map((drill) => drillCard(drill, locked)).join("")}</div>
     </section>`;
 }
 
 function customDrillCard(drill, locked, index, groupLength) {
   const program = programForDrill(drill);
   const steps = program?.steps?.filter((step) => step.enabled) ?? [];
+  const hasServe = steps.some((step) => step.variants.some((ball) => ball.height < 0));
+  const ballSummary = `${steps.length} ball${steps.length === 1 ? "" : "s"}${hasServe ? ", includes a serve" : ""}`;
   const selected = uiState.drillId === drill.id;
   return `
     <article class="custom-drill-card ${selected ? "selected" : ""}">
       <button class="custom-drill-select" type="button" data-custom-select="${escapeHtml(drill.id)}" aria-pressed="${selected}" ${locked ? "disabled" : ""}>
         <strong>${escapeHtml(drill.name)}</strong>
-        <span>${steps.length} ball${steps.length === 1 ? "" : "s"} · ${escapeHtml(drill.robotPosition)}</span>
+        <span class="custom-ball-count" aria-label="${ballSummary}" title="${ballSummary}">
+          <i class="custom-ball-dot" aria-hidden="true"></i><span aria-hidden="true">${steps.length}</span>${hasServe ? '<i class="custom-ball-dot serve" aria-hidden="true"></i>' : ""}
+        </span>
       </button>
       <div class="custom-drill-actions">
         ${uiState.customArrange ? `<button type="button" data-custom-move="${escapeHtml(drill.id)}" data-direction="-1" aria-label="Move ${escapeHtml(drill.name)} up" ${locked || index === 0 ? "disabled" : ""}>↑</button><button type="button" data-custom-move="${escapeHtml(drill.id)}" data-direction="1" aria-label="Move ${escapeHtml(drill.name)} down" ${locked || index === groupLength - 1 ? "disabled" : ""}>↓</button>` : ""}
-        <button class="manage-button" type="button" data-custom-edit="${escapeHtml(drill.id)}" aria-label="Manage ${escapeHtml(drill.name)}" ${locked ? "disabled" : ""}>✎</button>
+        <button class="manage-button" type="button" data-custom-edit="${escapeHtml(drill.id)}" aria-label="Edit ${escapeHtml(drill.name)}" title="Edit drill" ${locked ? "disabled" : ""}>${editorIcon("edit")}</button>
+        <button class="delete-drill-button" type="button" data-custom-delete="${escapeHtml(drill.id)}" aria-label="Delete ${escapeHtml(drill.name)}" title="Delete drill" ${locked ? "disabled" : ""}>${editorIcon("delete")}</button>
       </div>
     </article>`;
 }
@@ -530,8 +531,8 @@ function customDrills(session) {
   const counts = Object.fromEntries(CUSTOM_GROUPS.map((group) => [group, customCache.filter((drill) => drill.group === group).length]));
   return `
     <section id="drill-panel-custom" class="app-card library-card" role="tabpanel" tabindex="0" aria-labelledby="drill-tab-custom" aria-hidden="${uiState.drillTab !== "custom"}" ${uiState.drillTab !== "custom" ? "hidden" : ""}>
-      <div class="section-heading"><div><h2 id="custom-title">My drills</h2><p>${customCache.length} drill${customCache.length === 1 ? "" : "s"}</p></div></div>
       <div class="custom-toolbar">
+        <button class="small-button" type="button" data-custom-new ${locked ? "disabled" : ""}>+ New Drill ${uiState.group}</button>
         <button type="button" data-custom-arrange class="small-button ${uiState.customArrange ? "active" : ""}" ${locked || groupDrills.length < 2 ? "disabled" : ""}>${uiState.customArrange ? "Done" : "Arrange"}</button>
         <button id="custom-export-all" type="button" class="small-button" ${locked || customCache.length === 0 ? "disabled" : ""}>Export all</button>
         <label class="small-button import-button ${locked ? "disabled" : ""}">Import<input id="custom-import" type="file" accept="application/json,.json" ${locked ? "disabled" : ""}></label>
@@ -540,15 +541,14 @@ function customDrills(session) {
       ${customMessage ? `<p class="custom-message" role="status">${escapeHtml(customMessage)}</p>` : ""}
       <div class="custom-drill-grid">${groupDrills.map((drill, index) => customDrillCard(drill, locked, index, groupDrills.length)).join("")}</div>
       ${groupDrills.length === 0 ? `<div class="empty-library"><strong>Group ${uiState.group} is empty</strong><span>Create a drill here or import a Nova Prime drill file.</span></div>` : ""}
-      <button class="new-drill" type="button" data-custom-new ${locked ? "disabled" : ""}><span>＋</span><strong>New drill</strong><small>Group ${uiState.group}</small></button>
     </section>`;
 }
 
 function drillLibraryTabs() {
   const selectedBuiltin = uiState.drillTab === "builtin";
   return `<div class="drill-library-tabs" role="tablist" aria-label="Drill library">
-    <button id="drill-tab-builtin" type="button" role="tab" aria-controls="drill-panel-builtin" aria-selected="${selectedBuiltin}" tabindex="${selectedBuiltin ? "0" : "-1"}" data-drill-tab="builtin">Built-in drills <small>${BUILTIN_DRILLS.length}</small></button>
-    <button id="drill-tab-custom" type="button" role="tab" aria-controls="drill-panel-custom" aria-selected="${!selectedBuiltin}" tabindex="${selectedBuiltin ? "-1" : "0"}" data-drill-tab="custom">My drills <small>${customCache.length}</small></button>
+    <button id="drill-tab-builtin" type="button" role="tab" aria-controls="drill-panel-builtin" aria-selected="${selectedBuiltin}" tabindex="${selectedBuiltin ? "0" : "-1"}" data-drill-tab="builtin">Built-in drills <small>${BUILTIN_DRILLS.length} · L${uiState.level}</small></button>
+    <button id="drill-tab-custom" type="button" role="tab" aria-controls="drill-panel-custom" aria-selected="${!selectedBuiltin}" tabindex="${selectedBuiltin ? "-1" : "0"}" data-drill-tab="custom">My drills <small>${customCache.length} · L${uiState.level}</small></button>
   </div>`;
 }
 
@@ -939,7 +939,7 @@ function bindRouteActions(route) {
       if (!drill) return;
       const next = !randomOrderFor(drill);
       builtinPreferences = await builtinPreferencesService.setRandom(drill, uiState.level, next);
-      builtinMessage = `${drill.name} · Level ${uiState.level}: ${next ? "random order" : "sequential"}.`;
+      builtinMessage = "";
       await render("train");
     });
     document.querySelector("[data-builtin-reset]:not(:disabled)")?.addEventListener("click", async () => {
@@ -984,6 +984,9 @@ function bindRouteActions(route) {
     document.querySelectorAll("[data-group]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.group = button.dataset.group; uiState.customArrange = false; void render("train"); }));
     document.querySelectorAll("[data-custom-select]:not(:disabled)").forEach((button) => button.addEventListener("click", () => { uiState.drillId = button.dataset.customSelect; void render("train"); }));
     document.querySelectorAll("[data-custom-edit]:not(:disabled)").forEach((button) => button.addEventListener("click", () => openDrillDialog(resolveDrill(button.dataset.customEdit))));
+    document.querySelectorAll("[data-custom-delete]:not(:disabled)").forEach((button) => {
+      button.addEventListener("click", () => void confirmDrillDeletion(button.dataset.customDelete, button));
+    });
     document.querySelector("[data-custom-new]:not(:disabled)")?.addEventListener("click", () => openDrillDialog());
     document.querySelector("[data-custom-arrange]:not(:disabled)")?.addEventListener("click", () => { uiState.customArrange = !uiState.customArrange; void render("train"); });
     document.querySelectorAll("[data-custom-move]:not(:disabled)").forEach((button) => button.addEventListener("click", async () => {
@@ -1542,15 +1545,30 @@ document.querySelector("#drill-export-one").addEventListener("click", async () =
     drillDialogResult.textContent = error.message;
   }
 });
-document.querySelector("#drill-delete").addEventListener("click", async () => {
-  const id = drillForm.elements.id.value;
-  const drill = resolveDrill(id);
+async function confirmDrillDeletion(id, button, fromDialog = false) {
+  const drill = customCache.find((entry) => entry.id === id);
   if (!drill || !globalThis.confirm(`Delete “${drill.name}”? This cannot be undone.`)) return;
-  await customDrillService.delete(id);
+  button.disabled = true;
+  try {
+    await customDrillService.delete(id);
+  } catch (error) {
+    button.disabled = false;
+    if (fromDialog) drillDialogResult.textContent = error.message;
+    else {
+      customMessage = `Could not delete drill: ${error.message}`;
+      await render("train");
+    }
+    return;
+  }
+  button.disabled = false;
   if (uiState.drillId === id) uiState.drillId = BUILTIN_DRILLS[0].id;
   customMessage = "Custom drill deleted.";
-  drillDialog.close();
+  if (fromDialog) drillDialog.close();
   await render("train");
+}
+
+document.querySelector("#drill-delete").addEventListener("click", (event) => {
+  void confirmDrillDeletion(drillForm.elements.id.value, event.currentTarget, true);
 });
 
 appReady = true;

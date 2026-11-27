@@ -1,0 +1,70 @@
+/* Optional visual trial for the dashboard and editor tab strips. */
+:is(.mode-selector, .drill-library-tabs, #editor-dialog .editor-view-tabs, #editor-dialog .parameter-scope-tabs) {
+  gap: 4px;
+  padding: 4px 5px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line-strong);
+  border-radius: 8px 8px 0 0;
+  background: var(--segmented);
+}
+
+:is(.mode-selector, .drill-library-tabs, #editor-dialog .editor-view-tabs, #editor-dialog .parameter-scope-tabs) > button {
+  position: relative;
+  min-width: 0;
+  min-height: 44px;
+  margin-bottom: -1px;
+  padding: 6px 4px;
+  border: 1px solid transparent;
+  border-bottom-color: var(--line-strong);
+  border-radius: 7px 7px 0 0;
+  background: var(--surface-soft);
+  color: var(--muted);
+  box-shadow: none;
+  font-size: .8rem;
+  font-weight: 650;
+}
+
+:is(.mode-selector, .drill-library-tabs, #editor-dialog .editor-view-tabs, #editor-dialog .parameter-scope-tabs)
+  > button:is([aria-pressed="true"], [aria-selected="true"]) {
+  border-color: var(--line-strong);
+  border-bottom-color: var(--surface);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: none;
+  font-weight: 800;
+}
+
+:is(.mode-selector, .drill-library-tabs, #editor-dialog .editor-view-tabs, #editor-dialog .parameter-scope-tabs) > button:focus-visible {
+  z-index: 1;
+  outline-offset: -3px;
+}
+
+.drill-library-tabs > button small {
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.training-screen > .library-card[role="tabpanel"] {
+  margin-top: -12px;
+  border-top: 0;
+  border-radius: 0 0 17px 17px;
+}
+
+#editor-dialog .editor-navigation { padding-bottom: 0; }
+#editor-dialog .editor-tabbed-workspace { background: var(--surface); }
+
+.library-card .drill-tile {
+  min-height: 0;
+  align-items: center;
+  padding: 15px;
+}
+
+#editor-dialog .parameter-scope-tabs {
+  display: flex;
+  min-width: 0;
+}
+#editor-dialog .parameter-scope-tabs > button {
+  flex: 1 0 auto;
+  white-space: nowrap;
+}
