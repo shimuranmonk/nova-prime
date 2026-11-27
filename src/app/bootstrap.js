@@ -395,9 +395,12 @@ function voiceControlSlot() {
   const enabled = supported && uiState.voiceEnabled;
   return `
     <div class="voice-control-slot">
-      <span class="voice-control-label">Voice</span>
       <details class="voice-control-details">
-        <summary class="voice-control-button" aria-label="Open voice command controls" title="Voice commands · ${supported ? (enabled ? voiceStatus : "Off") : "Not supported in this browser"}"><span aria-hidden="true">🎙</span><span>Voice</span><small>${supported ? (enabled ? escapeHtml(voiceStatus) : "Off") : "Unavailable"}</small></summary>
+        <summary class="voice-control-button" data-voice-enabled="${enabled}"
+          aria-label="Voice commands (${enabled ? "on" : "off"})"
+          title="Voice commands · ${supported ? (enabled ? escapeHtml(voiceStatus) : "Off") : "Not supported in this browser"}">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11v1a7 7 0 0 0 14 0v-1M12 19v3m-3 0h6"/></svg>
+        </summary>
         <div class="voice-control-popover">
           <strong>Voice commands</strong>
           <div class="voice-actions">
@@ -418,11 +421,9 @@ function repetitionLogicButton(locked) {
     title="Switch between Plus batch logic and Trainer per-repetition logic" ${locked ? "disabled" : ""}>
     <span class="repetition-logic-plus" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M6 3h12M3 12h18"/></svg>
-      Plus
     </span>
     <span class="repetition-logic-trainer" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3"/></svg>
-      Trainer
     </span>
   </button>`;
 }

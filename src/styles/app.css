@@ -99,13 +99,22 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
 .console-actions .stop-button { border-color: var(--danger); background: var(--danger); color: white; }
 
 .voice-control-slot { position: relative; min-width: 0; }
-.voice-control-label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 0.7rem; font-weight: 800; text-transform: uppercase; }
 .voice-control-details { position: relative; }
-.voice-control-button { display: grid; place-content: center; gap: 1px; min-height: 50px; width: 100%; padding: 3px; border: 1px solid color-mix(in srgb, var(--voice-accent) 38%, var(--line)); border-radius: 11px; background: var(--voice-accent-soft); color: var(--voice-accent); text-align: center; font-size: .68rem; font-weight: 850; line-height: 1.15; cursor: pointer; list-style: none; }
+.voice-control-button { display: grid; place-content: center; min-height: 50px; width: 100%; padding: 3px; border: 1px solid color-mix(in srgb, var(--voice-accent) 38%, var(--line)); border-radius: 11px; background: var(--voice-accent-soft); color: var(--voice-accent); cursor: pointer; list-style: none; }
 .voice-control-button::-webkit-details-marker { display: none; }
-.voice-control-button > span:first-child { font-size: 1rem; }
-.voice-control-button small { color: inherit; opacity: .8; font-size: .56rem; font-weight: 750; }
 .voice-control-details[open] .voice-control-button { border-color: var(--voice-accent); background: var(--voice-accent-soft); }
+.voice-control-button svg { width: 19px; height: 19px; }
+.voice-control-details .voice-control-button[data-voice-enabled="true"] {
+  border-color: #166534;
+  background: #166534;
+  color: white;
+}
+@keyframes voice-enabled-pulse {
+  50% { background-color: #268344; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .voice-control-button[data-voice-enabled="true"] { animation: voice-enabled-pulse 1.6s ease-in-out infinite; }
+}
 .voice-control-popover { position: absolute; top: calc(100% + 7px); right: 0; z-index: 8; width: min(310px, 88vw); padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); }
 .voice-control-popover .voice-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 .voice-control-popover .voice-actions button { min-height: 44px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); font-weight: 800; }
@@ -735,11 +744,6 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
   min-width: 0;
 }
 .training-start-tools .voice-control-button { padding-inline: 0; }
-.training-start-tools .voice-control-button small { display: none; }
-@media (max-width: 480px) {
-  .training-start-tools .voice-control-button { font-size: .58rem; }
-  .training-start-tools .repetition-logic-button { padding-inline: 0; font-size: .58rem; }
-}
 .repetition-logic-button {
   display: grid;
   place-items: center;
@@ -749,18 +753,14 @@ input, select { width: 100%; min-height: 50px; border: 1px solid var(--line); bo
   border-radius: 11px;
   background: var(--surface-soft);
   color: var(--ink);
-  font: inherit;
-  font-size: .68rem;
-  font-weight: 850;
   cursor: pointer;
 }
-.repetition-logic-button > span { display: grid; justify-items: center; gap: 3px; }
+.repetition-logic-button > span { display: grid; }
 .repetition-logic-button svg { width: 19px; height: 19px; }
 .repetition-logic-button[aria-pressed="true"] { background: var(--teal-soft); color: var(--teal-dark); }
 .repetition-logic-button[aria-pressed="true"] .repetition-logic-plus,
 .repetition-logic-button[aria-pressed="false"] .repetition-logic-trainer { display: none; }
 .repetition-logic-button:disabled { opacity: .6; cursor: default; }
-.training-start-row .voice-control-label { display: none; }
 .training-start-row .voice-control-button { min-height: 52px; height: 100%; }
 
 .robot-connect-toggle { margin-left: auto; margin-right: 9px; min-width: 48px; min-height: 48px; }
